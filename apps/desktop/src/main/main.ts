@@ -35,6 +35,10 @@ if (userDataOverride) {
   app.setPath('userData', userDataOverride);
 }
 
+// Повторная проверка внешних изменений (фокус окна): сервис появляется
+// после whenReady, поэтому подписка идёт через инъекцию.
+let recheckExternal: (() => void) | null = null;
+
 const createWindow = (): void => {
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -49,6 +53,12 @@ const createWindow = (): void => {
 
   // window.open и любое внешнее открытие запрещены.
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
+  // Повторная проверка внешних изменений при возврате фокуса: наблюдатель —
+  // только сигнал, проверку выполняют сессии (checkExternal).
+  mainWindow.on('focus', () => {
+    recheckExternal?.();
+  });
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (!isOwnRendererUrl(url)) {
@@ -128,6 +138,30 @@ if (!app.requestSingleInstanceLock()) {
           window.webContents.send('desk:snapshot', snapshot);
         }
       },
+    });
+    recheckExternal = () => {
+      void service.recheckExternal();
+    };
+
+    // Закрытие дожидается очереди сохранения каждой открытой книги; ошибка
+    // сохранения не маскируется и не оставляет приложение «зависать»: после
+    // сообщения выполняется повторный quit (без рекурсии обработки).
+    let quitFlushed = false;
+    app.on('before-quit', (event) => {
+      if (quitFlushed) return;
+      event.preventDefault();
+      service
+        .closeAll()
+        .then(() => {
+          quitFlushed = true;
+          app.quit();
+        })
+        .catch(() => {
+          console.error('[desk] before-quit: code=SAVE_FAILED');
+          dialog.showErrorBox('Galley Desk', 'Не удалось сохранить изменения при выходе. Черновики сохранены в профиле.');
+          quitFlushed = true;
+          app.quit();
+        });
     });
 
     createWindow();

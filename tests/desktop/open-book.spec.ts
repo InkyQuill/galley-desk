@@ -168,7 +168,9 @@ test('открывает главу: правка из sidecar, локальна
       expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe(chapterText);
       await expect(reopened.page.getByText('Правка: кот спит → кит спит', { exact: false })).toBeVisible();
 
-      // Локальная картинка отображается через защищённую схему.
+      // Курсор уводится с картинки: в live-режиме Galley прячет виджет под
+      // курсором. Локальная картинка отображается через защищённую схему.
+      await reopened.page.locator('.cm-content').click();
       const image = reopened.page.locator('img.book__image[title="img.png"]');
       await expect(image).toHaveCount(1);
       await expect(image).toHaveAttribute('src', new RegExp(`^bookres://${manifest.book_id}/img\\.png$`));
@@ -202,14 +204,24 @@ test('восстанавливает главу и прокрутку в жив�
     'Глава 2.md': `${lines}\n`,
   });
   const running: ElectronApplication[] = [session.app];
+  // Скроллер находится внутри редактора: CodeMirror виртуализирует строки
+  // и сам ведёт прокрутку длинного документа.
+  const scroller = session.page.locator('.book__text .cm-scroller');
+  const scrollToEnd = (locator: ReturnType<Page['locator']>): Promise<void> =>
+    locator.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
   try {
     await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
     await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
     await expect(session.page.getByRole('button', { name: 'Глава 1' })).toBeVisible();
     await session.page.getByRole('button', { name: 'Глава 2' }).click();
-    await expect(session.page.locator('.book__text')).toContainText('строка 200');
-    await session.page.locator('.book__text').evaluate((element) => {
-      (element as HTMLElement).scrollTop = 120;
+    await expect(scroller).toBeVisible();
+    // Прокрутка к концу рендерит хвост виртуализованного документа.
+    await scrollToEnd(scroller);
+    await expect(scroller).toContainText('строка 200');
+    await scroller.evaluate((element) => {
+      element.scrollTop = 120;
     });
     // Дожидаемся сохранения позиции (debounce 200 мс) и закрываем книгу.
     await session.page.waitForTimeout(700);
@@ -226,8 +238,12 @@ test('восстанавливает главу и прокрутку в жив�
     // Повторное открытие в том же окне возвращает главу и прокрутку.
     await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
     await expect(session.page.getByRole('button', { name: 'Глава 2' })).toHaveClass(/book__chapter--active/);
-    await expect(session.page.locator('.book__text')).toContainText('строка 200');
-    await expect.poll(() => session.page.locator('.book__text').evaluate((element) => (element as HTMLElement).scrollTop)).toBe(120);
+    await expect
+      .poll(() => scroller.evaluate((element) => element.scrollTop))
+      .toBe(120);
+    // Прокрутка к концу снова рендерит хвост: содержимое на месте.
+    await scrollToEnd(scroller);
+    await expect(scroller).toContainText('строка 200');
 
     const settingsFile = JSON.parse(
       await readFile(path.join(session.userData, 'settings.json'), 'utf8'),
@@ -245,10 +261,12 @@ test('восстанавливает главу и прокрутку в жив�
     await expect(restarted.page.getByRole('button', { name: 'Открыть', exact: true })).toBeVisible();
     await restarted.page.getByRole('button', { name: 'Открыть', exact: true }).click();
     await expect(restarted.page.getByRole('button', { name: 'Глава 2' })).toHaveClass(/book__chapter--active/);
-    await expect(restarted.page.locator('.book__text')).toContainText('строка 200');
+    const restartedScroller = restarted.page.locator('.book__text .cm-scroller');
     await expect
-      .poll(() => restarted.page.locator('.book__text').evaluate((element) => (element as HTMLElement).scrollTop))
+      .poll(() => restartedScroller.evaluate((element) => element.scrollTop))
       .toBe(120);
+    await scrollToEnd(restartedScroller);
+    await expect(restartedScroller).toContainText('строка 200');
   } finally {
     await Promise.all(running.map((app) => app.close().catch(() => undefined)));
   }

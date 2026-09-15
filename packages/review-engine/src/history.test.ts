@@ -84,3 +84,26 @@ test('a restored draft starts with an empty in-memory history', () => {
   expect(history.undo(draft)).toBe(draft);
   expect(history.redo(draft)).toBe(draft);
 });
+
+test('canUndo/canRedo reflect the stack lengths across group merges and clears', () => {
+  const source = new TextEncoder().encode('кот');
+  const before = openChapter(source, review());
+  const one = changeText(before, [{from:3,to:3,insert:'X'}], {anchor:4,head:4}, () => id(1));
+  const two = changeText(one, [{from:4,to:4,insert:'Y'}], {anchor:5,head:5}, () => id(2));
+  const history = new InputHistory();
+  expect(history.canUndo).toBe(false);
+  expect(history.canRedo).toBe(false);
+  history.push(before, one, 'burst');
+  history.push(one, two, 'burst');
+  // Две правки одной группы — один шаг: undo опустошает undo-стек сразу.
+  const undone = history.undo(two);
+  expect(undone.text).toBe(before.text);
+  expect(history.canUndo).toBe(false);
+  expect(history.canRedo).toBe(true);
+  history.redo(undone);
+  expect(history.canUndo).toBe(true);
+  expect(history.canRedo).toBe(false);
+  history.clear();
+  expect(history.canUndo).toBe(false);
+  expect(history.canRedo).toBe(false);
+});

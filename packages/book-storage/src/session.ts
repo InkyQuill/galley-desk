@@ -164,6 +164,26 @@ export class ChapterSession {
   private pending: Pair | null = null;
   private failure: { error: unknown } | null = null;
 
+  /** Истина движка для снапшотов: есть ли шаг undo во вводной истории. */
+  get canUndoInput(): boolean {
+    return this.inputHistory.canUndo;
+  }
+
+  /** Есть ли шаг redo во вводной истории. */
+  get canRedoInput(): boolean {
+    return this.inputHistory.canRedo;
+  }
+
+  /** Есть ли применённая правка, которую можно отменить. */
+  get canUndoApply(): boolean {
+    return this.applyHistory.canUndo;
+  }
+
+  /** Есть ли отменённое применение, которое можно вернуть. */
+  get canRedoApply(): boolean {
+    return this.applyHistory.canRedo;
+  }
+
   private constructor(
     private readonly book: BookHandle,
     private readonly chapterId: string,
@@ -349,17 +369,23 @@ export class ChapterSession {
   }
 
   /**
-   * Reconciles the session with the book folder. Without local pending work
-   * the on-disk pair is adopted as-is and both histories are invalidated;
-   * with failed or already superseded local work the pending draft pair is
-   * first saved atomically into appData and only then the state switches to
-   * `external`. A failed draft write changes nothing: the model, the pending
-   * work and the state stay as they were.
+   * Reconciles the session with the book folder. When the freshly read pair
+   * still matches the current revision the call is a cheap no-op: the model
+   * is not rebuilt and both histories stay untouched. Without local pending
+   * work the changed on-disk pair is adopted as-is and both histories are
+   * invalidated; with failed or already superseded local work the pending
+   * draft pair is first saved atomically into appData and only then the
+   * state switches to `external`. A failed draft write changes nothing: the
+   * model, the pending work and the state stay as they were.
    */
   checkExternal(): Promise<void> {
     return this.queue.enqueue(async () => {
       if (this.state === 'saved') {
         const { pair, revision } = await readPair(this.book, this.chapterId);
+        if (revision.sourceHash === this.revision.sourceHash && revision.reviewHash === this.revision.reviewHash) {
+          // Внешней версии нет: дешёвый no-op без перестроения модели.
+          return;
+        }
         this.applyHistory.clear();
         this.inputHistory.clear();
         this.adopt(pair, modelFromPair(pair, this.chapterId, this.sourcePath), revision);
@@ -370,6 +396,22 @@ export class ChapterSession {
       this.applyHistory.clear();
       this.inputHistory.clear();
       this.state = 'external';
+    });
+  }
+
+  /**
+   * Finishes the resolution of an external change (user picked
+   * «open-external»/«export-local»): the on-disk pair becomes the working
+   * base again, both histories start empty and the state returns to `saved`.
+   * The preserved draft stays in appData as the user's backup copy.
+   */
+  adoptExternal(): Promise<void> {
+    return this.queue.enqueue(async () => {
+      const { pair, revision } = await readPair(this.book, this.chapterId);
+      this.applyHistory.clear();
+      this.inputHistory.clear();
+      this.adopt(pair, modelFromPair(pair, this.chapterId, this.sourcePath), revision);
+      this.state = 'saved';
     });
   }
 

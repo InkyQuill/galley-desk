@@ -111,11 +111,16 @@ export function validateCommand(value: unknown): Command {
       return { from: range.from, to: range.to, insert: asString(changeRecord.insert, 'change.insert') };
     });
     const selection = asRecord(record.selection, 'Command.selection');
-    return {
+    const command: Command = {
       type: 'text',
       changes,
       selection: { anchor: asOffset(selection.anchor, 'selection.anchor'), head: asOffset(selection.head, 'selection.head') },
     };
+    // Ключ группы ввода объединяет пачку набора в один undo-шаг сессии.
+    if (record.group !== undefined) {
+      return { ...command, group: asNonEmptyString(record.group, 'Command.group') };
+    }
+    return command;
   }
   if (type === 'signal') {
     const range = asOrderedRange(record);

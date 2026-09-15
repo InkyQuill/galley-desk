@@ -10,7 +10,8 @@ export type BookView = {bookId:string; title:string; entries:Entry[]};
 export type Recent = {path:string; title:string; missing:boolean;
   lastChapterId?:string|null; lastAnchor?:number|null; lastScrollTop?:number|null};
 export type Command =
- | {type:'text'; changes:{from:number;to:number;insert:string}[]; selection:{anchor:number;head:number}}
+ | {type:'text'; changes:{from:number;to:number;insert:string}[]; selection:{anchor:number;head:number};
+    group?:string}
  | {type:'signal'; id?:string; from:number;to:number; signalType:'note'|'change_required'|'warning'|'review';comment:string}
  | {type:'note';text:string}
  | {type:'remove'|'apply';id:string}

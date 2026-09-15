@@ -10,6 +10,11 @@ test('rejects path-bearing arbitrary writes', () => {
 test('accepts every documented command shape', () => {
   expect(validateCommand({ type: 'text', changes: [{ from: 0, to: 2, insert: 'кит' }], selection: { anchor: 1, head: 1 } }))
     .toEqual({ type: 'text', changes: [{ from: 0, to: 2, insert: 'кит' }], selection: { anchor: 1, head: 1 } });
+  // Ключ группы ввода проходит валидацию как непустая строка.
+  expect(validateCommand({ type: 'text', changes: [], selection: { anchor: 0, head: 0 }, group: 'burst-1' }))
+    .toEqual({ type: 'text', changes: [], selection: { anchor: 0, head: 0 }, group: 'burst-1' });
+  expect(() => validateCommand({ type: 'text', changes: [], selection: { anchor: 0, head: 0 }, group: '' })).toThrow();
+  expect(() => validateCommand({ type: 'text', changes: [], selection: { anchor: 0, head: 0 }, group: 7 })).toThrow();
   expect(validateCommand({ type: 'signal', from: 0, to: 3, signalType: 'note', comment: 'уточнить' }))
     .toEqual({ type: 'signal', from: 0, to: 3, signalType: 'note', comment: 'уточнить' });
   expect(validateCommand({ type: 'signal', id: 'abc', from: 0, to: 3, signalType: 'review', comment: '' }))

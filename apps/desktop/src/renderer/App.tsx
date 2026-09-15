@@ -22,7 +22,12 @@ export function App() {
   const openBook = useCallback((view: BookView, recent?: Recent) => {
     setRestore(
       recent?.lastChapterId
-        ? { chapterId: recent.lastChapterId, scrollTop: recent.lastScrollTop ?? 0 }
+        ? {
+            chapterId: recent.lastChapterId,
+            scrollTop: recent.lastScrollTop ?? 0,
+            // Якорь выделения восстанавливается редактором (контракт Recent).
+            anchor: recent.lastAnchor ?? null,
+          }
         : null,
     );
     setBook(view);

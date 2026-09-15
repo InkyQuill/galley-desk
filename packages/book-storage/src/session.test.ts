@@ -357,3 +357,87 @@ test('applying through the session removes a signal inside the replacement and k
   expect(session.model.text).toBe('Xcd');
   await session.close();
 });
+
+test('canUndo/canRedo getters follow the history stacks, not per-command counters', async () => {
+  const { book, chapterId, appData, writeSidecar } = await makeBook();
+  await writeSidecar(reviewFor(chapterId, [E1]));
+  const session = await ChapterSession.open(book, chapterId, appData);
+  expect(session.canUndoInput).toBe(false);
+  expect(session.canRedoInput).toBe(false);
+  expect(session.canUndoApply).toBe(false);
+  expect(session.canRedoApply).toBe(false);
+
+  // Стек apply: применение, отмена, возврат.
+  await session.apply(E1_ID);
+  expect(session.canUndoApply).toBe(true);
+  expect(session.canRedoApply).toBe(false);
+  expect(session.canUndoInput).toBe(false);
+  expect(session.canRedoInput).toBe(false);
+  await session.undoApply();
+  expect(session.canUndoApply).toBe(false);
+  expect(session.canRedoApply).toBe(true);
+  await session.redoApply();
+  expect(session.canUndoApply).toBe(true);
+  expect(session.canRedoApply).toBe(false);
+
+  // Пачка из двух правок с одной группой — ОДИН шаг вводной истории;
+  // обычный ввод очищает стек apply.
+  await session.edit([{ from: 3, to: 3, insert: '!' }], { anchor: 4, head: 4 }, 'burst-1');
+  await session.edit([{ from: 4, to: 4, insert: '?' }], { anchor: 5, head: 5 }, 'burst-1');
+  expect(session.canUndoInput).toBe(true);
+  expect(session.canRedoInput).toBe(false);
+  expect(session.canUndoApply).toBe(false);
+  expect(session.canRedoApply).toBe(false);
+
+  await session.undoInput();
+  expect(session.canUndoInput).toBe(false);
+  expect(session.canRedoInput).toBe(true);
+  await session.redoInput();
+  expect(session.canUndoInput).toBe(true);
+  expect(session.canRedoInput).toBe(false);
+  await session.undoInput();
+  await session.undoInput();
+  expect(session.canUndoInput).toBe(false);
+  expect(session.canRedoInput).toBe(true);
+  await session.close();
+});
+
+test('checkExternal with an unchanged pair is a no-op: model and histories stay', async () => {
+  const { book, chapterId, appData } = await makeBook();
+  const session = await ChapterSession.open(book, chapterId, appData);
+  await session.edit([{ from: 4, to: 4, insert: '!' }], { anchor: 5, head: 5 });
+  expect(session.canUndoInput).toBe(true);
+  const model = session.model;
+
+  await session.checkExternal();
+  await session.checkExternal();
+  // Второй вызов не перестраивает модель и не очищает undo-стек.
+  expect(session.model).toBe(model);
+  expect(session.canUndoInput).toBe(true);
+  expect(session.state).toBe('saved');
+  await session.close();
+});
+
+test('adoptExternal returns the session to saved on the external base', async () => {
+  const { book, chapterId, appData, root } = await makeBook();
+  const session = await ChapterSession.open(book, chapterId, appData);
+  await externalWrite(root, 'abcd!');
+  await expect(session.replaceReview(reviewFor(chapterId, [], 'черновик'))).rejects.toThrow(WriteConflictError);
+  await session.checkExternal();
+  expect(session.state).toBe('external');
+  expect(await readDrafts(appData)).toHaveLength(1);
+
+  await session.adoptExternal();
+  expect(session.state).toBe('saved');
+  expect(session.model.text).toBe('abcd!');
+  expect(session.canUndoInput).toBe(false);
+  expect(session.canRedoInput).toBe(false);
+  expect(session.canUndoApply).toBe(false);
+  expect(session.canRedoApply).toBe(false);
+  const pair = await readPair(book, chapterId);
+  expect(session.revision).toEqual(pair.revision);
+  // После разрешения внешнего изменения ввод снова работает поверх внешней базы.
+  await session.edit([{ from: 5, to: 5, insert: '?' }], { anchor: 6, head: 6 });
+  expect(session.model.text).toBe('abcd!?');
+  await session.close();
+});

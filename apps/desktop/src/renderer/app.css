@@ -163,6 +163,57 @@ body {
 
 .book__text {
   width: min(100%, 44rem);
+  height: 60vh;
+  /* Прокрутку ведёт скроллер редактора (CM виртуализирует строки). */
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 8px;
+  padding: 0.25rem;
+  margin: 0;
+}
+
+.review-editor {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Оболочка Galley (прямая честь .review-editor) тянется на всю высоту,
+   иначе cm-scroller растёт по контенту и перестаёт прокручиваться. */
+.review-editor > div {
+  height: 100%;
+  min-height: 0;
+}
+
+.review-editor .cm-editor {
+  background: transparent;
+}
+
+.review-editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.book__view-toggle {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.book__view {
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.book__view--active {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.book__source {
+  width: min(100%, 44rem);
   min-height: 40vh;
   max-height: 60vh;
   overflow-y: auto;
@@ -172,6 +223,23 @@ body {
   border-radius: 8px;
   padding: 1rem;
   margin: 0;
+  text-align: left;
+}
+
+.book__reread {
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.book__external-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.book__image-unavailable {
+  opacity: 0.55;
+  font-style: italic;
 }
 
 .book__records {
@@ -189,12 +257,6 @@ body {
 
 .book__record--conflicting {
   color: #b00020;
-}
-
-.book__images {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
 }
 
 .book__image {

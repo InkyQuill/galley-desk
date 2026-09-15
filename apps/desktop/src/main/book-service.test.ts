@@ -2,11 +2,12 @@ import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promise
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { encodeReview, makeAnchor } from '@galley-desk/pocket-format';
 import type { Edit, Review, Signal } from '@galley-desk/pocket-format';
 import { createBookService } from './book-service';
 import { IpcError } from './ipc';
+import type { Snapshot } from '../shared/api';
 
 const tempDirs: string[] = [];
 
@@ -24,6 +25,8 @@ type Harness = ReturnType<typeof createBookService> & {
   bookRoot: string;
   appData: string;
   setPicker: (value: string | null) => void;
+  setExportPicker: (value: string | null) => void;
+  fireWatcher: () => void;
 };
 
 async function makeService(bookFiles: Record<string, string> = {}): Promise<Harness> {
@@ -35,16 +38,30 @@ async function makeService(bookFiles: Record<string, string> = {}): Promise<Harn
   }
   const appData = await tempDir('galley-appdata-');
   let picked: string | null = bookRoot;
+  let exportPicked: string | null = null;
+  // Наблюдатель подменяется ручным триггером: тест сам решает, когда корень
+  // «изменился», и не держит открытых файловых дескрипторов.
+  const watcherEvents = new Map<string, () => void>();
   const service = createBookService({
     appData,
     chooseDirectory: async () => picked,
-    chooseExportDestination: async () => null,
+    chooseExportDestination: async () => exportPicked,
+    watchRoot: (root, onEvent) => {
+      watcherEvents.set(root, onEvent);
+      return () => watcherEvents.delete(root);
+    },
   });
   return Object.assign(service, {
     bookRoot,
     appData,
     setPicker(value: string | null) {
       picked = value;
+    },
+    setExportPicker(value: string | null) {
+      exportPicked = value;
+    },
+    fireWatcher() {
+      watcherEvents.get(bookRoot)?.();
     },
   }) as Harness;
 }
@@ -505,4 +522,197 @@ test('файловый список глав не содержит служеб�
   const harness = await makeService({ 'Глава.md': 'кот\n', '.pocket-editor.json.bak': 'мусор' });
   const view = (await harness.chooseBook())!;
   expect(view!.entries.map((entry) => entry.path)).toEqual(['Глава.md']);
+});
+
+// --- D3: группы ввода, внешний ввод, наблюдатель и разрешение изменений -----
+
+test('две текстовые команды с одной группой сливаются в один undo-шаг', async () => {
+  const harness = await makeService({ 'Глава.md': 'кот\n' });
+  const view = (await harness.chooseBook())!;
+  const chapterId = view.entries[0]!.id;
+  const initial = await harness.openChapter(view.bookId, chapterId);
+
+  const first = await harness.command(view.bookId, chapterId, initial.revision, {
+    type: 'text',
+    changes: [{ from: 3, to: 3, insert: '!' }],
+    selection: { anchor: 4, head: 4 },
+    group: 'burst-1',
+  });
+  const second = await harness.command(view.bookId, chapterId, first.revision, {
+    type: 'text',
+    changes: [{ from: 4, to: 4, insert: '?' }],
+    selection: { anchor: 5, head: 5 },
+    group: 'burst-1',
+  });
+  expect(second.text).toBe('кот!?\n');
+  expect(second.canUndoInput).toBe(true);
+
+  const undone = await harness.command(view.bookId, chapterId, second.revision, { type: 'undo-input' });
+  // Один undo-шаг убирает всю пачку: доступны redo и пустой undo.
+  expect(undone.text).toBe('кот\n');
+  expect(undone.canRedoInput).toBe(true);
+  expect(undone.canUndoInput).toBe(false);
+  await harness.closeBook(view.bookId);
+});
+
+test('внешнее изменение перед записью отклоняет команду с STALE_REVISION без перезаписи', async () => {
+  const harness = await makeService({ 'Глава.md': 'кот\n' });
+  const view = (await harness.chooseBook())!;
+  const chapterId = view.entries[0]!.id;
+  const initial = await harness.openChapter(view.bookId, chapterId);
+  const snapshots: unknown[] = [];
+  harness.subscribe((snapshot) => snapshots.push(snapshot));
+
+  await writeFile(path.join(harness.bookRoot, 'Глава.md'), 'чужая версия', 'utf8');
+  const error = await harness
+    .command(view.bookId, chapterId, initial.revision, {
+      type: 'text',
+      changes: [{ from: 3, to: 3, insert: '!' }],
+      selection: { anchor: 4, head: 4 },
+    })
+    .catch((caught) => caught);
+  expect(errorCode(error)).toBe('STALE_REVISION');
+  expect(await readFile(path.join(harness.bookRoot, 'Глава.md'), 'utf8')).toBe('чужая версия');
+  // Ревизия выросла, слушателю ушёл снимок внешнего текста.
+  expect(snapshots).toHaveLength(1);
+  const pushed = snapshots[0] as Snapshot;
+  expect(pushed.revision).toBe(initial.revision + 1);
+  expect(pushed.text).toBe('чужая версия');
+
+  // Принятие внешней версии — не тупик: ввод снова работает поверх неё.
+  const next = await harness.command(view.bookId, chapterId, pushed.revision, {
+    type: 'text',
+    changes: [{ from: 12, to: 12, insert: '!' }],
+    selection: { anchor: 13, head: 13 },
+  });
+  expect(next.text).toBe('чужая версия!');
+  await harness.closeBook(view.bookId);
+});
+
+test('recheckExternal молчит без изменений и уведомляет о внешней правке', async () => {
+  const harness = await makeService({ 'Глава.md': 'кот\n' });
+  const view = (await harness.chooseBook())!;
+  const chapterId = view.entries[0]!.id;
+  const initial = await harness.openChapter(view.bookId, chapterId);
+  const edited = await harness.command(view.bookId, chapterId, initial.revision, {
+    type: 'text',
+    changes: [{ from: 3, to: 3, insert: '!' }],
+    selection: { anchor: 4, head: 4 },
+  });
+  expect(edited.canUndoInput).toBe(true);
+
+  const snapshots: Snapshot[] = [];
+  harness.subscribe((snapshot) => snapshots.push(snapshot));
+
+  // Неизменённая пара: короткое замыкание, уведомлений нет.
+  await harness.recheckExternal();
+  expect(snapshots).toHaveLength(0);
+
+  await writeFile(path.join(harness.bookRoot, 'Глава.md'), 'чужая версия', 'utf8');
+  await harness.recheckExternal();
+  expect(snapshots).toHaveLength(1);
+  expect(snapshots[0]!.revision).toBe(edited.revision + 1);
+  expect(snapshots[0]!.text).toBe('чужая версия');
+  // Внешняя версия сбрасывает историю ввода сессии.
+  expect(snapshots[0]!.canUndoInput).toBe(false);
+  await harness.closeBook(view.bookId);
+});
+
+test('наблюдатель корня после debounce запускает проверку внешнего изменения', async () => {
+  const harness = await makeService({ 'Глава.md': 'кот\n' });
+  const view = (await harness.chooseBook())!;
+  const chapterId = view.entries[0]!.id;
+  await harness.openChapter(view.bookId, chapterId);
+  const snapshots: Snapshot[] = [];
+  harness.subscribe((snapshot) => snapshots.push(snapshot));
+
+  await writeFile(path.join(harness.bookRoot, 'Глава.md'), 'внешняя правка', 'utf8');
+  harness.fireWatcher();
+  // Debounce 200 мс: уведомление приходит только после окна тишины.
+  await vi.waitFor(() => {
+    expect(snapshots).toHaveLength(1);
+  }, { timeout: 2_000 });
+  expect(snapshots[0]!.text).toBe('внешняя правка');
+  await harness.closeBook(view.bookId);
+});
+
+test('resolveExternal принимает внешнюю версию и возвращает главу в работу', async () => {
+  const harness = await makeService({ 'Глава.md': 'кот\n' });
+  const view = (await harness.chooseBook())!;
+  const chapterId = view.entries[0]!.id;
+  const initial = await harness.openChapter(view.bookId, chapterId);
+  const edited = await harness.command(view.bookId, chapterId, initial.revision, {
+    type: 'text',
+    changes: [{ from: 3, to: 3, insert: '!' }],
+    selection: { anchor: 4, head: 4 },
+  });
+  expect(edited.canUndoInput).toBe(true);
+
+  // Внешняя правка появляется и проверяется принудительно (фокус/наблюдатель).
+  await writeFile(path.join(harness.bookRoot, 'Глава.md'), 'чужая версия', 'utf8');
+
+  // export-local с сохранённым черновиком: черновик выгружается в выбранное
+  // назначение, внешняя версия становится базой, чужой файл не перезаписан.
+  const draftReview = {
+    schema_version: 1 as const,
+    chapter_id: chapterId,
+    source_path: 'Глава.md',
+    chapter_note: 'черновик рецензии',
+    edits: [],
+    signals: [],
+  };
+  await writeFile(
+    path.join(harness.appData, `${chapterId}.draft.json`),
+    JSON.stringify({
+      version: 1,
+      chapter_id: chapterId,
+      source_base64: Buffer.from('кот\n').toString('base64'),
+      review: encodeReview(draftReview),
+    }),
+    'utf8',
+  );
+  const destination = path.join(harness.appData, 'выгрузка.review.json');
+  harness.setExportPicker(destination);
+  const resolved = await harness.resolveExternal(view.bookId, chapterId, 'export-local');
+  expect(resolved.saveState).toBe('saved');
+  expect(resolved.text).toBe('чужая версия');
+  expect(resolved.revision).toBe(edited.revision + 1);
+  // Истории сессии пусты: внешний вариант — новая база.
+  expect(resolved.canUndoInput).toBe(false);
+  expect(resolved.canRedoInput).toBe(false);
+  expect(await readFile(destination, 'utf8')).toBe(encodeReview(draftReview));
+  expect(await readFile(path.join(harness.bookRoot, 'Глава.md'), 'utf8')).toBe('чужая версия');
+
+  // Ввод снова работает поверх внешней версии; правки живут в sidecar.
+  const resumed = await harness.command(view.bookId, chapterId, resolved.revision, {
+    type: 'text',
+    changes: [{ from: 12, to: 12, insert: '!' }],
+    selection: { anchor: 13, head: 13 },
+  });
+  expect(resumed.text).toBe('чужая версия!');
+  expect(await readFile(path.join(harness.bookRoot, 'Глава.md'), 'utf8')).toBe('чужая версия');
+
+  // open-external после ещё одной внешней правки ведёт себя так же. Правка
+  // '!' осталась в sidecar и переносится на новую базу движком.
+  await writeFile(path.join(harness.bookRoot, 'Глава.md'), 'вторая чужая', 'utf8');
+  const reopened = await harness.resolveExternal(view.bookId, chapterId, 'open-external');
+  expect(reopened.text).toBe('вт!орая чужая');
+  expect(reopened.saveState).toBe('saved');
+  await harness.closeBook(view.bookId);
+});
+
+test('closeAll дожидается всех сессий и убирает книги из реестра', async () => {
+  const harness = await makeService({ 'Глава.md': 'кот\n', 'Вторая.md': 'два\n' });
+  const view = (await harness.chooseBook())!;
+  // Порядок глав отсортирован по имени файла — выбираем главу по пути.
+  const chapter = view.entries.find((entry) => entry.path === 'Глава.md')!;
+  const snapshot = await harness.openChapter(view.bookId, chapter.id);
+  await harness.command(view.bookId, chapter.id, snapshot.revision, {
+    type: 'text',
+    changes: [{ from: 0, to: 3, insert: 'кит' }],
+    selection: { anchor: 3, head: 3 },
+  });
+  await harness.closeAll();
+  expect(harness.getBookRoot(view.bookId)).toBeUndefined();
+  expect(await readFile(path.join(harness.bookRoot, 'Глава.review.json'), 'utf8')).toContain('кит');
 });

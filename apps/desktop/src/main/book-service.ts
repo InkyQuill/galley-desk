@@ -4,6 +4,8 @@
 // monotonic per-chapter revisions and the serialized file actions of
 // ChapterSession.
 import { randomUUID } from 'node:crypto';
+import { watch } from 'node:fs';
+import type { FSWatcher } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -13,7 +15,7 @@ import {
   readPair,
   recoverBook,
 } from '@galley-desk/book-storage';
-import type { BookHandle } from '@galley-desk/book-storage';
+import type { BookHandle, ChapterSessionState } from '@galley-desk/book-storage';
 import { classifyReview } from '@galley-desk/pocket-format';
 import type { Resolution } from '@galley-desk/pocket-format';
 import { addSignal, openChapter as openChapterModel, removeRecord, setChapterNote } from '@galley-desk/review-engine';
@@ -47,21 +49,35 @@ export type BookServiceDeps = {
   chooseDirectory: () => Promise<string | null>;
   /** Save dialog for exporting a pending review draft; null means cancel. */
   chooseExportDestination: (suggestedName: string) => Promise<string | null>;
+  /**
+   * Watcher factory for an open book root; defaults to fs.watch. The watcher
+   * is only a re-read signal (never proof of freshness) — it is debounced
+   * here, and checks also run on focus and before every write.
+   */
+  watchRoot?: (root: string, onEvent: () => void) => () => void;
 };
 
-/** Undo/redo availability, mirrored from the session histories. */
-type HistoryDepths = {
-  inputUndo: number;
-  inputRedo: number;
-  applyUndo: number;
-  applyRedo: number;
-};
+/** Debounce of root watcher events before a re-read check runs. */
+const WATCHER_DEBOUNCE_MS = 200;
+
+function defaultWatchRoot(root: string, onEvent: () => void): () => void {
+  let watcher: FSWatcher;
+  try {
+    watcher = watch(root, { persistent: false }, () => onEvent());
+  } catch {
+    return () => undefined;
+  }
+  // Исчезновение папки книги — не ошибка приложения: наблюдатель замолкает.
+  watcher.on('error', () => undefined);
+  return () => {
+    watcher.close();
+  };
+}
 
 type LiveChapter = {
   kind: 'live';
   session: ChapterSession;
   revision: number;
-  depths: HistoryDepths;
 };
 
 /** Sidecar decode failure: the model shows the exact source, commands rejected. */
@@ -69,14 +85,12 @@ type ReadonlyChapter = {
   kind: 'readonly';
   model: ChapterModel;
   revision: number;
-  depths: HistoryDepths;
 };
 
 /** Source file missing: an empty read-only snapshot, never a written file. */
 type MissingChapter = {
   kind: 'readonly-missing';
   revision: number;
-  depths: HistoryDepths;
 };
 
 type ChapterEntry = LiveChapter | ReadonlyChapter | MissingChapter;
@@ -95,15 +109,32 @@ export type BookService = {
   command(bookId: string, chapterId: string, expectedRevision: number, command: unknown): Promise<Snapshot>;
   closeBook(bookId: string): Promise<void>;
   resolveExternal(bookId: string, chapterId: string, choice: 'open-external' | 'export-local'): Promise<Snapshot>;
+  /**
+   * Internal: re-runs the external-change check for every live chapter of
+   * every open book (window focus, watcher signal) and notifies the renderer
+   * about the chapters whose pair actually changed.
+   */
+  recheckExternal(): Promise<void>;
+  /**
+   * Internal: closes every open book, waiting for each session to drain.
+   * Used by before-quit; a failed flush is surfaced, never masked.
+   */
+  closeAll(): Promise<void>;
   /** Internal: snapshot push for the ipc layer (onSnapshot wiring). */
   subscribe(listener: SnapshotListener): () => void;
   /** Internal: resource protocol lookup of the open root by opaque book id. */
   getBookRoot(bookId: string): string | undefined;
 };
 
-const emptyDepths = (): HistoryDepths => ({ inputUndo: 0, inputRedo: 0, applyUndo: 0, applyRedo: 0 });
-
 const strictUtf8 = new TextDecoder('utf-8', { fatal: true });
+
+/**
+ * Состояние сессии читается через функцию: смена состояния происходит внутри
+ * очереди (асинхронно), а control-flow narrowing TypeScript этого не видит.
+ */
+function stateOf(session: ChapterSession): ChapterSessionState {
+  return session.state;
+}
 
 function emptyReview(chapterId: string, sourcePath: string): import('@galley-desk/pocket-format').Review {
   return { schema_version: 1, chapter_id: chapterId, source_path: sourcePath, chapter_note: '', edits: [], signals: [] };
@@ -248,17 +279,79 @@ function buildRecordViews(model: ChapterModel): RecordView[] {
 
 export function createBookService(deps: BookServiceDeps): BookService {
   const { appData } = deps;
+  const watchRoot = deps.watchRoot ?? defaultWatchRoot;
   const books = new Map<string, BookEntry>();
   const listeners = new Set<SnapshotListener>();
+  const watchers = new Map<string, () => void>();
+  const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   const notify = (snapshot: Snapshot): void => {
     for (const listener of [...listeners]) listener(snapshot);
   };
 
+  // --- watcher ---------------------------------------------------------------
+
+  /**
+   * Наблюдатель за корнем книги — только сигнал перечитать: события
+   * объединяются debounce-окном, а фактическую проверку выполняет
+   * checkExternal сессии (короткое замыкание при неизменённых хэшах).
+   */
+  function watchBook(bookId: string, root: string): void {
+    stopWatching(bookId);
+    const unsubscribe = watchRoot(root, () => {
+      const timer = debounceTimers.get(bookId);
+      if (timer !== undefined) clearTimeout(timer);
+      debounceTimers.set(
+        bookId,
+        setTimeout(() => {
+          debounceTimers.delete(bookId);
+          void recheckBook(bookId);
+        }, WATCHER_DEBOUNCE_MS),
+      );
+    });
+    watchers.set(bookId, unsubscribe);
+  }
+
+  function stopWatching(bookId: string): void {
+    const timer = debounceTimers.get(bookId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      debounceTimers.delete(bookId);
+    }
+    const unsubscribe = watchers.get(bookId);
+    if (unsubscribe !== undefined) {
+      watchers.delete(bookId);
+      unsubscribe();
+    }
+  }
+
+  /** Перечитывает пары живых глав книги; уведомляет только об изменениях. */
+  async function recheckBook(bookId: string): Promise<void> {
+    const book = books.get(bookId);
+    if (book === undefined) return;
+    for (const [chapterId, entry] of book.chapters) {
+      if (entry.kind !== 'live') continue;
+      const before = { revision: entry.session.revision, state: entry.session.state };
+      try {
+        await entry.session.checkExternal();
+      } catch {
+        // Черновик мог не сохраниться — состояние увидит следующая проверка.
+        console.error('[desk] watcher: code=SAVE_FAILED');
+        continue;
+      }
+      if (entry.session.revision === before.revision && stateOf(entry.session) === before.state) continue;
+      // Ревизия сервиса растёт вместе с принятым изменением: устаревшие
+      // expectedRevision рендера не проходят оптимистическую проверку.
+      entry.revision += 1;
+      notify(snapshotOf(bookId, chapterId, entry));
+    }
+  }
+
   /** Drains every session of the book and drops it from the registry. */
   async function closeBookById(bookId: string): Promise<void> {
     const book = books.get(bookId);
     if (book === undefined) return;
+    stopWatching(bookId);
     books.delete(bookId);
     let failed = false;
     for (const entry of book.chapters.values()) {
@@ -308,6 +401,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
         await closeBookById(handle.id);
       }
       books.set(handle.id, { handle, chapters: new Map() });
+      watchBook(handle.id, handle.root);
       // openBook вернул realpath корня — канонический путь для списка последних.
       const stored = await loadRecentBooks(appData);
       await saveRecentBooks(
@@ -327,28 +421,31 @@ export function createBookService(deps: BookServiceDeps): BookService {
     } catch {
       // Исходный файл отсутствует (или небезопасен): пустой read-only снимок,
       // пустой исходник никогда не пишется поверх файла.
-      return { kind: 'readonly-missing', revision: 1, depths: emptyDepths() };
+      return { kind: 'readonly-missing', revision: 1 };
     }
     try {
       const session = await ChapterSession.open(handle, chapterId, appData);
-      return { kind: 'live', session, revision: 1, depths: emptyDepths() };
+      return { kind: 'live', session, revision: 1 };
     } catch {
       // Sidecar не декодируется (битый JSON, неизвестная версия): read-only
       // модель поверх точных исходных байтов; файл не перезаписывается.
       const model = openChapterModel(pair.pair.source, emptyReview(chapterId, chapterPath));
-      return { kind: 'readonly', model, revision: 1, depths: emptyDepths() };
+      return { kind: 'readonly', model, revision: 1 };
     }
   }
 
   function snapshotOf(bookId: string, chapterId: string, entry: ChapterEntry): Snapshot {
+    const live = entry.kind === 'live' ? entry.session : null;
     const head = {
       bookId,
       chapterId,
       revision: entry.revision,
-      canUndoInput: entry.depths.inputUndo > 0,
-      canRedoInput: entry.depths.inputRedo > 0,
-      canUndoApply: entry.depths.applyUndo > 0,
-      canRedoApply: entry.depths.applyRedo > 0,
+      // Доступность undo/redo — истина движка (стеки сессии); сгруппированные
+      // пачки набора считаются одним шагом, поэтому зеркала-счётчики удалены.
+      canUndoInput: live?.canUndoInput ?? false,
+      canRedoInput: live?.canRedoInput ?? false,
+      canUndoApply: live?.canUndoApply ?? false,
+      canRedoApply: live?.canRedoApply ?? false,
     };
     if (entry.kind === 'readonly-missing') {
       return {
@@ -371,76 +468,44 @@ export function createBookService(deps: BookServiceDeps): BookService {
     };
   }
 
-  /** One accepted command = one undo step (D3 threads typing-burst groups). */
+  /**
+   * Applies one validated command through the session. Undo/redo availability
+   * is engine truth (the session's own history stacks) — grouped typing bursts
+   * count as a single step, and an empty stack is a harmless no-op. A text
+   * command carries the renderer's typing-burst group key.
+   */
   async function applyCommand(entry: LiveChapter, command: Command): Promise<void> {
     const session = entry.session;
-    const depths = entry.depths;
-    const inputStep = (): void => {
-      depths.inputUndo += 1;
-      depths.inputRedo = 0;
-      depths.applyUndo = 0;
-      depths.applyRedo = 0;
-    };
     switch (command.type) {
       case 'text':
-        await session.edit(command.changes, command.selection);
-        inputStep();
+        await session.edit(command.changes, command.selection, command.group);
         return;
       case 'signal': {
         const withoutReplaced = command.id === undefined ? session.model : removeRecord(session.model, command.id);
         const next = addSignal(withoutReplaced, command.from, command.to, command.signalType, command.comment, randomUUID());
         await session.replaceReview(next.review);
-        inputStep();
         return;
       }
       case 'note':
         await session.replaceReview(setChapterNote(session.model, command.text).review);
-        inputStep();
         return;
       case 'remove':
         await session.replaceReview(removeRecord(session.model, command.id).review);
-        inputStep();
         return;
       case 'apply':
         await session.apply(command.id);
-        depths.applyUndo += 1;
-        depths.applyRedo = 0;
-        depths.inputUndo = 0;
-        depths.inputRedo = 0;
         return;
       case 'undo-input':
-        if (depths.inputUndo > 0) {
-          await session.undoInput();
-          depths.inputUndo -= 1;
-          depths.inputRedo += 1;
-        }
+        if (session.canUndoInput) await session.undoInput();
         return;
       case 'redo-input':
-        if (depths.inputRedo > 0) {
-          await session.redoInput();
-          depths.inputRedo -= 1;
-          depths.inputUndo += 1;
-        }
+        if (session.canRedoInput) await session.redoInput();
         return;
       case 'undo-apply':
-        if (depths.applyUndo > 0) {
-          await session.undoApply();
-          depths.applyUndo -= 1;
-          depths.applyRedo += 1;
-          // undoApply в движке очищает историю обычного ввода (session.ts).
-          depths.inputUndo = 0;
-          depths.inputRedo = 0;
-        }
+        if (session.canUndoApply) await session.undoApply();
         return;
       case 'redo-apply':
-        if (depths.applyRedo > 0) {
-          await session.redoApply();
-          depths.applyRedo -= 1;
-          depths.applyUndo += 1;
-          // redoApply так же очищает историю обычного ввода.
-          depths.inputUndo = 0;
-          depths.inputRedo = 0;
-        }
+        if (session.canRedoApply) await session.redoApply();
         return;
     }
   }
@@ -542,9 +607,21 @@ export function createBookService(deps: BookServiceDeps): BookService {
       if (entry.session.state === 'error') {
         throw new IpcError('SAVE_FAILED', 'Предыдущее сохранение не удалось; перечитайте главу');
       }
-      // Ошибки хранения (конфликт записи, пустой исходник, неактивная запись)
-      // маппируются на стабильные коды здесь, а не на границе IPC.
       try {
+        // Проверка внешнего изменения перед записью: неизменённая пара —
+        // дешёвый no-op (короткое замыкание сессии); изменившаяся — принятие
+        // внешней версии и отказ команды: никакого silent rebase локального
+        // ввода поверх чужого текста. Жёсткую гарантию всё равно даёт
+        // writePair (WriteConflictError с сохранением черновика).
+        const revisionBefore = entry.session.revision;
+        await entry.session.checkExternal();
+        if (stateOf(entry.session) === 'external' || entry.session.revision !== revisionBefore) {
+          entry.revision += 1;
+          notify(snapshotOf(bookId, chapterId, entry));
+          throw new IpcError('STALE_REVISION', 'Глава изменена снаружи; разрешите изменение перед вводом');
+        }
+        // Ошибки хранения (конфликт записи, пустой исходник, неактивная запись)
+        // маппируются на стабильные коды здесь, а не на границе IPC.
         const validated = validateCommand(command);
         await applyCommand(entry, validated);
       } catch (error) {
@@ -573,29 +650,38 @@ export function createBookService(deps: BookServiceDeps): BookService {
       // checkExternal сохраняет локальный черновик в appData при необходимости.
       try {
         await entry.session.checkExternal();
+        if (choice === 'export-local') {
+          const chapter = book.handle.manifest.chapters.find((candidate) => candidate.id === chapterId);
+          const suggested = `${chapter === undefined ? chapterId : path.basename(chapter.path, '.md')}.review.json`;
+          const destination = await deps.chooseExportDestination(suggested);
+          if (destination === null) {
+            // Выбор отменён: черновик остаётся в appData, глава остаётся
+            // приостановленной — никакого авто-затирания и авто-принятия.
+            return snapshotOf(bookId, chapterId, entry);
+          }
+          await exportDraft(appData, chapterId, destination);
+        }
+        // Внешняя версия становится рабочей базой; истории движка пусты.
+        await entry.session.adoptExternal();
       } catch (error) {
         throw toIpcError(error);
       }
-      if (choice === 'export-local') {
-        const chapter = book.handle.manifest.chapters.find((candidate) => candidate.id === chapterId);
-        const suggested = `${chapter === undefined ? chapterId : path.basename(chapter.path, '.md')}.review.json`;
-        const destination = await deps.chooseExportDestination(suggested);
-        if (destination !== null) {
-          try {
-            await exportDraft(appData, chapterId, destination);
-          } catch (error) {
-            throw toIpcError(error);
-          }
-        }
-      }
-      entry.depths.inputUndo = 0;
-      entry.depths.inputRedo = 0;
-      entry.depths.applyUndo = 0;
-      entry.depths.applyRedo = 0;
       entry.revision += 1;
       const snapshot = snapshotOf(bookId, chapterId, entry);
       notify(snapshot);
       return snapshot;
+    },
+
+    async recheckExternal(): Promise<void> {
+      for (const bookId of [...books.keys()]) {
+        await recheckBook(bookId);
+      }
+    },
+
+    async closeAll(): Promise<void> {
+      for (const bookId of [...books.keys()]) {
+        await closeBookById(bookId);
+      }
     },
 
     subscribe(listener: SnapshotListener): () => void {

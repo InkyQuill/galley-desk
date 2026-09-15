@@ -42,6 +42,16 @@ export class ApplyHistory {
     if (entry !== undefined) this.undoStack.push(entry);
   }
 
+  /** True, когда есть применённая правка для undo. */
+  get canUndo(): boolean {
+    return this.undoStack.length > 0;
+  }
+
+  /** True, когда есть отменённая правка для redo. */
+  get canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
+
   clear(): void {
     this.undoStack = [];
     this.redoStack = [];
