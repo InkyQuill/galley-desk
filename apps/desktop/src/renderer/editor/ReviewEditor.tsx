@@ -204,6 +204,13 @@ export function ReviewEditor({ snapshot, onCommand, onSelectionChange, onScrollC
     }
     if (snapshot.revision > state.expectedRevision) {
       state.expectedRevision = snapshot.revision;
+      if (queue.blocked) {
+        // После сбоя сохранения внешняя версия не принимается молча
+        // («авто-затирания нет»): локальный текст, ошибка и блокировка
+        // очереди живут до явного выбора пользователя — «Перечитать
+        // главу» (пересоздание по epoch) или resolveExternal.
+        return;
+      }
       queue.unblock();
       setCommandError(null);
       if (queue.inFlight === 0 && snapshot.saveState !== 'external') {

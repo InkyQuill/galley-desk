@@ -141,15 +141,23 @@ test('сбой сохранения сохраняет локальный тек
     // Файл не создан «с лучшей надеждой»: приложение ничего не записало.
     await expect(readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).rejects.toThrow();
 
-    // Чужая версия появляется на диске: она не будет затёрта приложением.
+    // Чужая версия появляется на диске: наблюдатель выполняет проверку, но
+    // авто-затирания нет — локальный текст, ошибка и «Перечитать главу»
+    // остаются, пока пользователь явно не выберет внешнюю базу.
     await writeFile(path.join(bookRoot, 'Глава.md'), 'чужая версия', 'utf8');
-
-    // Наблюдатель/фокус: внешняя версия принимается, редактор ресинхронизируется.
-    await expect(content).toContainText('чужая версия', { timeout: 20_000 });
-    await expect(session.page.getByText('Сохранено')).toBeVisible();
+    await expect(content).toContainText('кот?', { timeout: 20_000 });
+    await expect(session.page.getByRole('alert')).toContainText('локальный текст сохранён');
+    await expect(session.page.getByText('Ошибка сохранения')).toBeVisible();
+    await expect(session.page.getByRole('button', { name: 'Перечитать главу' })).toBeVisible();
     expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe('чужая версия');
 
-    // После ресинхронизации ввод снова работает поверх внешней версии.
+    // Явный выбор «Перечитать главу» принимает внешнюю базу в редакторе.
+    await session.page.getByRole('button', { name: 'Перечитать главу' }).click();
+    await expect(content).toContainText('чужая версия', { timeout: 20_000 });
+    await expect(session.page.getByText('Сохранено')).toBeVisible();
+    await expect(session.page.getByRole('alert')).toHaveCount(0);
+
+    // После явного принятия ввод снова работает поверх внешней версии.
     await content.click();
     await session.page.keyboard.press('Control+End');
     await session.page.keyboard.type('!');

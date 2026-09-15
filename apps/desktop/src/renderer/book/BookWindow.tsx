@@ -77,11 +77,10 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
   const revisionsRef = useRef(new Map<string, number>());
 
   const applySnapshot = useCallback((next: Snapshot) => {
-    const previous = revisionsRef.current.get(next.chapterId);
     revisionsRef.current.set(next.chapterId, next.revision);
-    // Прогресс по ревизии снимает локальный флаг ошибки сохранения:
-    // дальнейшее состояние показывает main.
-    if (next.revision > (previous ?? 0)) setSaveError(null);
+    // Локальный флаг ошибки сохранения снимается только явным действием
+    // (успешная команда, «Перечитать главу», resolveExternal) — приход
+    // снимка само по себе не прячет сбой и не принимает внешнюю версию.
     setSnapshot(next);
   }, []);
 
@@ -193,6 +192,7 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
       try {
         const next = await window.desk.command(book.bookId, chapterId, expected, command);
         applySnapshot(next);
+        setSaveError(null);
         return next;
       } catch (cause) {
         setSaveError(errorText(cause));
@@ -208,6 +208,10 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
       setError(null);
       try {
         applySnapshot(await window.desk.resolveExternal(book.bookId, chapterId, choice));
+        // Явное разрешение внешнего изменения — единственный (кроме
+        // «Перечитать главу») путь принять внешнюю базу в редакторе.
+        setSaveError(null);
+        setEditorEpoch((epoch) => epoch + 1);
       } catch (cause) {
         setSaveError(errorText(cause));
       }
@@ -222,6 +226,7 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
       .openChapter(book.bookId, chapterId)
       .then((loaded) => {
         applySnapshot(loaded);
+        setSaveError(null);
         setEditorEpoch((epoch) => epoch + 1);
       })
       .catch((cause: unknown) => setError(errorText(cause)));
