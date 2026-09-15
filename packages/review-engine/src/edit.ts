@@ -22,14 +22,15 @@ export function changeText(
   if (prepared.length === 0) return rebuild(model.source, model.review, selection);
 
   const spans = pieceSpans(model.pieces);
-  const affected = affectedSpans(prepared, spans);
-
   let coverFrom = Number.POSITIVE_INFINITY;
   let coverTo = Number.NEGATIVE_INFINITY;
   for (const change of prepared) {
     coverFrom = Math.min(coverFrom, change.from);
     coverTo = Math.max(coverTo, change.to);
   }
+  // Every replacement piece inside the covering range is affected — even one
+  // that no single change touches but the covering range spans across.
+  const affected = absorbCoveredPieces(prepared, spans, coverFrom, coverTo);
   for (const index of affected) {
     const span = spans[index] as PieceSpan;
     coverFrom = Math.min(coverFrom, span.start);
@@ -141,24 +142,27 @@ function assertCodePointBoundary(text: string, pos: number): void {
   }
 }
 
-function affectedSpans(prepared: TextChange[], spans: PieceSpan[]): Set<number> {
+function absorbCoveredPieces(
+  prepared: TextChange[],
+  spans: PieceSpan[],
+  hullFrom: number,
+  hullTo: number,
+): Set<number> {
   const affected = new Set<number>();
-  spans.forEach((span, index) => {
-    if (span.piece.editId === undefined) return;
-    for (const change of prepared) {
-      if (change.from < span.end && span.start < change.to) {
-        affected.add(index);
-        return;
-      }
-    }
-  });
-  // A pure insertion left in an empty derived text absorbs the empty
-  // replacement pieces sitting exactly at the insertion point.
-  for (const change of prepared) {
-    if (change.from !== change.to) continue;
+  let coverFrom = hullFrom;
+  let coverTo = hullTo;
+  let grew = true;
+  while (grew) {
+    grew = false;
     spans.forEach((span, index) => {
-      if (span.piece.editId !== undefined && span.start === span.end && span.start === change.from) {
+      if (span.piece.editId === undefined || affected.has(index)) return;
+      const overlapsHull = span.start < coverTo && coverFrom < span.end;
+      const emptyAtPoint = span.start === span.end && coverFrom <= span.start && span.start <= coverTo;
+      if (overlapsHull || emptyAtPoint) {
         affected.add(index);
+        coverFrom = Math.min(coverFrom, span.start);
+        coverTo = Math.max(coverTo, span.end);
+        grew = true;
       }
     });
   }

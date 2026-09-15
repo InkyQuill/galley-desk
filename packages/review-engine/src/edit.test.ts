@@ -258,3 +258,26 @@ test('unchanged CRLF bytes survive editing byte-exactly', () => {
     { text: 'b\ncd', source: { from: 1, to: 6 } },
   ]);
 });
+
+test('changes bracketing an edit absorb it instead of overlapping its range', () => {
+  const source = new TextEncoder().encode('abcdef');
+  let model = openChapter(source, review({ edits: [
+    { id: 'e1', before: 'b', after: 'B', anchor: makeAnchor(source, { from: 1, to: 2 }) },
+    { id: 'e2', before: 'e', after: 'E', anchor: makeAnchor(source, { from: 4, to: 5 }) },
+  ] }));
+  expect(model.text).toBe('aBcdEf');
+  model = changeText(model, [{ from: 0, to: 1, insert: 'X' }, { from: 5, to: 6, insert: 'Y' }],
+    { anchor: 2, head: 2 }, () => { throw new Error('must reuse leftmost id'); });
+  expect(model.text).toBe('XBcdEY');
+  expect(model.review.edits).toEqual([
+    {
+      id: 'e1',
+      before: 'abcdef',
+      after: 'XBcdEY',
+      anchor: makeAnchor(source, { from: 0, to: 6 }),
+    },
+  ]);
+  expect(model.pieces).toEqual([
+    { text: 'XBcdEY', source: { from: 0, to: 6 }, editId: 'e1' },
+  ]);
+});
