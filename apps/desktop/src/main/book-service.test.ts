@@ -420,15 +420,23 @@ test('undo/redo флаги следуют истории применения', 
   expect(snapshot.canUndoApply).toBe(true);
   expect(snapshot.canRedoApply).toBe(false);
   expect(snapshot.text).toBe('кит спит.');
+  // Применение очищает историю обычного ввода — оба счётчика на нуле.
+  expect(snapshot.canUndoInput).toBe(false);
+  expect(snapshot.canRedoInput).toBe(false);
   snapshot = await harness.command(view.bookId, chapterId, snapshot.revision, { type: 'undo-apply' });
   expect(snapshot.canUndoApply).toBe(false);
   expect(snapshot.canRedoApply).toBe(true);
+  // Undo/redo применения тоже очищают историю обычного ввода (session.ts).
+  expect(snapshot.canUndoInput).toBe(false);
+  expect(snapshot.canRedoInput).toBe(false);
   // Undo применения восстанавливает исходник и sidecar с правкой;
   // производный текст снова показывает исправление.
   expect(snapshot.sourceText).toBe('кот спит.');
   expect(snapshot.text).toBe('кит спит.');
   snapshot = await harness.command(view.bookId, chapterId, snapshot.revision, { type: 'redo-apply' });
   expect(snapshot.canUndoApply).toBe(true);
+  expect(snapshot.canUndoInput).toBe(false);
+  expect(snapshot.canRedoInput).toBe(false);
   expect(snapshot.sourceText).toBe('кит спит.');
   expect(snapshot.text).toBe('кит спит.');
   await harness.closeBook(view.bookId);

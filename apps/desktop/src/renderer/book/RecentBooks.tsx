@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { BookView, Recent } from '../../shared/api';
 
 type Props = {
-  onOpen: (book: BookView) => void;
+  onOpen: (book: BookView, recent?: Recent) => void;
   /** Меняется после закрытия книги — список перечитывается. */
   refreshKey: number;
 };
@@ -49,7 +49,10 @@ export function RecentBooks({ onOpen, refreshKey }: Props) {
     setBusy(true);
     setError(null);
     try {
-      onOpen(await window.desk.openRecent(path));
+      // Запись недавних едет вместе с книгой: она несёт последнюю главу
+      // и прокрутку для восстановления после перезапуска.
+      const recent = recents.find((entry) => entry.path === path);
+      onOpen(await window.desk.openRecent(path), recent);
     } catch (cause) {
       setError(errorText(cause));
       await refresh();

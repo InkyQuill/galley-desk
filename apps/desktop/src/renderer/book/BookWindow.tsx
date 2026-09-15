@@ -3,15 +3,17 @@ import type { BookView, Snapshot } from '../../shared/api';
 
 type Props = {
   book: BookView;
+  /** Сохранённая позиция из записи недавних (восстановление после перезапуска). */
+  restore?: ReadingRestore | null;
   onClose: () => void;
 };
 
-/** Позиция чтения одной книги на время жизни окна. */
-type ReadingPosition = { chapterId: string; scrollTop: number };
+/** Позиция чтения для восстановления при открытии книги. */
+export type ReadingRestore = { chapterId: string; scrollTop: number };
 
 // Восстановление главы и прокрутки при повторном открытии книги в этом окне;
 // между запусками позицию сохраняет основной процесс (desk.savePosition).
-const positionCache = new Map<string, ReadingPosition>();
+const positionCache = new Map<string, ReadingRestore>();
 
 const SAVE_DEBOUNCE_MS = 200;
 // Изображение в текущем виде — только локальный относительный путь: схемы,
@@ -79,14 +81,20 @@ function recordLine(snapshot: Snapshot, index: number): string {
  * Рабочее окно книги: оглавление, текст главы и записи рецензии.
  * Редактор появится в следующей задаче — пока снимок показывается как текст.
  */
-export function BookWindow({ book, onClose }: Props) {
+export function BookWindow({ book, restore = null, onClose }: Props) {
   const cached = positionCache.get(book.bookId);
-  const [chapterId, setChapterId] = useState<string | null>(cached?.chapterId ?? firstOpenEntryId(book));
+  // Сохранённая позиция из записи недавних сильнее внутрисессионного кэша;
+  // глава могла исчезнуть из манифеста — тогда восстановление игнорируется.
+  const validRestore =
+    restore !== null && book.entries.some((entry) => entry.id === restore.chapterId) ? restore : null;
+  const [chapterId, setChapterId] = useState<string | null>(
+    validRestore?.chapterId ?? cached?.chapterId ?? firstOpenEntryId(book),
+  );
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const textRef = useRef<HTMLPreElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingScroll = useRef<number | null>(cached?.scrollTop ?? null);
+  const pendingScroll = useRef<number | null>(validRestore?.scrollTop ?? cached?.scrollTop ?? null);
 
   useEffect(() => {
     if (chapterId === null) {

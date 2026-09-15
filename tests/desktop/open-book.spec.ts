@@ -194,13 +194,14 @@ test('открывает главу: правка из sidecar, локальна
   }
 });
 
-test('восстанавливает главу и прокрутку, позиция сохраняется в профиле', async () => {
+test('восстанавливает главу и прокрутку в живом окне и после перезапуска', async () => {
   const bookRoot = await makeTempDir('galley-e2e-restore-');
   const lines = Array.from({ length: 200 }, (_, index) => `строка ${index + 1}`).join('\n');
   const session = await launch(bookRoot, {
     'Глава 1.md': `${lines}\n`,
     'Глава 2.md': `${lines}\n`,
   });
+  const running: ElectronApplication[] = [session.app];
   try {
     await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
     await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
@@ -234,8 +235,22 @@ test('восстанавливает главу и прокрутку, пози�
     const bookPositions = settingsFile.positions[recentsFile[0]!.bookId]!;
     const chapterPosition = Object.values(bookPositions).find((position) => position.scrollTop === 120);
     expect(chapterPosition).toBeDefined();
-  } finally {
+
+    // Полный перезапуск приложения в том же профиле: глава и прокрутка
+    // восстанавливаются из записи недавних, без внутрисессионного кэша.
+    running.splice(running.indexOf(session.app), 1);
     await closeApp(session);
+    const restarted = await launch(bookRoot, {}, session.userData);
+    running.push(restarted.app);
+    await expect(restarted.page.getByRole('button', { name: 'Открыть', exact: true })).toBeVisible();
+    await restarted.page.getByRole('button', { name: 'Открыть', exact: true }).click();
+    await expect(restarted.page.getByRole('button', { name: 'Глава 2' })).toHaveClass(/book__chapter--active/);
+    await expect(restarted.page.locator('.book__text')).toContainText('строка 200');
+    await expect
+      .poll(() => restarted.page.locator('.book__text').evaluate((element) => (element as HTMLElement).scrollTop))
+      .toBe(120);
+  } finally {
+    await Promise.all(running.map((app) => app.close().catch(() => undefined)));
   }
 });
 

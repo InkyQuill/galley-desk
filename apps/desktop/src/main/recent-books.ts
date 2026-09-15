@@ -88,13 +88,20 @@ export function updateRecentPosition(
   );
 }
 
-/** Renderer-visible view: existence of each folder checked on demand. */
+/**
+ * Renderer-visible view: existence of each folder checked on demand; the
+ * stored reading position travels along so reopening can restore the last
+ * chapter and scroll anchor after a restart (spec §2).
+ */
 export async function toRecentViews(books: RecentBook[]): Promise<Recent[]> {
   return Promise.all(
     books.map(async (book) => ({
       path: book.path,
       title: book.title,
       missing: !(await exists(book.path)),
+      lastChapterId: book.lastChapterId,
+      lastAnchor: book.anchor,
+      lastScrollTop: book.scrollTop,
     })),
   );
 }

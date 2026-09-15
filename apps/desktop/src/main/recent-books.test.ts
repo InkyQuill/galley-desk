@@ -120,17 +120,17 @@ test('updateRecentPosition stores the last chapter and scroll anchor by book_id'
   expect(updateRecentPosition(books, 'unknown', 'c', 0, 0)).toEqual(books);
 });
 
-test('toRecentViews reports missing folders and renderer-visible fields only', async () => {
+test('toRecentViews reports missing folders and transports the reading position', async () => {
   const base = await tempAppData();
   const present = path.join(base, 'present');
   await mkdir(present);
   const books = [
-    entry({ path: present, bookId: 'id-1', title: 'Есть' }),
+    entry({ path: present, bookId: 'id-1', title: 'Есть', lastChapterId: 'chapter-9', anchor: 42, scrollTop: 320 }),
     entry({ path: path.join(base, 'исчезла'), bookId: 'id-2', title: 'Нет' }),
   ];
   const views = await toRecentViews(books);
   expect(views).toEqual([
-    { path: present, title: 'Есть', missing: false },
-    { path: path.join(base, 'исчезла'), title: 'Нет', missing: true },
+    { path: present, title: 'Есть', missing: false, lastChapterId: 'chapter-9', lastAnchor: 42, lastScrollTop: 320 },
+    { path: path.join(base, 'исчезла'), title: 'Нет', missing: true, lastChapterId: null, lastAnchor: null, lastScrollTop: null },
   ]);
 });

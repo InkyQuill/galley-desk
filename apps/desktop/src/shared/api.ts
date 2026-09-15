@@ -7,7 +7,8 @@ export type Snapshot = {bookId:string; chapterId:string; revision:number; text:s
   records:RecordView[]; chapterNote:string; saveState:'saved'|'saving'|'error'|'external';
   canUndoInput:boolean; canRedoInput:boolean; canUndoApply:boolean; canRedoApply:boolean};
 export type BookView = {bookId:string; title:string; entries:Entry[]};
-export type Recent = {path:string; title:string; missing:boolean};
+export type Recent = {path:string; title:string; missing:boolean;
+  lastChapterId?:string|null; lastAnchor?:number|null; lastScrollTop?:number|null};
 export type Command =
  | {type:'text'; changes:{from:number;to:number;insert:string}[]; selection:{anchor:number;head:number}}
  | {type:'signal'; id?:string; from:number;to:number; signalType:'note'|'change_required'|'warning'|'review';comment:string}

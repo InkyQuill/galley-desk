@@ -427,6 +427,9 @@ export function createBookService(deps: BookServiceDeps): BookService {
           await session.undoApply();
           depths.applyUndo -= 1;
           depths.applyRedo += 1;
+          // undoApply в движке очищает историю обычного ввода (session.ts).
+          depths.inputUndo = 0;
+          depths.inputRedo = 0;
         }
         return;
       case 'redo-apply':
@@ -434,6 +437,9 @@ export function createBookService(deps: BookServiceDeps): BookService {
           await session.redoApply();
           depths.applyRedo -= 1;
           depths.applyUndo += 1;
+          // redoApply так же очищает историю обычного ввода.
+          depths.inputUndo = 0;
+          depths.inputRedo = 0;
         }
         return;
     }
