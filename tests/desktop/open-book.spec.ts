@@ -1,0 +1,294 @@
+import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { encodeReview, makeAnchor } from '@galley-desk/pocket-format';
+
+const ONE_PX_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+const tempDirs: string[] = [];
+
+/** Позиция подстроки в байтах (Uint8Array.indexOf ищет поэлементно). */
+function byteIndexOf(haystack: Uint8Array, needle: string): number {
+  const pattern = new TextEncoder().encode(needle);
+  outer: for (let start = 0; start + pattern.length <= haystack.length; start++) {
+    for (let index = 0; index < pattern.length; index++) {
+      if (haystack[start + index] !== pattern[index]) continue outer;
+    }
+    return start;
+  }
+  throw new Error(`Подстрока не найдена: ${needle}`);
+}
+
+async function makeTempDir(prefix: string): Promise<string> {
+  const dir = await mkdtemp(path.join(tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+}
+
+type Session = { app: ElectronApplication; page: Page; userData: string; bookRoot: string };
+
+/** Отдельные temp book и temp userData на каждый тест. */
+async function launch(
+  bookRoot: string,
+  files: Record<string, Buffer | string> = {},
+  explicitUserData?: string,
+): Promise<Session> {
+  const userData = explicitUserData ?? (await makeTempDir('galley-userdata-'));
+  for (const [name, content] of Object.entries(files)) {
+    const target = path.join(bookRoot, name);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, content);
+  }
+  const app = await electron.launch({
+    args: ['apps/desktop'],
+    env: { ...process.env, GALLEY_DESK_USER_DATA: userData },
+  });
+  const page = await app.firstWindow();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  return { app, page, userData, bookRoot };
+}
+
+async function stubDialog(app: ElectronApplication, result: { canceled: boolean; filePaths?: string[] }): Promise<void> {
+  await app.evaluate(({ dialog }, payload) => {
+    dialog.showOpenDialog = async () => payload as { canceled: boolean; filePaths: string[] };
+  }, result);
+}
+
+async function closeApp(session: Session): Promise<void> {
+  await session.app.close();
+}
+
+test.afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+test('открывает папку без манифеста, создаёт совместимый манифест без рекурсивного обхода', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-book-');
+  const session = await launch(bookRoot, {
+    'Глава 1.md': '# Одна\n\nтекст\n',
+    'Глава 2.md': '# Две\n\nдругой текст\n',
+    'вложенная/глубокая.md': '# Нет\n',
+  });
+  try {
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+
+    // Главы верхнего уровня открыты, вложенные не найдены (no recursive discovery).
+    await expect(session.page.getByRole('button', { name: 'Одна' })).toBeVisible();
+    await expect(session.page.getByRole('button', { name: 'Две' })).toBeVisible();
+    await expect(session.page.getByRole('button', { name: 'глубокая' })).toHaveCount(0);
+
+    // Совместимый манифест создан на диске.
+    const manifest = JSON.parse(await readFile(path.join(bookRoot, '.pocket-editor.json'), 'utf8')) as {
+      schema_version: number;
+      book_id: string;
+      chapters: Array<{ path: string }>;
+    };
+    expect(manifest.schema_version).toBe(1);
+    expect(typeof manifest.book_id).toBe('string');
+    expect(manifest.chapters.map((chapter) => chapter.path).sort()).toEqual(['Глава 1.md', 'Глава 2.md']);
+  } finally {
+    await closeApp(session);
+  }
+});
+
+test('отмена выбора папки оставляет экран недавних', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-cancel-');
+  await writeFile(path.join(bookRoot, 'Глава.md'), 'текст\n');
+  const session = await launch(bookRoot);
+  try {
+    await stubDialog(session.app, { canceled: true, filePaths: [] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.getByRole('heading', { name: 'Galley Desk' })).toBeVisible();
+    await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+    // Ни манифеста, ни записей недавних не появилось.
+    expect(existsSync(path.join(bookRoot, '.pocket-editor.json'))).toBe(false);
+    await expect(session.page.locator('.recent-list')).toHaveCount(0);
+  } finally {
+    await closeApp(session);
+  }
+});
+
+test('открывает главу: правка из sidecar, локальная картинка видна, executable URL отвергается', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-image-');
+  const chapterText = '![рисунок](img.png)\n\nкот спит.\n\n![чужая](file:///etc/passwd)\n';
+  const userData = await makeTempDir('galley-userdata-');
+  const session = await launch(
+    bookRoot,
+    {
+      'Глава.md': chapterText,
+      'img.png': ONE_PX_PNG,
+    },
+    userData,
+  );
+  try {
+    // Первое открытие создаёт манифест с устойчивыми id глав.
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.getByRole('button', { name: 'Глава' })).toBeVisible();
+    await closeApp(session);
+
+    // Sidecar с настоящим makeAnchor: правка кот → кит.
+    const manifest = JSON.parse(await readFile(path.join(bookRoot, '.pocket-editor.json'), 'utf8')) as {
+      book_id: string;
+      chapters: Array<{ id: string; path: string }>;
+    };
+    const chapter = manifest.chapters.find((entry) => entry.path === 'Глава.md')!;
+    const bytes = new TextEncoder().encode(chapterText);
+    const from = byteIndexOf(bytes, 'кот спит');
+    const review = {
+      schema_version: 1 as const,
+      chapter_id: chapter.id,
+      source_path: 'Глава.md',
+      chapter_note: '',
+      edits: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          before: 'кот спит',
+          after: 'кит спит',
+          anchor: makeAnchor(bytes, { from, to: from + 15 }),
+        },
+      ],
+      signals: [],
+    };
+    await writeFile(path.join(bookRoot, 'Глава.review.json'), encodeReview(review), 'utf8');
+
+    // Повторный запуск с тем же профилем: книга открывается из недавних.
+    const reopened = await launch(bookRoot, {}, userData);
+    try {
+      await reopened.page.getByRole('button', { name: 'Открыть', exact: true }).click();
+      await reopened.page.getByRole('button', { name: 'Глава' }).click();
+      await expect(reopened.page.locator('.book__text')).toContainText('кит спит.');
+      // Исходный файл не изменён: правка живёт в sidecar.
+      expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe(chapterText);
+      await expect(reopened.page.getByText('Правка: кот спит → кит спит', { exact: false })).toBeVisible();
+
+      // Локальная картинка отображается через защищённую схему.
+      const image = reopened.page.locator('img.book__image[title="img.png"]');
+      await expect(image).toHaveCount(1);
+      await expect(image).toHaveAttribute('src', new RegExp(`^bookres://${manifest.book_id}/img\\.png$`));
+      expect(await image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBeGreaterThan(0);
+
+      // Исполнимые и внешние URL не превращаются в bookres-ссылки.
+      await expect(reopened.page.locator('img.book__image[title="file:///etc/passwd"]')).toHaveCount(0);
+      const traversal = await reopened.page.evaluate(async (bookId) => {
+        const response = await fetch(`bookres://${bookId}/..%2F..%2Fetc%2Fpasswd`);
+        return response.status;
+      }, manifest.book_id);
+      expect([403, 404]).toContain(traversal);
+      const external = await reopened.page.evaluate(async (bookId) => {
+        const response = await fetch(`bookres://${bookId}/..%2Fimg%2Epng`);
+        return response.status;
+      }, manifest.book_id);
+      expect([403, 404]).toContain(external);
+    } finally {
+      await closeApp(reopened);
+    }
+  } finally {
+    if (existsSync(bookRoot)) await rm(bookRoot, { recursive: true, force: true }).catch(() => undefined);
+  }
+});
+
+test('восстанавливает главу и прокрутку, позиция сохраняется в профиле', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-restore-');
+  const lines = Array.from({ length: 200 }, (_, index) => `строка ${index + 1}`).join('\n');
+  const session = await launch(bookRoot, {
+    'Глава 1.md': `${lines}\n`,
+    'Глава 2.md': `${lines}\n`,
+  });
+  try {
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.getByRole('button', { name: 'Глава 1' })).toBeVisible();
+    await session.page.getByRole('button', { name: 'Глава 2' }).click();
+    await expect(session.page.locator('.book__text')).toContainText('строка 200');
+    await session.page.locator('.book__text').evaluate((element) => {
+      (element as HTMLElement).scrollTop = 120;
+    });
+    // Дожидаемся сохранения позиции (debounce 200 мс) и закрываем книгу.
+    await session.page.waitForTimeout(700);
+    await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+
+    const recentsFile = JSON.parse(
+      await readFile(path.join(session.userData, 'recent-books.json'), 'utf8'),
+    ) as Array<{ lastChapterId: string | null; scrollTop: number | null; bookId: string }>;
+    expect(recentsFile).toHaveLength(1);
+    expect(recentsFile[0]!.scrollTop).toBe(120);
+    expect(recentsFile[0]!.lastChapterId).not.toBeNull();
+
+    // Повторное открытие в том же окне возвращает главу и прокрутку.
+    await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
+    await expect(session.page.getByRole('button', { name: 'Глава 2' })).toHaveClass(/book__chapter--active/);
+    await expect(session.page.locator('.book__text')).toContainText('строка 200');
+    await expect.poll(() => session.page.locator('.book__text').evaluate((element) => (element as HTMLElement).scrollTop)).toBe(120);
+
+    const settingsFile = JSON.parse(
+      await readFile(path.join(session.userData, 'settings.json'), 'utf8'),
+    ) as { positions: Record<string, Record<string, { anchor: number; scrollTop: number }>> };
+    const bookPositions = settingsFile.positions[recentsFile[0]!.bookId]!;
+    const chapterPosition = Object.values(bookPositions).find((position) => position.scrollTop === 120);
+    expect(chapterPosition).toBeDefined();
+  } finally {
+    await closeApp(session);
+  }
+});
+
+test('недоступная папка помечается, забывание сохраняет файлы', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-missing-');
+  const session = await launch(bookRoot, { 'Глава.md': 'текст\n' });
+  let movedRoot = '';
+  try {
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.getByRole('button', { name: 'Глава' })).toBeVisible();
+    await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+
+    movedRoot = `${bookRoot}-переехала`;
+    await rename(bookRoot, movedRoot);
+    await session.page.reload();
+
+    // Запись сохраняется с пометкой, открытие даёт ошибку.
+    await expect(session.page.getByText('папка не найдена')).toBeVisible();
+    await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
+    await expect(session.page.getByRole('alert')).toContainText('недоступна');
+    await expect(session.page.getByText('папка не найдена')).toBeVisible();
+
+    // Забыть — запись исчезает, файлы остаются.
+    await session.page.getByRole('button', { name: 'Забыть' }).click();
+    await expect(session.page.locator('.recent-list')).toHaveCount(0);
+    expect(existsSync(path.join(movedRoot, '.pocket-editor.json'))).toBe(true);
+  } finally {
+    await closeApp(session);
+  }
+});
+
+test('неизвестная версия манифеста не перезаписывается', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-unknown-');
+  const brokenManifest = JSON.stringify({
+    schema_version: 99,
+    book_id: '01234567-89ab-4cde-8f01-23456789abcd',
+    title: 'Книга',
+    chapters: [],
+  });
+  const session = await launch(bookRoot, {
+    'Глава.md': 'текст\n',
+    '.pocket-editor.json': brokenManifest,
+  });
+  try {
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.getByRole('alert')).toContainText('cannot be decoded');
+    // Экран недавних не сменился, файл манифеста не тронут.
+    await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+    expect(await readFile(path.join(bookRoot, '.pocket-editor.json'), 'utf8')).toBe(brokenManifest);
+  } finally {
+    await closeApp(session);
+  }
+});
