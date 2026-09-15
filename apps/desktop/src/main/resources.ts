@@ -3,7 +3,7 @@
 // of the root and executable or remote URLs are rejected; remote images are
 // never fetched in v1 and external http(s) links may only go through
 // shell.openExternal after the scheme check below.
-import { lstat, readFile, realpath, stat } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 /** Custom privileged protocol serving book images (registered in main.ts). */
@@ -96,8 +96,10 @@ export type ResolvedImage = { mime: string; bytes: Uint8Array };
 /**
  * Reads one image from inside the open book root. The candidate path is
  * containment-checked against the canonical root (which openBook resolved),
- * symlinked files must re-resolve inside the root, and only allowlisted
- * image extensions up to the size cap are served. Anything else returns null.
+ * the FULL path is re-resolved via realpath — intermediate directory
+ * symlinks out of the root are rejected exactly like final-component ones —
+ * and only allowlisted image extensions up to the size cap are served.
+ * Anything else returns null.
  */
 export async function resolveBookImage(
   root: string,
@@ -109,32 +111,30 @@ export async function resolveBookImage(
   const relative = path.relative(root, absolute);
   if (relative.length === 0 || relative.startsWith('..') || path.isAbsolute(relative)) return null;
 
-  let fileStat = await lstat(absolute).catch(() => null);
-  if (fileStat === null) return null;
-  let fileToRead = absolute;
-  if (fileStat.isSymbolicLink()) {
-    let resolved: string;
-    try {
-      resolved = await realpath(absolute);
-    } catch {
-      return null;
-    }
-    const resolvedRelative = path.relative(root, resolved);
-    if (resolvedRelative.startsWith('..') || path.isAbsolute(resolvedRelative)) return null;
-    fileToRead = resolved;
-    fileStat = await stat(resolved).catch(() => null);
-    if (fileStat === null) return null;
+  // realpath проходит по ВСЕМ компонентам пути: ссылка на каталог снаружи
+  // (например `sub → /etc`) не может выдать свой файл за внутренний.
+  let resolved: string;
+  try {
+    resolved = await realpath(absolute);
+  } catch {
+    return null;
   }
-  if (!fileStat.isFile()) return null;
+  const resolvedRelative = path.relative(root, resolved);
+  if (resolvedRelative.length === 0 || resolvedRelative.startsWith('..') || path.isAbsolute(resolvedRelative)) {
+    return null;
+  }
 
-  const extension = path.extname(fileToRead).toLowerCase();
+  const fileStat = await stat(resolved).catch(() => null);
+  if (fileStat === null || !fileStat.isFile()) return null;
+
+  const extension = path.extname(resolved).toLowerCase();
   const mime = IMAGE_MIME_BY_EXTENSION[extension];
   if (mime === undefined) return null;
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_RESOURCE_BYTES;
   if (fileStat.size > maxBytes || fileStat.size === 0) return null;
 
   try {
-    const bytes = await readFile(fileToRead);
+    const bytes = await readFile(resolved);
     return { mime, bytes: new Uint8Array(bytes) };
   } catch {
     return null;

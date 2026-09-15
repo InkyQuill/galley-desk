@@ -95,6 +95,24 @@ test('rejects symlinks pointing outside the open root', async () => {
   expect(await resolveBookImage(root, 'in.png')).not.toBeNull();
 });
 
+test('rejects directory symlinks leading outside the open root', async () => {
+  const root = await tempRoot();
+  const outside = await tempRoot();
+  await writeFile(path.join(outside, 'x.png'), 'секрет');
+
+  // Промежуточный компонент — символьная ссылка на каталог снаружи:
+  // lstat по такому пути возвращает regular file, утечка ловится только
+  // через realpath всего пути.
+  await symlink(outside, path.join(root, 'sub'));
+  expect(await resolveBookImage(root, 'sub/x.png')).toBeNull();
+
+  // Каталог-ссылка внутрь корня остаётся разрешённой.
+  await mkdir(path.join(root, 'реальные'));
+  await writeFile(path.join(root, 'реальные', 'ok.png'), 'внутри');
+  await symlink(path.join(root, 'реальные'), path.join(root, 'внутренние'));
+  expect((await resolveBookImage(root, 'внутренние/ok.png'))?.mime).toBe('image/png');
+});
+
 test('enforces the size cap', async () => {
   const root = await tempRoot();
   await writeFile(path.join(root, 'big.png'), Buffer.alloc(100, 1));
