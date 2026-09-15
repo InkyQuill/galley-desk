@@ -8,6 +8,32 @@ import path from 'node:path';
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
+// Навигация из локального Markdown (и любой другой уход со страницы
+// приложения) запрещена; внешние ссылки позже пойдут через shell.openExternal.
+// Сравниваются origin'ы, а не строковые префиксы: префикс `http://localhost:5173`
+// пропустил бы `http://localhost:5173@evil.com` — url при этом указывает на evil.com.
+const isOwnNavigation = (target: string): boolean => {
+  let parsed: URL;
+  try {
+    parsed = new URL(target);
+  } catch {
+    return false;
+  }
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    return parsed.origin === new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).origin;
+  }
+  // Упакованный режим: разрешены только файлы внутри собранного renderer.
+  if (parsed.protocol !== 'file:') {
+    return false;
+  }
+  const rendererDir = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}`);
+  const relative = path.relative(
+    rendererDir,
+    path.resolve(decodeURIComponent(parsed.pathname)),
+  );
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+};
+
 const createWindow = (): void => {
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -23,13 +49,8 @@ const createWindow = (): void => {
   // window.open и любое внешнее открытие запрещены.
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
-  // Навигация из локального Markdown (и любой другой уход со страницы
-  // приложения) запрещена; внешние ссылки позже пойдут через shell.openExternal.
-  const ownPrefix =
-    MAIN_WINDOW_VITE_DEV_SERVER_URL ??
-    `file://${path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}`)}`;
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith(ownPrefix)) {
+    if (!isOwnNavigation(url)) {
       event.preventDefault();
     }
   });
