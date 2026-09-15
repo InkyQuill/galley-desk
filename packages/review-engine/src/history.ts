@@ -4,9 +4,11 @@ type Entry = { before: ChapterModel; after: ChapterModel; group: string };
 
 /**
  * Per-chapter, session-only input history: full model snapshots (which carry
- * the selection), so undo/redo restore both text state and cursor. Consecutive
- * pushes with the same group key merge into one entry (composition is one
- * group; a selection change is a new group key), any push clears the redo
+ * the selection), so undo/redo restore both text state and cursor. Caller
+ * contract for the group key: rotate the key per typing burst — consecutive
+ * pushes with the same key merge into one undo entry, a push with a new key
+ * starts a new undo step (one IME composition or continuous typing burst is
+ * one group; a selection change is a new group key). Any push clears the redo
  * stack and clear() empties both. Purely in memory — no file persistence, and
  * a freshly constructed history is empty.
  */

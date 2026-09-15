@@ -64,6 +64,71 @@ async function externalWrite(root: string, text: string): Promise<void> {
   await writeFile(path.join(root, '01.md'), text);
 }
 
+test('two consecutive edits without a group are two separate undo steps', async () => {
+  const { book, chapterId, appData } = await makeBook();
+  const session = await ChapterSession.open(book, chapterId, appData);
+  await session.edit([{ from: 4, to: 4, insert: '!' }], { anchor: 5, head: 5 });
+  const first = await readPair(book, chapterId);
+  await session.edit([{ from: 5, to: 5, insert: '?' }], { anchor: 6, head: 6 });
+  const second = await readPair(book, chapterId);
+  expect(session.model.text).toBe('abcd!?');
+
+  await session.undoInput();
+  const once = await readPair(book, chapterId);
+  expect(session.model.text).toBe('abcd!');
+  expect(once.pair.review).toBe(first.pair.review);
+  expect(once.pair.source).toEqual(first.pair.source);
+
+  await session.undoInput();
+  const twice = await readPair(book, chapterId);
+  expect(session.model.text).toBe('abcd');
+  expect(twice.pair.source).toEqual(BYTES);
+  expect(twice.pair.review).toBe(encodeReview(reviewFor(chapterId, [])));
+
+  await session.redoInput();
+  const redone = await readPair(book, chapterId);
+  expect(session.model.text).toBe('abcd!');
+  expect(redone.pair.review).toBe(first.pair.review);
+  expect(redone.pair.review).not.toBe(second.pair.review);
+  await session.close();
+});
+
+test('edits sharing one explicit group merge into a single undo step', async () => {
+  const { book, chapterId, appData } = await makeBook();
+  const session = await ChapterSession.open(book, chapterId, appData);
+  await session.edit([{ from: 4, to: 4, insert: '!' }], { anchor: 5, head: 5 }, 'burst-1');
+  await session.edit([{ from: 5, to: 5, insert: '?' }], { anchor: 6, head: 6 }, 'burst-1');
+  expect(session.model.text).toBe('abcd!?');
+
+  await session.undoInput();
+  const undone = await readPair(book, chapterId);
+  expect(session.model.text).toBe('abcd');
+  expect(undone.pair.review).toBe(encodeReview(reviewFor(chapterId, [])));
+  expect(undone.pair.source).toEqual(BYTES);
+
+  await session.redoInput();
+  expect(session.model.text).toBe('abcd!?');
+  await session.close();
+});
+
+test('edits with different explicit groups stay separate undo steps', async () => {
+  const { book, chapterId, appData } = await makeBook();
+  const session = await ChapterSession.open(book, chapterId, appData);
+  await session.edit([{ from: 4, to: 4, insert: '!' }], { anchor: 5, head: 5 }, 'burst-1');
+  const first = await readPair(book, chapterId);
+  await session.edit([{ from: 5, to: 5, insert: '?' }], { anchor: 6, head: 6 }, 'burst-2');
+  expect(session.model.text).toBe('abcd!?');
+
+  await session.undoInput();
+  expect(session.model.text).toBe('abcd!');
+  expect((await readPair(book, chapterId)).pair.review).toBe(first.pair.review);
+
+  await session.undoInput();
+  expect(session.model.text).toBe('abcd');
+  expect((await readPair(book, chapterId)).pair.review).toBe(encodeReview(reviewFor(chapterId, [])));
+  await session.close();
+});
+
 test('apply, undoApply and redoApply write both pairs byte-for-byte with every anchor and signal', async () => {
   const { book, chapterId, appData, writeSidecar } = await makeBook();
   const original = reviewFor(chapterId, [

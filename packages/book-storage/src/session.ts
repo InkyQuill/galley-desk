@@ -145,9 +145,12 @@ export async function exportDraft(appData: string, id: string, destination: stri
  * undoInput, redoInput) share the input history of model snapshots and clear
  * the apply stack; applying a correction (apply, undoApply, redoApply) works
  * on whole pairs through {@linkcode ApplyHistory} and clears the input
- * history. `checkExternal` invalidates both stacks; `close` clears them after
- * a successful drain and rethrows a persisted save error instead of dropping
- * the model silently.
+ * history. `edit` and `replaceReview` take an optional group key: a call
+ * without one is its own undo step, while calls sharing the caller's group
+ * key merge into one undo step (a typing burst or IME composition). Applying
+ * a correction (`apply`), `checkExternal` and `close` invalidate both stacks;
+ * `close` clears them after a successful drain and rethrows a persisted save
+ * error instead of dropping the model silently.
  */
 export class ChapterSession {
   model: ChapterModel;
@@ -192,8 +195,17 @@ export class ChapterSession {
     );
   }
 
-  /** Applies derived-text changes as one queued save of the whole pair. */
-  edit(changes: TextChange[], selection: { anchor: number; head: number }): Promise<void> {
+  /**
+   * Applies derived-text changes as one queued save of the whole pair.
+   * Without `group` the call is its own undo step; pass the same `group` key
+   * as on the previous call to merge both into one undo step.
+   */
+  edit(
+    changes: TextChange[],
+    selection: { anchor: number; head: number },
+    group?: string,
+  ): Promise<void> {
+    const inputGroup = group ?? randomUUID();
     return this.queue.enqueue(async () => {
       const nextModel = changeText(this.model, changes, selection, randomUUID);
       const target = pairOf(nextModel);
@@ -201,7 +213,7 @@ export class ChapterSession {
       try {
         const revision = await writePair(this.book, this.chapterId, this.revision, target, this.appData);
         this.applyHistory.clear();
-        this.inputHistory.push(this.model, nextModel, 'input');
+        this.inputHistory.push(this.model, nextModel, inputGroup);
         this.adopt(target, nextModel, revision);
         this.state = 'saved';
       } catch (error) {
@@ -211,8 +223,12 @@ export class ChapterSession {
     });
   }
 
-  /** Replaces the whole review sidecar as one queued save. */
-  replaceReview(review: Review): Promise<void> {
+  /**
+   * Replaces the whole review sidecar as one queued save. The `group` key
+   * follows the same undo-step contract as in {@linkcode edit}.
+   */
+  replaceReview(review: Review, group?: string): Promise<void> {
+    const inputGroup = group ?? randomUUID();
     return this.queue.enqueue(async () => {
       const nextModel = openChapter(this.model.source, review);
       const target = pairOf(nextModel);
@@ -220,7 +236,7 @@ export class ChapterSession {
       try {
         const revision = await writePair(this.book, this.chapterId, this.revision, target, this.appData);
         this.applyHistory.clear();
-        this.inputHistory.push(this.model, nextModel, 'replace-review');
+        this.inputHistory.push(this.model, nextModel, inputGroup);
         this.adopt(target, nextModel, revision);
         this.state = 'saved';
       } catch (error) {
