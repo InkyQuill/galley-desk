@@ -1,0 +1,15 @@
+{
+  "name": "@galley-desk/book-storage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@galley-desk/pocket-format": "*"
+  }
+}

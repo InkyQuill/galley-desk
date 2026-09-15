@@ -6,6 +6,9 @@
     },
     {
       "path": "packages/review-engine"
+    },
+    {
+      "path": "packages/book-storage"
     }
   ]
 }
