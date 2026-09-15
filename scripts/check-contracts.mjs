@@ -83,11 +83,17 @@ mkdirSync(exchangeDir, { recursive: true });
 rmSync(join(exchangeDir, 'input.json'), { force: true });
 rmSync(join(exchangeDir, 'output.json'), { force: true });
 
+// A developer-exported GALLEY_EXCHANGE_DIR must not split the pipeline: the
+// generator always writes the canonical exchange dir that the gradle run and
+// the TypeScript tests below read via the explicit GALLEY_EXCHANGE_DIR value.
+const generateEnv = { ...process.env };
+delete generateEnv.GALLEY_EXCHANGE_DIR;
+
 run(
   'generate input',
   join(repoRoot, 'node_modules/.bin/tsx'),
   [join(repoRoot, 'tests/contracts/generate.ts')],
-  { cwd: repoRoot },
+  { cwd: repoRoot, env: generateEnv },
 );
 
 run(
