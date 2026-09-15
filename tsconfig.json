@@ -3,6 +3,9 @@
   "references": [
     {
       "path": "packages/pocket-format"
+    },
+    {
+      "path": "packages/review-engine"
     }
   ]
 }
