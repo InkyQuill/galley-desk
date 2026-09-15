@@ -1,0 +1,19 @@
+{
+  "name": "@galley-desk/pocket-format",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "commonmark": "0.31.2"
+  },
+  "devDependencies": {
+    "@types/commonmark": "0.27.10"
+  }
+}

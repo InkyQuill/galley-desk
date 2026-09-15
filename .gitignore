@@ -1,0 +1,10 @@
+# Dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Local tooling and caches
+.superpowers/
+.pi/
+.remember/
+.cache/
