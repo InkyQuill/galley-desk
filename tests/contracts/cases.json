@@ -1,0 +1,114 @@
+{
+  "exchangeCases": [
+    {
+      "name": "exchange-note-comment",
+      "source": "Chapter one\n\nThe old lighthouse stands above the village.\nShips signal with lanterns at dusk.",
+      "chapterId": "7e111111-1111-4111-8111-111111111111",
+      "sourcePath": "exchange-note-comment.md",
+      "chapterNote": "Reviewer keeps margin notes here.",
+      "signals": [
+        {
+          "id": "c0000001-0000-4000-8000-000000000001",
+          "type": "note",
+          "selected": "lighthouse",
+          "comment": "Clarify who keeps the lamp lit."
+        }
+      ],
+      "edits": [
+        {
+          "id": "e0000001-0000-4000-8000-000000000001",
+          "before": "stands above",
+          "after": "rises above"
+        },
+        {
+          "id": "e0000001-0000-4000-8000-000000000002",
+          "before": "Ships signal",
+          "after": "Boats signal"
+        },
+        {
+          "id": "e0000001-0000-4000-8000-000000000003",
+          "before": "signal with",
+          "after": "answer with"
+        },
+        {
+          "id": "e0000001-0000-4000-8000-000000000004",
+          "before": "watches over",
+          "after": "keeps watch over",
+          "staleAgainst": "The old tower watches over the bay."
+        }
+      ]
+    },
+    {
+      "name": "exchange-corrupted-hash",
+      "source": "Anchor me exactly once here, then read me back.",
+      "chapterId": "7e222222-2222-4222-8222-222222222222",
+      "sourcePath": "exchange-corrupted-hash.md",
+      "chapterNote": "",
+      "signals": [
+        {
+          "id": "c0000002-0000-4000-8000-000000000001",
+          "type": "warning",
+          "selected": "exactly",
+          "comment": "This hash was damaged on purpose.",
+          "corruptSelectionHash": true
+        }
+      ],
+      "edits": [
+        {
+          "id": "e0000002-0000-4000-8000-000000000001",
+          "before": "Anchor me",
+          "after": "Anchor you"
+        }
+      ]
+    }
+  ],
+  "anchorCases": [
+    {
+      "name": "emoji-anchor",
+      "source": "a😀b",
+      "from": 1,
+      "to": 5
+    },
+    {
+      "name": "cyrillic-anchor",
+      "source": "Привет, мир",
+      "from": 14,
+      "to": 20
+    },
+    {
+      "name": "crlf-anchor",
+      "source": "alpha\r\nbeta\r\ngamma",
+      "from": 7,
+      "to": 18
+    },
+    {
+      "name": "long-context-anchor",
+      "source": { "fill": "x", "count": 200, "middle": "NEEDLE", "tail": "y", "tailCount": 200 },
+      "from": 200,
+      "to": 206
+    }
+  ],
+  "discoveryCases": [
+    {
+      "name": "numbered-among-plain",
+      "files": [
+        { "path": "02-lake.md", "text": "# Lake Chapter\n\nCalm water lines." },
+        { "path": "10-islands.md", "text": "---\ntitle: Islands\nnumber: 10\n---\n\nSea passages." },
+        { "path": "01-meadow.md", "text": "Plain meadow opening" },
+        { "path": "notes.txt", "text": "not a chapter" },
+        { "path": ".hidden.md", "text": "# Hidden" },
+        { "path": "nested/inner.md", "text": "# Nested" }
+      ],
+      "expectedPaths": ["10-islands.md", "01-meadow.md", "02-lake.md"]
+    },
+    {
+      "name": "numeric-order",
+      "files": [
+        { "path": "9-storm.md", "text": "# Storm" },
+        { "path": "10-cape.md", "text": "# Cape" },
+        { "path": "008-dune.md", "text": "# Dune" }
+      ],
+      "expectedPaths": ["008-dune.md", "9-storm.md", "10-cape.md"]
+    }
+  ]
+}

@@ -1,5 +1,14 @@
 {
-  "pocket-editor": "552965968ee5642360f02f7ffe41e96adb6f74a5",
-  "galley-editor": "675e717581758ad80c187b6af4aa83672c27bb64",
-  "galley-pad": "16065357c6993b58d7e7262c41a8fac9e35729a9"
+  "pocket-editor": {
+    "sha": "f3012aa8abb73cda32b943ff74f5b78039300d8f",
+    "branch": "galley-desk-tolerant-reviews"
+  },
+  "galley-editor": {
+    "sha": "e5769b6b161af5275f7c2b490707aad5f3a5af09",
+    "branch": "feat/galley-themes-workspace"
+  },
+  "galley-pad": {
+    "sha": "16065357c6993b58d7e7262c41a8fac9e35729a9",
+    "branch": "main"
+  }
 }

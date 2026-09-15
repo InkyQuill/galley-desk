@@ -1,0 +1,45 @@
+name: Contracts
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out the Pocket Editor revision pinned in tests/contracts/baseline.json
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: InkyQuill/pocket-editor
+          # Keep in sync with tests/contracts/baseline.json (pocket-editor.sha).
+          ref: f3012aa8abb73cda32b943ff74f5b78039300d8f
+          path: .cache/contracts/pocket-editor
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Set up JDK 17 (mirrors Pocket Editor android.yml)
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+      - name: Run Kotlin ↔ TypeScript contract checks
+        env:
+          POCKET_EDITOR_DIR: ${{ github.workspace }}/.cache/contracts/pocket-editor
+        run: |
+          npm ci
+          npm run test:contracts
