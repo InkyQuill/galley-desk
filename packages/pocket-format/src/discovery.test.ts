@@ -37,6 +37,31 @@ test('breaks natural ties case-insensitively and by full path last', () => {
     .toEqual(['a.md', 'B.md']);
 });
 
+test('compares digit-run trimmed lengths as integers, not decimal strings', () => {
+  // Trimmed runs "23" (length 2) and "1234567890" (length 10): integer rule
+  // puts 2 before 10; decimal-string comparison of the lengths would flip it.
+  const proposals = discover([
+    file('Глава 1234567890.md', '# Длинный номер'),
+    file('Глава 23.md', '# Короткий номер'),
+  ]);
+  expect(proposals.map((chapter) => chapter.path)).toEqual([
+    'Глава 23.md',
+    'Глава 1234567890.md',
+  ]);
+});
+
+test('uses the integer length tiebreak when case-folded parts are equal', () => {
+  // Parts "md" (length 2) vs "mdabcdefghij" (length 12) fold to equal over
+  // their common prefix; Kotlin falls back to length - other.length (short
+  // part first), while decimal-string comparison of the lengths ("2" vs
+  // "12") would sort the long path first.
+  const proposals = discover([
+    file('mdabcdefghij2.md', '# Длинное имя'),
+    file('md2.md', '# Короткое имя'),
+  ]);
+  expect(proposals.map((chapter) => chapter.path)).toEqual(['md2.md', 'mdabcdefghij2.md']);
+});
+
 test('takes titles from the first level one heading', () => {
   const proposals = discover([file('01.md', 'вступление\n\n# Глава первая\n\nтекст\n\n## подраздел\n')]);
   expect(proposals).toEqual([{ path: '01.md', title: 'Глава первая' }]);

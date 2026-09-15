@@ -81,7 +81,7 @@ export function naturalCompare(left: string, right: string): number {
       const trimmedB = b.replace(/^0+/, '');
       comparison = trimmedA.length === trimmedB.length
         ? compareCodeUnits(trimmedA === '' ? '0' : trimmedA, trimmedB === '' ? '0' : trimmedB)
-        : compareCodeUnits(String(trimmedA.length), String(trimmedB.length));
+        : trimmedA.length - trimmedB.length;
     } else {
       comparison = compareIgnoreCase(a, b);
     }
@@ -115,7 +115,7 @@ function compareIgnoreCase(left: string, right: string): number {
     const lowerB = b.toLowerCase();
     if (lowerA !== lowerB) return compareCodeUnits(lowerA, lowerB);
   }
-  return compareCodeUnits(String(left.length), String(right.length));
+  return left.length - right.length;
 }
 
 /** Mirrors ChapterTitleExtractor.extract. */
