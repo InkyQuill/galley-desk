@@ -1,0 +1,67 @@
+// Flyout выбора типа сигнала у выделенного текста. Появляется без переноса
+// фокуса: копирование и клавиатурная навигация в редакторе остаются доступны;
+// в flyout можно попасть Tab-ом из редактора, пока выделение непусто.
+import { useEffect } from 'react';
+import { SIGNAL_TYPES, currentTheme, signalColor } from '../editor/markers';
+import type { SignalTypeName } from '../editor/markers';
+
+type Props = {
+  /** Viewport-координаты начала flyout (у конца выделения). */
+  x: number;
+  bottom: number;
+  /** Выбор типа: открывает попап комментария (Command signal). */
+  onPick: (type: SignalTypeName) => void;
+  /** Регистрация фокуса-функции для Tab-пути из редактора; null при демонтаже. */
+  registerFocus: (focus: (() => void) | null) => void;
+};
+
+export function SignalFlyout({ x, bottom, onPick, registerFocus }: Props) {
+  const theme = currentTheme();
+  useEffect(() => {
+    registerFocus(() => {
+      document.querySelector<HTMLElement>('[data-review-flyout] button')?.focus();
+    });
+    return () => registerFocus(null);
+  }, [registerFocus]);
+  return (
+    <div
+      data-review-flyout="true"
+      role="toolbar"
+      aria-label="Тип сигнала"
+      style={{
+        position: 'fixed',
+        left: Math.max(8, Math.min(x, window.innerWidth - 320)),
+        top: Math.min(bottom + 6, window.innerHeight - 48),
+        zIndex: 35,
+        display: 'flex',
+        gap: 4,
+        padding: 4,
+        borderRadius: 8,
+        background: 'Canvas',
+        color: 'CanvasText',
+        border: '1px solid color-mix(in srgb, CanvasText 30%, transparent)',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+      }}
+    >
+      {SIGNAL_TYPES.map((type) => (
+        <button
+          key={type}
+          type="button"
+          // preventDefault на mousedown сохраняет выделение и фокус редактора.
+          onMouseDown={(event) => event.preventDefault()}
+          style={{
+            color: signalColor(type, theme),
+            borderColor: signalColor(type, theme),
+            background: 'transparent',
+            borderRadius: 6,
+            cursor: 'pointer',
+            padding: '0.15rem 0.5rem',
+          }}
+          onClick={() => onPick(type)}
+        >
+          {type}
+        </button>
+      ))}
+    </div>
+  );
+}

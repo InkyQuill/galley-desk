@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { BookView, Command, Snapshot } from '../../shared/api';
+import type { MutableRefObject } from 'react';
+import type { BookView, Command, RecordView, Snapshot } from '../../shared/api';
+import { ComparisonView } from '../editor/ComparisonView';
+import type { ReviewEditorApi } from '../editor/ReviewEditor';
 import { ReviewEditor } from '../editor/ReviewEditor';
+import type { SignalTypeName } from '../editor/markers';
+import { ChapterNote } from '../review/ChapterNote';
+import { RecordPopup } from '../review/RecordPopup';
+import type { PopupPosition } from '../review/RecordPopup';
+import { ReviewList } from '../review/ReviewList';
+import { SignalFlyout } from '../review/SignalFlyout';
 
 type Props = {
   book: BookView;
@@ -34,23 +43,23 @@ function firstOpenEntryId(book: BookView): string | null {
   return open?.id ?? book.entries[0]?.id ?? null;
 }
 
-function recordLine(snapshot: Snapshot, index: number): string {
-  const record = snapshot.records[index];
-  if (record === undefined) return '';
-  const where = record.from === null || record.to === null ? '' : ` (позиция ${record.from}–${record.to})`;
-  const suffix = record.status === 'active' ? where : ` — ${record.status}${record.reason ? `: ${record.reason}` : ''}`;
-  if (record.kind === 'edit') {
-    return `Правка: ${record.before} → ${record.after}${suffix}`;
-  }
-  const type = record.signalType ?? '';
-  const comment = record.comment.length > 0 ? `: ${record.comment}` : '';
-  return `Сигнал [${type}]${comment}${suffix}`;
-}
+/** Прямоугольник маркера/курсора в viewport-координатах (попап позиционируется fixed). */
+type AnchorRect = { x: number; y: number; bottom: number };
+
+type ViewMode = 'text' | 'comparison' | 'source';
+
+/** Открытая карточка: существующая запись у якоря или черновик сигнала. */
+type PopupState =
+  | { kind: 'record'; id: string; at: PopupPosition }
+  | { kind: 'draft'; from: number; to: number; signalType: SignalTypeName; at: PopupPosition }
+  | null;
 
 /**
- * Рабочее окно книги: оглавление, глава в редакторе Galley (режим «Текст»)
- * или read-only исходник («Источник»), записи рецензии. Редактор владеет
- * документом; окна снимка обновляют только записи и статус сохранения.
+ * Рабочее окно книги: оглавление, глава в виде «Текст» (редактор Galley),
+ * «Сравнение» (read-only источник с парами old/new и применением) или
+ * «Исходник» (немаркированный raw Markdown), справа — навигация по рецензии:
+ * список записей и заметка главы. Попапы записи и flyout типа сигнала живут
+ * здесь; панели принадлежат только список и карточки без якоря — без форм.
  */
 export function BookWindow({ book, restore = null, onClose }: Props) {
   const cached = positionCache.get(book.bookId);
@@ -64,17 +73,29 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'text' | 'source'>('text');
+  const [mode, setMode] = useState<ViewMode>('text');
   // Эпоха редактора: явная команда «Перечитать» пересоздаёт редактор из
   // сняка сессии (принудительная ресинхронизация после сбоя сохранения).
   const [editorEpoch, setEditorEpoch] = useState(0);
   const textRef = useRef<HTMLDivElement | null>(null);
+  const comparisonRef = useRef<HTMLDivElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const anchorRef = useRef<number>(validRestore?.anchor ?? cached?.anchor ?? 0);
   const pendingScroll = useRef<number | null>(validRestore?.scrollTop ?? cached?.scrollTop ?? null);
   // Ревизии последнего подтверждения по главам: expectedRevision берётся из
   // последнего ack, а не из устаревшего замыкания React.
   const revisionsRef = useRef(new Map<string, number>());
+
+  // Flyout выделения, попап записи/черновика сигнала и карточка панели.
+  const [flyout, setFlyout] = useState<{ from: number; to: number; x: number; y: number; bottom: number } | null>(null);
+  const [popup, setPopup] = useState<PopupState>(null);
+  const [cardId, setCardId] = useState<string | null>(null);
+  const [editorApi, setEditorApi] = useState<ReviewEditorApi | null>(null);
+  // Функция фокуса flyout для Tab-пути из редактора (регистрирует SignalFlyout).
+  const flyoutFocusRef = useRef<(() => void) | null>(null);
+  const registerFlyoutFocus = useCallback((focus: (() => void) | null) => {
+    flyoutFocusRef.current = focus;
+  }, []);
 
   const applySnapshot = useCallback((next: Snapshot) => {
     revisionsRef.current.set(next.chapterId, next.revision);
@@ -116,6 +137,16 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book.bookId, chapterId, applySnapshot]);
+
+  // Запись исчезла (применена/удалена/стала конфликтной) — попап закрывается.
+  useEffect(() => {
+    if (popup?.kind === 'record' && snapshot !== null && !snapshot.records.some((record) => record.id === popup.id)) {
+      setPopup(null);
+    }
+    if (cardId !== null && snapshot !== null && !snapshot.records.some((record) => record.id === cardId)) {
+      setCardId(null);
+    }
+  }, [popup, cardId, snapshot]);
 
   // Восстановление прокрутки после появления текста: скроллер находится
   // внутри редактора (CM виртуализирует строки и сам ведёт прокрутку).
@@ -202,6 +233,34 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
     [book.bookId, chapterId, applySnapshot],
   );
 
+  /** Команда с проглатыванием ошибки: состояние уже показано пользователю. */
+  const submit = useCallback(
+    (command: Command): Promise<Snapshot | null> =>
+      handleCommand(command).then(
+        () => null as Snapshot | null,
+        () => null,
+      ),
+    [handleCommand],
+  );
+
+  /**
+   * Маршрут команд записи: в «Тексте» команды идут через FIFO редактора
+   * (порядок с вводом сохраняется), в остальных видах — напрямую в main.
+   */
+  const dispatchCommand = useCallback(
+    (command: Command): void => {
+      if (mode === 'text' && editorApi !== null) editorApi.enqueue(command);
+      else void submit(command);
+    },
+    [mode, editorApi, submit],
+  );
+
+  /** Заметка главы идёт напрямую: ошибка сохранения возвращается в попап. */
+  const noteCommand = useCallback(
+    (text: string): Promise<void> => handleCommand({ type: 'note', text }).then(() => undefined),
+    [handleCommand],
+  );
+
   const resolveExternal = useCallback(
     async (choice: 'open-external' | 'export-local') => {
       if (chapterId === null) return;
@@ -242,9 +301,66 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
     onClose();
   };
 
+  /** Смена вида закрывает всплывающие слои: flyout не бывает вне «Текста». */
+  const switchMode = useCallback((next: ViewMode): void => {
+    setMode(next);
+    setFlyout(null);
+    setPopup(null);
+    setCardId(null);
+  }, []);
+
+  const handleSelectionWindow = useCallback(
+    (range: { from: number; to: number; x: number; y: number; bottom: number } | null) => {
+      setFlyout(range);
+    },
+    [],
+  );
+
+  const openRecordAt = useCallback((recordId: string, rect: AnchorRect) => {
+    setFlyout(null);
+    setCardId(null);
+    setPopup({ kind: 'record', id: recordId, at: rect });
+  }, []);
+
+  const openDraft = useCallback(
+    (signalType: SignalTypeName) => {
+      if (flyout === null) return;
+      setPopup({ kind: 'draft', from: flyout.from, to: flyout.to, signalType, at: flyout });
+      setFlyout(null);
+    },
+    [flyout],
+  );
+
+  /** Выбор записи в панели: скролл только при известном якоре; иначе карточка. */
+  const selectRecord = useCallback(
+    (record: RecordView) => {
+      setPopup(null);
+      setCardId(null);
+      const anchored = record.from !== null && record.to !== null;
+      if (anchored && mode === 'text' && editorApi !== null && editorApi.reveal(record.id)) {
+        const coords = editorApi.coordsAt(record.to as number);
+        setPopup({ kind: 'record', id: record.id, at: coords === null ? null : { x: coords.left, y: coords.top, bottom: coords.bottom } });
+        return;
+      }
+      if (anchored && mode === 'comparison' && comparisonRef.current !== null) {
+        const marker = comparisonRef.current.querySelector<HTMLElement>(`[data-record-id="${cssEscape(record.id)}"]`);
+        if (marker !== null) {
+          const rect = marker.getBoundingClientRect();
+          setPopup({ kind: 'record', id: record.id, at: { x: rect.left, y: rect.top, bottom: rect.bottom } });
+          return;
+        }
+      }
+      // Нет якоря (или вид не даёт перейти) — карточка прямо в панели.
+      setCardId(record.id);
+    },
+    [mode, editorApi],
+  );
+
   const activeChapter = book.entries.find((entry) => entry.id === chapterId) ?? null;
   // Локальный флаг ошибки сильнее снимка: main не уведомляет о сбое записи.
   const saveState = saveError !== null ? 'error' : snapshot?.saveState ?? null;
+  const popupRecord =
+    popup?.kind === 'record' ? snapshot?.records.find((record) => record.id === popup.id) ?? null : null;
 
   return (
     <div className="book">
@@ -277,7 +393,7 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
           {error}
         </p>
       )}
-      <div className="book__body">
+      <div className="book__body" style={{ gridTemplateColumns: '16rem 1fr 18rem' }}>
         <nav className="book__chapters" aria-label="Оглавление">
           {book.entries.map((entry) => (
             <button
@@ -295,29 +411,58 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
         </nav>
         <section className="book__content">
           {activeChapter !== null && <h2 className="book__chapter-title">{activeChapter.title || activeChapter.path}</h2>}
-          <div className="book__view-toggle" role="tablist" aria-label="Режим просмотра">
+          <div className="book__view-toggle" aria-label="Режим просмотра">
             <button
               type="button"
-              role="tab"
-              aria-selected={mode === 'text'}
+              aria-pressed={mode === 'text'}
               className={mode === 'text' ? 'book__view book__view--active' : 'book__view'}
-              onClick={() => setMode('text')}
+              onClick={() => switchMode('text')}
             >
               Текст
             </button>
             <button
               type="button"
-              role="tab"
-              aria-selected={mode === 'source'}
-              className={mode === 'source' ? 'book__view book__view--active' : 'book__view'}
-              onClick={() => setMode('source')}
+              aria-pressed={mode === 'comparison'}
+              className={mode === 'comparison' ? 'book__view book__view--active' : 'book__view'}
+              onClick={() => switchMode('comparison')}
             >
-              Источник
+              Сравнение
+            </button>
+            <button
+              type="button"
+              aria-pressed={mode === 'source'}
+              className={mode === 'source' ? 'book__view book__view--active' : 'book__view'}
+              onClick={() => switchMode('source')}
+            >
+              Исходник
             </button>
           </div>
           {mode === 'source' ? (
-            // Read-only исходник: отдельное presentation view, ввод недоступен.
+            // Read-only исходник: отдельное presentation view, ввод недоступен, без маркеров.
             <pre className="book__source">{snapshot?.sourceText ?? ''}</pre>
+          ) : mode === 'comparison' ? (
+            <>
+              {/* Применение имеет отдельный стек: кнопки контекста §6 только в «Сравнении». */}
+              <div style={{ display: 'flex', gap: '0.5rem' }} aria-label="История применения">
+                <button
+                  type="button"
+                  disabled={snapshot === null || !snapshot.canUndoApply}
+                  onClick={() => void submit({ type: 'undo-apply' })}
+                >
+                  Отменить применение
+                </button>
+                <button
+                  type="button"
+                  disabled={snapshot === null || !snapshot.canRedoApply}
+                  onClick={() => void submit({ type: 'redo-apply' })}
+                >
+                  Повторить применение
+                </button>
+              </div>
+              <div className="book__comparison" ref={comparisonRef}>
+                {snapshot !== null && <ComparisonView snapshot={snapshot} onRecordClick={(record, rect) => openRecordAt(record.id, rect)} />}
+              </div>
+            </>
           ) : (
             <div className="book__text" ref={textRef}>
               {snapshot !== null && (
@@ -328,21 +473,56 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
                   onSelectionChange={rememberAnchor}
                   onScrollChange={rememberScroll}
                   initialAnchor={validRestore?.anchor ?? cached?.anchor ?? null}
+                  onSelectionWindow={handleSelectionWindow}
+                  onRecordClick={openRecordAt}
+                  flyoutFocusRef={flyoutFocusRef as MutableRefObject<(() => void) | null>}
+                  onApi={setEditorApi}
                 />
               )}
             </div>
           )}
-          {snapshot !== null && snapshot.records.length > 0 && (
-            <ul className="book__records">
-              {snapshot.records.map((record, index) => (
-                <li key={record.id} className={`book__record book__record--${record.status}`}>
-                  {recordLine(snapshot, index)}
-                </li>
-              ))}
-            </ul>
-          )}
         </section>
+        <aside
+          className="book__review"
+          aria-label="Рецензия"
+          style={{
+            borderLeft: '1px solid color-mix(in srgb, currentColor 20%, transparent)',
+            padding: '0.75rem',
+            overflowY: 'auto',
+            display: 'grid',
+            gap: '0.75rem',
+            alignContent: 'start',
+          }}
+        >
+          <ChapterNote value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />
+          <ReviewList
+            records={snapshot?.records ?? []}
+            cardRecordId={cardId}
+            onSelect={selectRecord}
+            onCommand={dispatchCommand}
+            onCardClose={() => setCardId(null)}
+          />
+        </aside>
       </div>
+      {mode === 'text' && flyout !== null && (
+        <SignalFlyout x={flyout.x} bottom={flyout.bottom} onPick={openDraft} registerFocus={registerFlyoutFocus} />
+      )}
+      {popup?.kind === 'draft' && (
+        <RecordPopup
+          draft={{ from: popup.from, to: popup.to, signalType: popup.signalType }}
+          at={popup.at}
+          onCommand={dispatchCommand}
+          onClose={() => setPopup(null)}
+        />
+      )}
+      {popup?.kind === 'record' && popupRecord !== null && (
+        <RecordPopup record={popupRecord} at={popup.at} onCommand={dispatchCommand} onClose={() => setPopup(null)} />
+      )}
     </div>
   );
+}
+
+function cssEscape(value: string): string {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(value);
+  return value.replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char}`);
 }

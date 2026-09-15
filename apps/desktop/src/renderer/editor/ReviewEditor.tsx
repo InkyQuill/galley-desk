@@ -23,10 +23,25 @@ import type { KeyBinding } from '@codemirror/view';
 import { GalleyEditor } from '@inkyquill/galley-editor';
 import type { GalleyHandle, GalleyImageInfo } from '@inkyquill/galley-editor';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { MutableRefObject } from 'react';
 import type { Command, Snapshot } from '../../shared/api';
 import { bookResourceUrl, isLocalImagePath } from '../book/bookres';
+import { dispatchRecordMarkers, installMarkerStyles, recordMarkers } from './markers';
 import { CommandQueue, TypingGroups, fromSnapshot, isHistoryCommand, toTextChanges } from './transaction-adapter';
 import '@inkyquill/galley-editor/style.css';
+
+// Значки маркеров правок/сигналов рисуются стилями — один раз на рендерер.
+installMarkerStyles();
+
+/** Императивный доступ панели/попапов к FIFO-очереди и геометрии редактора. */
+export type ReviewEditorApi = {
+  /** Команда через общую FIFO (порядок с вводом сохраняется). */
+  enqueue: (command: Command) => void;
+  focus: () => void;
+  /** Скроллит к записи и выделяет её диапазон; false, если якоря нет. */
+  reveal: (recordId: string) => boolean;
+  coordsAt: (pos: number) => { top: number; left: number; bottom: number } | null;
+};
 
 type Props = {
   snapshot: Snapshot;
@@ -37,6 +52,14 @@ type Props = {
   onScrollChange?: (scrollTop: number) => void;
   /** Восстановление якоря чтения при открытии главы. */
   initialAnchor?: number | null;
+  /** Непустое выделение → координаты flyout; схлопывание → null. */
+  onSelectionWindow?: (range: { from: number; to: number; x: number; y: number; bottom: number } | null) => void;
+  /** Клик по маркеру правки/сигнала (или подстроке комментария). */
+  onRecordClick?: (recordId: string, rect: { x: number; y: number; bottom: number }) => void;
+  /** Куда SignalFlyout кладёт функцию фокуса для Tab-пути из редактора. */
+  flyoutFocusRef?: MutableRefObject<(() => void) | null>;
+  /** Выдача ReviewEditorApi (null при демонтаже). */
+  onApi?: (api: ReviewEditorApi | null) => void;
 };
 
 type ReplacePlan = { kind: 'switch' | 'sync'; chapterId: string; text: string; anchor: number };
@@ -45,7 +68,17 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : 'Операция не выполнена';
 }
 
-export function ReviewEditor({ snapshot, onCommand, onSelectionChange, onScrollChange, initialAnchor = null }: Props) {
+export function ReviewEditor({
+  snapshot,
+  onCommand,
+  onSelectionChange,
+  onScrollChange,
+  initialAnchor = null,
+  onSelectionWindow,
+  onRecordClick,
+  flyoutFocusRef,
+  onApi,
+}: Props) {
   const handleRef = useRef<GalleyHandle | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const groupsRef = useRef(new TypingGroups());
@@ -64,6 +97,18 @@ export function ReviewEditor({ snapshot, onCommand, onSelectionChange, onScrollC
   onSelectionRef.current = onSelectionChange;
   const onScrollRef = useRef(onScrollChange);
   onScrollRef.current = onScrollChange;
+  const onSelectionWindowRef = useRef(onSelectionWindow);
+  onSelectionWindowRef.current = onSelectionWindow;
+  const onRecordClickRef = useRef(onRecordClick);
+  onRecordClickRef.current = onRecordClick;
+  const onApiRef = useRef(onApi);
+  onApiRef.current = onApi;
+  // Flyout-реф — стабильный объект из BookWindow; фиксируем на случай смены.
+  const flyoutFocusPropRef = useRef(flyoutFocusRef);
+  flyoutFocusPropRef.current = flyoutFocusRef;
+  // Свежие записи для диспетчера украшений и reveal из панели.
+  const recordsRef = useRef(snapshot.records);
+  recordsRef.current = snapshot.records;
 
   const setDocRef = useRef<((value: { chapterId: string; text: string }) => void) | null>(null);
   const setCommandErrorRef = useRef<((value: string | null) => void) | null>(null);
@@ -213,7 +258,15 @@ export function ReviewEditor({ snapshot, onCommand, onSelectionChange, onScrollC
       }
       queue.unblock();
       setCommandError(null);
-      if (queue.inFlight === 0 && snapshot.saveState !== 'external') {
+    }
+    // Авторитетный текст main расходится с локальным документом после команд,
+    // меняющих производный текст на main (применение, отклонение/снятие
+    // конфликта записи): при пустой очереди документ заменяется снимком.
+    // Расхождение из-за непроведённого ввода невозможно — пока ввод не ack'нут,
+    // очередь не пуста, а ack'нутый ввод уже есть в snapshot.text.
+    if (!queue.blocked && queue.inFlight === 0 && snapshot.saveState !== 'external') {
+      const local = handleRef.current?.getContent();
+      if (local !== undefined && local !== snapshot.text) {
         const anchor = Math.min(handleRef.current?.getSelection().anchor ?? 0, snapshot.text.length);
         requestReplace('sync', snapshot.chapterId, snapshot.text, anchor);
       }
@@ -264,18 +317,57 @@ export function ReviewEditor({ snapshot, onCommand, onSelectionChange, onScrollC
       { key: 'Mod-Shift-z', run: sessionRedo },
       { key: 'Mod-Shift-Z', run: sessionRedo },
       { key: 'Mod-y', run: sessionRedo },
+      {
+        // Клавиатурный путь к flyout: при непустом выделении Tab уводит фокус
+        // в панель выбора типа (копирование/навигация не затронуты); без
+        // flyout поведение Tab не меняется.
+        key: 'Tab',
+        run: () => {
+          const selection = handleRef.current?.getSelection();
+          const focusFlyout = flyoutFocusPropRef.current?.current ?? null;
+          if (focusFlyout === null || selection === undefined || selection.from >= selection.to) return false;
+          focusFlyout();
+          return true;
+        },
+      },
     ];
   }
   const extensionsRef = useRef<Extension[] | null>(null);
   if (extensionsRef.current === null) {
-    extensionsRef.current = [
-      Prec.highest(keymap.of(sessionKeymapRef.current)),
-      observerRef.current,
-    ];
+    extensionsRef.current = [Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers()];
   }
 
-  const handleSelection = useCallback((selection: { anchor: number }): void => {
+  // Выделение → окно flyout: непустой диапазон даёт координаты конца выделения,
+  // схлопнутое выделение закрывает flyout. Фокус не переносится.
+  const handleSelection = useCallback((selection: { anchor: number; head: number; from: number; to: number }): void => {
     onSelectionRef.current?.(selection.anchor);
+    if (selection.from < selection.to) {
+      const view = handleRef.current?.view ?? null;
+      const pos = Math.min(selection.to, view?.state.doc.length ?? selection.to);
+      const coords = view !== null ? view.coordsAtPos(pos) : null;
+      if (coords !== null) {
+        onSelectionWindowRef.current?.({
+          from: selection.from,
+          to: selection.to,
+          x: coords.left,
+          y: coords.top,
+          bottom: coords.bottom,
+        });
+        return;
+      }
+    }
+    onSelectionWindowRef.current?.(null);
+  }, []);
+
+  // Клик по маркеру правки/сигнала или подстроке комментария (делегирование).
+  const handleHostClick = useCallback((event: React.MouseEvent<HTMLDivElement>): void => {
+    const target = event.target as HTMLElement | null;
+    const marker = target?.closest?.('[data-record-id]') ?? null;
+    if (marker === null) return;
+    const recordId = marker.getAttribute('data-record-id');
+    if (recordId === null) return;
+    const rect = marker.getBoundingClientRect();
+    onRecordClickRef.current?.(recordId, { x: rect.left, y: rect.top, bottom: rect.bottom });
   }, []);
 
   // Реальный scrollTop скроллера редактора (fraction Galley пересчитывать
@@ -285,8 +377,58 @@ export function ReviewEditor({ snapshot, onCommand, onSelectionChange, onScrollC
     if (scroller) onScrollRef.current?.(scroller.scrollTop);
   }, []);
 
+  // Императивный API для панели и попапов: объект стабилен, ссылки — через ref.
+  const apiRef = useRef<ReviewEditorApi | null>(null);
+  if (apiRef.current === null) {
+    apiRef.current = {
+      enqueue: (command) => enqueueRef.current(command),
+      focus: () => handleRef.current?.focus(),
+      reveal: (recordId) => {
+        const record = recordsRef.current.find((candidate) => candidate.id === recordId);
+        const view = handleRef.current?.view ?? null;
+        if (record === undefined || record.from === null || record.to === null || view === null) return false;
+        const from = Math.max(0, Math.min(record.from, view.state.doc.length));
+        const to = Math.max(0, Math.min(record.to, view.state.doc.length));
+        view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
+        return true;
+      },
+      coordsAt: (pos) => {
+        const view = handleRef.current?.view ?? null;
+        if (view === null) return null;
+        const coords = view.coordsAtPos(Math.max(0, Math.min(pos, view.state.doc.length)));
+        return coords === null ? null : { top: coords.top, left: coords.left, bottom: coords.bottom };
+      },
+    };
+  }
+  useEffect(() => {
+    onApiRef.current?.(apiRef.current);
+    return () => {
+      onApiRef.current?.(null);
+    };
+  }, []);
+
+  // Украшения маркеров перестраиваются по записям снапшота; пока команды в
+  // полёте, существующий набор мапится через изменения документа (в поле).
+  useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
+    const push = (): void => {
+      if (cancelled) return;
+      const view = handleRef.current?.view ?? null;
+      if (view === null) {
+        if (++attempts < 120) requestAnimationFrame(push);
+        return;
+      }
+      if (!queue.blocked && queue.inFlight === 0) dispatchRecordMarkers(view, recordsRef.current);
+    };
+    push();
+    return () => {
+      cancelled = true;
+    };
+  }, [snapshot.records, queue]);
+
   return (
-    <div className="review-editor" ref={hostRef}>
+    <div className="review-editor" ref={hostRef} onClick={handleHostClick}>
       {commandError !== null && (
         <p className="app__error" role="alert">
           {commandError}
