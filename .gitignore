@@ -8,3 +8,11 @@ dist/
 .pi/
 .remember/
 .cache/
+
+# Electron Forge build output
+out/
+.vite/
+
+# Playwright artifacts
+playwright-report/
+test-results/

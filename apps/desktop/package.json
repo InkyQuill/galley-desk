@@ -1,0 +1,38 @@
+{
+  "name": "@galley-desk/desktop",
+  "productName": "Galley Desk",
+  "version": "0.1.0",
+  "description": "Настольная оболочка Galley Desk для рецензирования Markdown-книг",
+  "main": ".vite/build/main.js",
+  "private": true,
+  "license": "MIT",
+  "author": {
+    "name": "Inky Quill",
+    "email": "me@inkyquill.net"
+  },
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
+    "@electron-forge/maker-deb": "7.11.2",
+    "@electron-forge/maker-rpm": "7.11.2",
+    "@electron-forge/maker-squirrel": "7.11.2",
+    "@electron-forge/maker-zip": "7.11.2",
+    "@electron-forge/plugin-auto-unpack-natives": "7.11.2",
+    "@electron-forge/plugin-fuses": "7.11.2",
+    "@electron-forge/plugin-vite": "7.11.2",
+    "@electron-forge/shared-types": "7.11.2",
+    "@electron/fuses": "1.8.0",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "electron": "44.4.0",
+    "vite": "5.4.21"
+  }
+}
