@@ -107,7 +107,10 @@ async function readSidecar(sidecarPath: string): Promise<Review | null> {
 const SOURCE_TEXT = 'кот спит.\n';
 const CHAPTER_PATH = 'Глава.md';
 const SIDECAR_PATH = 'Глава.review.json';
+const CHAPTER2_PATH = 'Вторая.md';
+const SIDECAR2_PATH = 'Вторая.review.json';
 const CHAPTER_ID = randomUUID();
+const CHAPTER2_ID = randomUUID();
 const EDIT_ID = randomUUID();
 const SIGNAL_ID = randomUUID();
 
@@ -189,6 +192,24 @@ async function writeBook(bookRoot: string, review: Review): Promise<void> {
   await writeFile(path.join(bookRoot, SIDECAR_PATH), encodeReview(review), 'utf8');
 }
 
+/** Книга из двух глав; у главы A предзаполнена заметка в sidecar. */
+async function writeTwoChapterBook(bookRoot: string, review: Review, noteA: string): Promise<void> {
+  const manifest = {
+    schema_version: 1,
+    book_id: randomUUID(),
+    title: 'Тестовая книга',
+    chapters: [
+      { id: review.chapter_id, path: CHAPTER_PATH, title: 'Глава' },
+      { id: CHAPTER2_ID, path: CHAPTER2_PATH, title: 'Вторая' },
+    ],
+    ignored_files: [],
+  };
+  await writeFile(path.join(bookRoot, '.pocket-editor.json'), JSON.stringify(manifest, null, 2));
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), SOURCE_TEXT, 'utf8');
+  await writeFile(path.join(bookRoot, CHAPTER2_PATH), SOURCE_TEXT, 'utf8');
+  await writeFile(path.join(bookRoot, SIDECAR_PATH), encodeReview({ ...review, chapter_note: noteA }), 'utf8');
+}
+
 /** Выделяет length символов с начала документа клавиатурой. */
 async function selectFromStart(page: Page, skip: number, length: number): Promise<void> {
   // Клик у левого верхнего угла контента: не задевает виджеты-маркеры.
@@ -250,6 +271,41 @@ test('заметка главы сохраняется в sidecar; при оши
     await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
     await expect(page.getByRole('alert')).toBeVisible();
     await expect(note).toHaveValue('Глава требует вычитки и правки');
+  } finally {
+    await session.app.close();
+  }
+});
+
+test('черновик заметки главы не переезжает в другую главу', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-notekey-');
+  await writeTwoChapterBook(bookRoot, emptyReview(), 'Заметка первой главы');
+  const session = await launch(bookRoot);
+  try {
+    const page = session.page;
+    await openOwnBook(session);
+    const sidecarAPath = path.join(bookRoot, SIDECAR_PATH);
+    const sidecarBPath = path.join(bookRoot, SIDECAR2_PATH);
+    const sidecarABefore = await readFile(sidecarAPath, 'utf8');
+
+    // Попап главы A: заметка видна, черновик правится, но не сохраняется.
+    await page.getByRole('button', { name: 'Заметка главы' }).click();
+    const noteA = page.getByRole('textbox', { name: 'Текст заметки' });
+    await expect(noteA).toHaveValue('Заметка первой главы');
+    await noteA.fill('Черновик главы A');
+
+    // Смена главы закрывает попап: у главы B своя (пустая) заметка.
+    await page.getByRole('button', { name: 'Вторая', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Заметка главы' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Заметка главы' }).click();
+    const noteB = page.getByRole('textbox', { name: 'Текст заметки' });
+    await expect(noteB).toHaveValue('');
+    await noteB.fill('Заметка второй главы');
+    await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
+
+    const sidecarB = await waitSidecar(page, sidecarBPath, (review) => review.chapter_note !== '');
+    expect(sidecarB.chapter_note).toBe('Заметка второй главы');
+    // Sidecar главы A не перезаписан: черновик A не доехал до главы B.
+    expect(await readFile(sidecarAPath, 'utf8')).toBe(sidecarABefore);
   } finally {
     await session.app.close();
   }

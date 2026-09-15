@@ -494,7 +494,9 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
             alignContent: 'start',
           }}
         >
-          <ChapterNote value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />
+          {/* Ключ по главе: заметка, черновик и попап принадлежат главе —
+              смена главы не переносит черновик в другую главу. */}
+          <ChapterNote key={chapterId ?? 'none'} value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />
           <ReviewList
             records={snapshot?.records ?? []}
             cardRecordId={cardId}
