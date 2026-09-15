@@ -10,6 +10,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@galley-desk/pocket-format": "*"
+    "@galley-desk/pocket-format": "*",
+    "@galley-desk/review-engine": "*"
   }
 }

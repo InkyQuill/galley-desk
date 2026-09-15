@@ -31,3 +31,6 @@ export {
 } from './book';
 export { SaveQueue } from './save-queue';
 export { UnsafePathError } from './files';
+export { ApplyHistory } from './session-history';
+export { ChapterSession, exportDraft, readDrafts } from './session';
+export type { ChapterSessionState, Draft } from './session';

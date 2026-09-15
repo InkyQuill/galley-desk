@@ -22,6 +22,9 @@
   "references": [
     {
       "path": "../pocket-format"
+    },
+    {
+      "path": "../review-engine"
     }
   ]
 }
