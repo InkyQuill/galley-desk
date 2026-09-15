@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://inkyquill.net/pocket-editor/schemas/manifest-v2.schema.json",
+  "title": "Pocket Editor book manifest v2 (tolerant read)",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "book_id"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "book_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "title": {
+      "type": "string"
+    },
+    "chapters": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/chapter"
+      }
+    },
+    "ignored_files": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/direct_child_path"
+      }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "direct_child_path": {
+      "type": "string",
+      "pattern": "^(?!\\.{1,2}$)[^/\\\\\\u0000]+$"
+    },
+    "chapter": {
+      "type": "object",
+      "required": [
+        "id",
+        "path"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "path": {
+          "$ref": "#/$defs/direct_child_path"
+        }
+      }
+    }
+  }
+}

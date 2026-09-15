@@ -42,17 +42,18 @@ const MANIFEST_NAME = '.pocket-editor.json';
 
 /**
  * Thrown by {@link openBook} when `.pocket-editor.json` exists but cannot be
- * decoded as a v1 manifest (for example `schema_version: 2` written by a
- * newer Pocket Editor). This is a read-only identity error: the manifest file
- * is never overwritten, upgraded or replaced. Callers should surface the
- * message and `error.cause` (the underlying decoder error) to the user.
+ * decoded as a supported manifest — v1, or v2 read tolerantly (a structurally
+ * broken file, for example a bad UUID, or an unknown `schema_version`). This
+ * is a read-only identity error: the manifest file is never overwritten,
+ * upgraded or replaced. Callers should surface the message and `error.cause`
+ * (the underlying decoder error) to the user.
  */
 export class ManifestError extends Error {
   readonly manifestPath: string;
 
   constructor(manifestPath: string, cause: unknown) {
     super(
-      `Book manifest ${manifestPath} cannot be decoded as a v1 manifest; ` +
+      `Book manifest ${manifestPath} cannot be decoded as a supported manifest; ` +
         'the book stays read-only and the manifest file was not modified. ' +
         `Reason: ${cause instanceof Error ? cause.message : String(cause)}`,
       { cause },

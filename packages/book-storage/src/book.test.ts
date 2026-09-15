@@ -103,17 +103,17 @@ test('opening an existing book reads the manifest and never rewrites it', async 
   }
 });
 
-test('a manifest from a newer schema version opens as a read-only identity error and is never upgraded', async () => {
+test('a manifest with an unknown schema version opens as a read-only identity error and is never upgraded', async () => {
   const root = await tempDir('galley-book-');
   try {
     await writeFile(path.join(root, '01.md'), SOURCE_1, 'utf8');
     await writeFile(path.join(root, '01.review.json'), reviewJson(ID1, '01.md'), 'utf8');
     const manifestAbs = path.join(root, '.pocket-editor.json');
     const newer = JSON.stringify({
-      schema_version: 2,
+      schema_version: 3,
       book_id: BOOK_ID,
       title: 'Written by a newer Pocket Editor',
-      chapters: [{ id: ID1, path: '01.md', title: 'Alpha' }],
+      chapters: [{ id: ID1, path: '01.md' }],
       ignored_files: [],
     });
     await writeFile(manifestAbs, newer, 'utf8');
@@ -125,6 +125,98 @@ test('a manifest from a newer schema version opens as a read-only identity error
     expect(manifestError.message).toMatch(/read-only/);
     expect(await readFile(manifestAbs, 'utf8')).toBe(newer);
     expect(await readFile(path.join(root, '01.review.json'), 'utf8')).toBe(reviewJson(ID1, '01.md'));
+  } finally {
+    await cleanup(root);
+  }
+});
+
+/** A synthetic v2 manifest as the pinned Pocket Editor baseline writes it (chapters without titles). */
+async function seedV2Book(): Promise<string> {
+  const root = await tempDir('galley-book-');
+  await writeFile(path.join(root, '01.md'), SOURCE_1, 'utf8');
+  await writeFile(path.join(root, '02.md'), '# Beta\n', 'utf8');
+  await writeFile(path.join(root, '01.review.json'), reviewJson(ID1, '01.md'), 'utf8');
+  await writeFile(path.join(root, '.pocket-editor.json'), JSON.stringify({
+    schema_version: 2,
+    book_id: BOOK_ID,
+    title: 'Written by Pocket Editor',
+    chapters: [
+      { id: ID2, path: '02.md' },
+      { id: ID1, path: '01.md' },
+    ],
+    ignored_files: [],
+  }), 'utf8');
+  return root;
+}
+
+test('a v2 manifest written by Pocket Editor opens tolerantly with chapters in wire order', async () => {
+  const root = await seedV2Book();
+  const appData = await tempDir('galley-appdata-');
+  try {
+    const book = await openBook(root);
+    expect(book.id).toBe(BOOK_ID);
+    expect(book.manifest.chapters.map((chapter) => [chapter.id, chapter.path, chapter.title])).toEqual([
+      [ID2, '02.md', ''],
+      [ID1, '01.md', ''],
+    ]);
+    const pair = await readPair(book, ID1);
+    expect(pair.pair.review).toBe(reviewJson(ID1, '01.md'));
+    expect(Buffer.from(pair.pair.source).equals(Buffer.from(SOURCE_1, 'utf8'))).toBe(true);
+  } finally {
+    await cleanup(root, appData);
+  }
+});
+
+test('opening a book with a v2 manifest never rewrites the manifest or an existing sidecar', async () => {
+  const root = await seedV2Book();
+  try {
+    const manifestAbs = path.join(root, '.pocket-editor.json');
+    const sidecarAbs = path.join(root, '01.review.json');
+    const manifestBefore = await readFile(manifestAbs, 'utf8');
+    const sidecarBefore = await readFile(sidecarAbs, 'utf8');
+    const mtimeBefore = (await lstat(manifestAbs)).mtimeMs;
+
+    await openBook(root);
+    await openBook(root);
+
+    expect(await readFile(manifestAbs, 'utf8')).toBe(manifestBefore);
+    expect((await lstat(manifestAbs)).mtimeMs).toBe(mtimeBefore);
+    expect(await readFile(sidecarAbs, 'utf8')).toBe(sidecarBefore);
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test('a structurally invalid v2 manifest is a read-only ManifestError and is never rewritten', async () => {
+  const root = await seedV2Book();
+  try {
+    const manifestAbs = path.join(root, '.pocket-editor.json');
+    await writeFile(manifestAbs, JSON.stringify({
+      schema_version: 2,
+      book_id: 'not-a-uuid',
+      title: 'Broken',
+      chapters: [{ id: ID1, path: '01.md' }],
+      ignored_files: [],
+    }), 'utf8');
+    const before = await readFile(manifestAbs, 'utf8');
+    const error = await openBook(root).then(() => null, (thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(ManifestError);
+    expect((error as ManifestError).cause).toBeInstanceOf(Error);
+    expect(await readFile(manifestAbs, 'utf8')).toBe(before);
+
+    await writeFile(manifestAbs, JSON.stringify({
+      schema_version: 2,
+      book_id: BOOK_ID,
+      title: 'Broken',
+      chapters: [
+        { id: ID1, path: '01.md' },
+        { id: ID1, path: '02.md' },
+      ],
+      ignored_files: [],
+    }), 'utf8');
+    const errorDup = await openBook(root).then(() => null, (thrown: unknown) => thrown);
+    expect(errorDup).toBeInstanceOf(ManifestError);
+    expect((errorDup as ManifestError).message).toMatch(/Chapter IDs must be unique/);
   } finally {
     await cleanup(root);
   }

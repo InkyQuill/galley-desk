@@ -7,9 +7,10 @@
  *
  * Error contract:
  * - {@linkcode ManifestError} — thrown by `openBook` when `.pocket-editor.json`
- *   exists but fails `decodeManifest` (e.g. `schema_version: 2` from a newer
- *   Pocket Editor). It is a read-only identity error: the manifest is never
- *   overwritten or upgraded; carry `error.cause` to the user.
+ *   exists but fails `decodeManifest` (a structurally broken file or an
+ *   unknown `schema_version`; v1 and v2 manifests are read, v2 tolerantly).
+ *   It is a read-only identity error: the manifest is never overwritten or
+ *   upgraded; carry `error.cause` to the user.
  * - {@linkcode WriteConflictError} — `writePair` re-read the pair and it no
  *   longer matches the expected revision; nothing was written.
  * - {@linkcode UnknownChapterError} / {@linkcode UnsafePathError} — the

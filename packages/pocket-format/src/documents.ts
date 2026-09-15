@@ -104,8 +104,17 @@ function compileManifestSchema(): ValidateFunction {
   return ajv.compile(schema);
 }
 
+function compileManifestV2Schema(): ValidateFunction {
+  const schema = JSON.parse(
+    readFileSync(new URL('../schemas/manifest-v2.schema.json', import.meta.url), 'utf8'),
+  );
+  const ajv = new Ajv2020();
+  return ajv.compile(schema);
+}
+
 const validateReviewSchema = compileReviewSchema();
 const validateManifestSchema = compileManifestSchema();
+const validateManifestV2Schema = compileManifestV2Schema();
 
 type ReviewWire = {
   schema_version?: number;
@@ -124,6 +133,15 @@ type ManifestWire = {
   ignored_files?: string[];
 };
 
+/** The Pocket Editor v2 wire (ManifestWireV2): chapters carry no title. */
+type ManifestV2Wire = {
+  schema_version?: number;
+  book_id: string;
+  title?: string;
+  chapters?: Array<{ id: string; path: string }>;
+  ignored_files?: string[];
+};
+
 function parseJson(json: string, what: string): unknown {
   try {
     return JSON.parse(json) as unknown;
@@ -132,8 +150,8 @@ function parseJson(json: string, what: string): unknown {
   }
 }
 
-function schemaErrors(what: string, validate: ValidateFunction): Error {
-  return new Error(`${what} does not match the v1 schema: ${ajvErrorsText(validate.errors)}`);
+function schemaErrors(what: string, version: string, validate: ValidateFunction): Error {
+  return new Error(`${what} does not match the ${version} schema: ${ajvErrorsText(validate.errors)}`);
 }
 
 function ajvErrorsText(errors: ValidateFunction['errors']): string {
@@ -143,7 +161,7 @@ function ajvErrorsText(errors: ValidateFunction['errors']): string {
 
 export function decodeReview(json: string, chapterId: string, path: string): Review {
   const parsed = parseJson(json, 'Review sidecar') as ReviewWire;
-  if (!validateReviewSchema(parsed)) throw schemaErrors('Review sidecar', validateReviewSchema);
+  if (!validateReviewSchema(parsed)) throw schemaErrors('Review sidecar', 'v1', validateReviewSchema);
   const review: Review = {
     schema_version: (parsed.schema_version ?? 1) as 1,
     chapter_id: parsed.chapter_id,
@@ -166,13 +184,17 @@ export function encodeReview(review: Review): string {
   // Kotlin encodes with validate() first, so relational messages win over
   // schema messages; the schema check remains as a structural backstop.
   validateReview(review, { requireSafeOffsets: true });
-  if (!validateReviewSchema(review)) throw schemaErrors('Review', validateReviewSchema);
+  if (!validateReviewSchema(review)) throw schemaErrors('Review', 'v1', validateReviewSchema);
   return serializeReview(review);
 }
 
 export function decodeManifest(json: string): Manifest {
   const parsed = parseJson(json, 'Manifest') as ManifestWire;
-  if (!validateManifestSchema(parsed)) throw schemaErrors('Manifest', validateManifestSchema);
+  // v2 manifests written by the current Pocket Editor are read tolerantly and
+  // projected to the v1-shaped Manifest; an existing manifest file is never
+  // rewritten, so no version churn is possible through this path.
+  if (parsed.schema_version === 2) return decodeManifestV2(parsed);
+  if (!validateManifestSchema(parsed)) throw schemaErrors('Manifest', 'v1', validateManifestSchema);
   if (parsed.schema_version === undefined) {
     throw new Error('Unsupported manifest schema version');
   }
@@ -187,9 +209,29 @@ export function decodeManifest(json: string): Manifest {
   return manifest;
 }
 
+/**
+ * Tolerant read of the v2 wire: v2 chapters carry only id and path, so they
+ * are projected with the empty-string title default and `schema_version` stays
+ * the value a manifest created by Galley Desk would have (1). Unknown v2
+ * fields are ignored; the structural checks are the same class as v1 (UUIDs,
+ * direct-child paths, relational uniqueness).
+ */
+function decodeManifestV2(parsed: ManifestV2Wire): Manifest {
+  if (!validateManifestV2Schema(parsed)) throw schemaErrors('Manifest', 'v2', validateManifestV2Schema);
+  const manifest: Manifest = {
+    schema_version: 1,
+    book_id: parsed.book_id,
+    title: parsed.title ?? '',
+    chapters: (parsed.chapters ?? []).map((chapter) => ({ id: chapter.id, path: chapter.path, title: '' })),
+    ignored_files: parsed.ignored_files ?? [],
+  };
+  validateManifest(manifest);
+  return manifest;
+}
+
 export function encodeManifest(manifest: Manifest): string {
   validateManifest(manifest);
-  if (!validateManifestSchema(manifest)) throw schemaErrors('Manifest', validateManifestSchema);
+  if (!validateManifestSchema(manifest)) throw schemaErrors('Manifest', 'v1', validateManifestSchema);
   return serializeManifest(manifest);
 }
 

@@ -330,8 +330,8 @@ test('round trips a manifest without reordering chapters', () => {
 });
 
 test('rejects unsupported or missing manifest schema versions', () => {
-  const v2 = JSON.stringify({ ...MANIFEST, schema_version: 2 });
-  expect(() => decodeManifest(v2)).toThrow();
+  const v3 = JSON.stringify({ ...MANIFEST, schema_version: 3, chapters: withoutTitles(MANIFEST.chapters) });
+  expect(() => decodeManifest(v3)).toThrow();
   const absent = JSON.stringify({
     book_id: MANIFEST.book_id,
     title: MANIFEST.title,
@@ -339,6 +339,58 @@ test('rejects unsupported or missing manifest schema versions', () => {
     ignored_files: MANIFEST.ignored_files,
   });
   expect(() => decodeManifest(absent)).toThrow('Unsupported manifest schema version');
+});
+
+function withoutTitles(chapters: Manifest['chapters']): Array<{ id: string; path: string }> {
+  return chapters.map(({ id, path }) => ({ id, path }));
+}
+
+const V2_WIRE = {
+  schema_version: 2,
+  book_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  title: 'Книга',
+  chapters: withoutTitles(MANIFEST.chapters),
+  ignored_files: ['черновик.md'],
+};
+
+test('reads a v2 manifest tolerantly in wire order with empty chapter titles', () => {
+  expect(decodeManifest(JSON.stringify(V2_WIRE))).toEqual({
+    schema_version: 1,
+    book_id: V2_WIRE.book_id,
+    title: 'Книга',
+    chapters: MANIFEST.chapters.map((chapter) => ({ ...chapter, title: '' })),
+    ignored_files: ['черновик.md'],
+  });
+});
+
+test('a v2 manifest ignores unknown fields and fills absent defaults', () => {
+  const json = JSON.stringify({
+    ...V2_WIRE,
+    editor_extra: { generated_by: 'pocket-editor' },
+    title: undefined,
+    chapters: [{ ...V2_WIRE.chapters[0], origin: 'import' }, V2_WIRE.chapters[1]!],
+    ignored_files: undefined,
+  });
+  expect(JSON.parse(json)).not.toHaveProperty('title');
+  expect(decodeManifest(json)).toEqual({
+    schema_version: 1,
+    book_id: V2_WIRE.book_id,
+    title: '',
+    chapters: MANIFEST.chapters.map((chapter) => ({ ...chapter, title: '' })),
+    ignored_files: [],
+  });
+});
+
+test('rejects a structurally invalid v2 manifest', () => {
+  const badUuid = JSON.stringify({ ...V2_WIRE, book_id: 'not-a-uuid' });
+  expect(() => decodeManifest(badUuid)).toThrow();
+  const badPath = JSON.stringify({ ...V2_WIRE, chapters: [{ id: V2_WIRE.chapters[0]!.id, path: 'sub/01.md' }] });
+  expect(() => decodeManifest(badPath)).toThrow();
+  const dupIds = JSON.stringify({
+    ...V2_WIRE,
+    chapters: [V2_WIRE.chapters[0], { ...V2_WIRE.chapters[1]!, id: V2_WIRE.chapters[0]!.id }],
+  });
+  expect(() => decodeManifest(dupIds)).toThrow('Chapter IDs must be unique');
 });
 
 test('rejects duplicate chapter ids and paths', () => {
