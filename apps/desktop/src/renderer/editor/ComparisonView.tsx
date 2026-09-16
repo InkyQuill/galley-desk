@@ -6,8 +6,9 @@
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import type { RecordView, Snapshot } from '../../shared/api';
-import { comparisonTint, currentTheme, deletionColor, signalColor } from './markers';
+import { comparisonTint, useMarkerTheme, deletionColor, signalColor } from './markers';
 import type { SignalTypeName } from './markers';
+import type { ComparisonSegment } from '../search/search';
 
 type SigMark = { id: string; type: SignalTypeName };
 
@@ -20,18 +21,14 @@ type Piece =
   | { kind: 'edit'; record: RecordView; derivedFrom: number; derivedTo: number; displayStart: number };
 
 /**
- * Строит узлы сравнения из source-сегментов и активных правок: неизменённые
- * сегменты производного текста между правками и пара old/new на каждую правку.
- * Диапазоны сигналов заданы в производных координатах и переводятся в
- * display-координаты здесь же (введённая правкой часть сдвинута на длину old).
+ * Явные координаты кусков сравнения: производный текст между активными
+ * правками и заменяющие куски. Потребители (поиск) переводят производные
+ * координаты в display через comparisonSegments, геометрия живёт только здесь.
  */
-export function buildComparisonNodes(snapshot: Snapshot): ComparisonNode[] {
+export function buildComparisonPieces(snapshot: Snapshot): Piece[] {
   const edits = snapshot.records
     .filter((record) => record.kind === 'edit' && record.status === 'active' && record.from !== null && record.to !== null)
     .sort((left, right) => (left.from as number) - (right.from as number));
-  const signals = snapshot.records.filter(
-    (record) => record.kind === 'signal' && record.status === 'active' && record.from !== null && record.to !== null,
-  );
 
   const pieces: Piece[] = [];
   let derived = 0;
@@ -51,6 +48,47 @@ export function buildComparisonNodes(snapshot: Snapshot): ComparisonNode[] {
   if (derived < snapshot.text.length) {
     pieces.push({ kind: 'text', text: snapshot.text.slice(derived), derivedFrom: derived, displayStart: display });
   }
+  return pieces;
+}
+
+/**
+ * Сегменты для поиска: та же геометрия в форме search.ComparisonSegment —
+ * введённая часть правки отображается со сдвигом на длину before.
+ */
+export function comparisonSegments(snapshot: Snapshot): ComparisonSegment[] {
+  return buildComparisonPieces(snapshot).map((piece) =>
+    piece.kind === 'text'
+      ? {
+          kind: 'text' as const,
+          derivedFrom: piece.derivedFrom,
+          derivedTo: piece.derivedFrom + piece.text.length,
+          displayStart: piece.displayStart,
+        }
+      : {
+          kind: 'edit' as const,
+          derivedFrom: piece.derivedFrom,
+          derivedTo: piece.derivedTo,
+          displayStart: piece.displayStart,
+          beforeLength: piece.record.before.length,
+        },
+  );
+}
+
+/**
+ * Строит узлы сравнения из source-сегментов и активных правок: неизменённые
+ * сегменты производного текста между правками и пара old/new на каждую правку.
+ * Диапазоны сигналов заданы в производных координатах и переводятся в
+ * display-координаты здесь же (введённая правкой часть сдвинута на длину old).
+ */
+export function buildComparisonNodes(snapshot: Snapshot): ComparisonNode[] {
+  const edits = snapshot.records
+    .filter((record) => record.kind === 'edit' && record.status === 'active' && record.from !== null && record.to !== null)
+    .sort((left, right) => (left.from as number) - (right.from as number));
+  const signals = snapshot.records.filter(
+    (record) => record.kind === 'signal' && record.status === 'active' && record.from !== null && record.to !== null,
+  );
+
+  const pieces: Piece[] = buildComparisonPieces(snapshot);
 
   // Подложки сигналов внутри кусков и позиции молний (конец диапазона);
   // конец сигнала хранится как смещение внутри своего куска (display).
@@ -147,7 +185,7 @@ function RecordMarkerButton({
   record: RecordView;
   onRecordClick: Props['onRecordClick'];
 }) {
-  const theme = currentTheme();
+  const theme = useMarkerTheme();
   const isEdit = record.kind === 'edit';
   const deletion = isEdit && record.after === '';
   const color = isEdit ? (deletion ? deletionColor(theme) : undefined) : signalColor(record.signalType ?? 'note', theme);
@@ -180,7 +218,7 @@ function RecordMarkerButton({
 
 export function ComparisonView({ snapshot, onRecordClick }: Props) {
   const nodes = useMemo(() => buildComparisonNodes(snapshot), [snapshot]);
-  const theme = currentTheme();
+  const theme = useMarkerTheme();
   const records = useMemo(() => new Map(snapshot.records.map((record) => [record.id, record])), [snapshot]);
   const content: ReactNode[] = [];
   nodes.forEach((node, index) => {

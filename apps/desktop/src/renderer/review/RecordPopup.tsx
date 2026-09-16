@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react';
 import type { Command, RecordView } from '../../shared/api';
-import { SIGNAL_TYPES, currentTheme, signalColor } from '../editor/markers';
+import { SIGNAL_TYPES, useMarkerTheme, signalColor } from '../editor/markers';
 import type { SignalTypeName } from '../editor/markers';
 
 export type SignalDraft = { from: number; to: number; signalType: SignalTypeName };
@@ -55,7 +55,7 @@ function floatingCard(at: NonNullable<PopupPosition>): CSSProperties {
 const rowStyle: CSSProperties = { display: 'flex', gap: '0.5rem', flexWrap: 'wrap' };
 
 export function RecordPopup({ record = null, draft = null, at, onCommand, onClose }: Props) {
-  const theme = currentTheme();
+  const theme = useMarkerTheme();
   const [comment, setComment] = useState(draft !== null ? '' : record?.comment ?? '');
   const [signalType, setSignalType] = useState<SignalTypeName>(
     draft?.signalType ?? record?.signalType ?? 'note',

@@ -1,5 +1,4 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
-import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
@@ -7,16 +6,21 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
+// Изготовители дистрибутивов: ZIP для macOS (без подписи — только для CI
+// артефактов) и Linux (архив), deb/rpm как дистрибутивы Linux. Squirrel
+// (Windows) не входит: приложение адресовано Linux и macOS. Подпись и
+// нотаризация macOS не настраиваются — учётных данных нет (см.
+// docs/runbooks/release.md); собранное приложение проверяется как
+// executable из `out`, а не только dev-вход .vite.
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
-    new MakerZIP({}, ['darwin']),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    new MakerZIP({}, ['darwin', 'linux']),
+    new MakerDeb({}, ['linux']),
+    new MakerRpm({}, ['linux']),
   ],
   plugins: [
     new VitePlugin({

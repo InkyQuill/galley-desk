@@ -26,7 +26,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { Command, Snapshot } from '../../shared/api';
 import { bookResourceUrl, isLocalImagePath } from '../book/bookres';
-import { dispatchRecordMarkers, installMarkerStyles, recordMarkers } from './markers';
+import { dispatchRecordMarkers, installMarkerStyles, recordMarkers, subscribeScheme } from './markers';
 import { CommandQueue, TypingGroups, fromSnapshot, isHistoryCommand, toTextChanges } from './transaction-adapter';
 import '@inkyquill/galley-editor/style.css';
 
@@ -40,6 +40,8 @@ export type ReviewEditorApi = {
   focus: () => void;
   /** Скроллит к записи и выделяет её диапазон; false, если якоря нет. */
   reveal: (recordId: string) => boolean;
+  /** Выделяет произвольный диапазон (поиск) и скроллит к нему; false без view. */
+  revealRange: (from: number, to: number) => boolean;
   coordsAt: (pos: number) => { top: number; left: number; bottom: number } | null;
 };
 
@@ -392,6 +394,15 @@ export function ReviewEditor({
         view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
         return true;
       },
+      revealRange: (from, to) => {
+        const view = handleRef.current?.view ?? null;
+        if (view === null) return false;
+        const length = view.state.doc.length;
+        const anchor = Math.max(0, Math.min(from, length));
+        const head = Math.max(0, Math.min(to, length));
+        view.dispatch({ selection: { anchor, head }, effects: EditorView.scrollIntoView(head, { y: 'center' }) });
+        return true;
+      },
       coordsAt: (pos) => {
         const view = handleRef.current?.view ?? null;
         if (view === null) return null;
@@ -426,6 +437,18 @@ export function ReviewEditor({
       cancelled = true;
     };
   }, [snapshot.records, queue]);
+
+  // Смена схемы темы оформления (светлый/тёмный набор Pocket-палитры) требует
+  // перестроения украшений: подписка перекидывает свежие записи в поле.
+  useEffect(
+    () =>
+      subscribeScheme(() => {
+        const view = handleRef.current?.view ?? null;
+        if (view === null || queue.blocked || queue.inFlight > 0) return;
+        dispatchRecordMarkers(view, recordsRef.current);
+      }),
+    [queue],
+  );
 
   return (
     <div className="review-editor" ref={hostRef} onClick={handleHostClick}>

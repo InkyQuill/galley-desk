@@ -2,7 +2,7 @@
 // фокуса: копирование и клавиатурная навигация в редакторе остаются доступны;
 // в flyout можно попасть Tab-ом из редактора, пока выделение непусто.
 import { useEffect } from 'react';
-import { SIGNAL_TYPES, currentTheme, signalColor } from '../editor/markers';
+import { SIGNAL_TYPES, useMarkerTheme, signalColor } from '../editor/markers';
 import type { SignalTypeName } from '../editor/markers';
 
 type Props = {
@@ -16,7 +16,7 @@ type Props = {
 };
 
 export function SignalFlyout({ x, bottom, onPick, registerFocus }: Props) {
-  const theme = currentTheme();
+  const theme = useMarkerTheme();
   useEffect(() => {
     registerFocus(() => {
       document.querySelector<HTMLElement>('[data-review-flyout] button')?.focus();

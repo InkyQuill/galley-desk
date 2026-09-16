@@ -1,8 +1,9 @@
 // Appearance and reading-position persistence in the appData directory.
-// The appearance UI itself arrives with a later task; the DeskApi methods
-// already persist and validate the values.
+// The renderer's appearance UI persists through these DeskApi methods; main
+// validates every value before it reaches the file.
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { isThemeId } from '@inkyquill/galley-themes';
 import type { AppearanceSettings } from '../shared/api';
 
 const SETTINGS_FILE = 'settings.json';
@@ -30,8 +31,10 @@ export function validateAppearance(value: unknown): AppearanceSettings {
   const record = value as Partial<AppearanceSettings>;
   const themeId = record.themeId;
   const fontFamily = record.fontFamily;
-  if (typeof themeId !== 'string' || themeId.length === 0 || themeId.length > 200) {
-    throw new Error('Некорректный идентификатор темы');
+  // Известен либо «auto» (системная схема), либо идентификатор из каталога
+  // тем; настройки оформления живут в appData и никогда не попадают в книгу.
+  if (typeof themeId !== 'string' || (themeId !== 'auto' && !isThemeId(themeId))) {
+    throw new Error('Неизвестный идентификатор темы');
   }
   if (typeof fontFamily !== 'string' || fontFamily.length === 0 || fontFamily.length > 200) {
     throw new Error('Некорректное имя шрифта');

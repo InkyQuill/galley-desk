@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { MutableRefObject } from 'react';
-import type { BookView, Command, RecordView, Snapshot } from '../../shared/api';
-import { ComparisonView } from '../editor/ComparisonView';
+import type { CSSProperties, MutableRefObject } from 'react';
+import type { AppearanceSettings, BookView, Command, RecordView, Snapshot } from '../../shared/api';
+import { comparisonSegments, ComparisonView } from '../editor/ComparisonView';
 import type { ReviewEditorApi } from '../editor/ReviewEditor';
 import { ReviewEditor } from '../editor/ReviewEditor';
+import { setActiveScheme } from '../editor/markers';
 import type { SignalTypeName } from '../editor/markers';
+import { Appearance, contentWidthStyle, resolveTheme, windowContainerStyle } from '../appearance/Appearance';
+import { derivedRangeToDisplayRange } from '../search/search';
+import type { SearchRange } from '../search/search';
+import { ChapterSearch } from '../search/ChapterSearch';
 import { ChapterNote } from '../review/ChapterNote';
 import { RecordPopup } from '../review/RecordPopup';
 import type { PopupPosition } from '../review/RecordPopup';
@@ -38,6 +43,33 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : 'Операция не выполнена';
 }
 
+/**
+ * Выделяет диапазон [from, to) в конкатенированных текстовых узлах контейнера
+ * и прокручивает к нему (виды «Сравнение» и «Исходник» — обычный DOM).
+ */
+function revealTextOffset(container: HTMLElement, from: number, to: number): void {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let consumed = 0;
+  let start: { text: Text; offset: number } | null = null;
+  let end: { text: Text; offset: number } | null = null;
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    const text = node as Text;
+    const next = consumed + text.data.length;
+    if (start === null && from < next) start = { text, offset: from - consumed };
+    if (end === null && to <= next) end = { text, offset: to - consumed };
+    consumed = next;
+    if (start !== null && end !== null) break;
+  }
+  if (start === null || end === null) return;
+  const range = document.createRange();
+  range.setStart(start.text, Math.max(0, Math.min(start.offset, start.text.data.length)));
+  range.setEnd(end.text, Math.max(0, Math.min(end.offset, end.text.data.length)));
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  start.text.parentElement?.scrollIntoView({ block: 'center' });
+}
+
 function firstOpenEntryId(book: BookView): string | null {
   const open = book.entries.find((entry) => !entry.missing);
   return open?.id ?? book.entries[0]?.id ?? null;
@@ -60,6 +92,10 @@ type PopupState =
  * «Исходник» (немаркированный raw Markdown), справа — навигация по рецензии:
  * список записей и заметка главы. Попапы записи и flyout типа сигнала живут
  * здесь; панели принадлежат только список и карточки без якоря — без форм.
+ * Плюс: поиск по главе (область зависит от вида), фильтр оглавления
+ * (только отображение, манифест не меняется), режим Zen (панели и topbar
+ * скрыты, постоянная кнопка выхода; Escape сначала закрывает popup) и
+ * настройки оформления (тема/шрифт на контейнере окна, в книгах не живут).
  */
 export function BookWindow({ book, restore = null, onClose }: Props) {
   const cached = positionCache.get(book.bookId);
@@ -79,6 +115,7 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
   const [editorEpoch, setEditorEpoch] = useState(0);
   const textRef = useRef<HTMLDivElement | null>(null);
   const comparisonRef = useRef<HTMLDivElement | null>(null);
+  const sourceRef = useRef<HTMLPreElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const anchorRef = useRef<number>(validRestore?.anchor ?? cached?.anchor ?? 0);
   const pendingScroll = useRef<number | null>(validRestore?.scrollTop ?? cached?.scrollTop ?? null);
@@ -91,6 +128,16 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
   const [popup, setPopup] = useState<PopupState>(null);
   const [cardId, setCardId] = useState<string | null>(null);
   const [editorApi, setEditorApi] = useState<ReviewEditorApi | null>(null);
+  // Оформление: загрузка из appData при открытии окна; схема темы едет в
+  // маркеры (набор Pocket-палитры), переменные темы — на контейнер окна.
+  const [appearance, setAppearance] = useState<AppearanceSettings | null>(null);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [appearanceError, setAppearanceError] = useState<string | null>(null);
+  // Zen: панели и topbar скрыты; выход — постоянная кнопка или Escape
+  // (сначала закрываются popup/flyout/карточка, затем сам Zen).
+  const [zen, setZen] = useState(false);
+  // Фильтр оглавления по названиям глав: только отображение, манифест не меняется.
+  const [chapterFilter, setChapterFilter] = useState('');
   // Функция фокуса flyout для Tab-пути из редактора (регистрирует SignalFlyout).
   const flyoutFocusRef = useRef<(() => void) | null>(null);
   const registerFlyoutFocus = useCallback((focus: (() => void) | null) => {
@@ -104,6 +151,98 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
     // снимка само по себе не прячет сбой и не принимает внешнюю версию.
     setSnapshot(next);
   }, []);
+
+  // --- оформление ------------------------------------------------------------
+
+  useEffect(() => {
+    let cancelled = false;
+    window.desk
+      .appearance()
+      .then((value) => {
+        if (!cancelled) setAppearance(value);
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setAppearanceError(errorText(cause));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const appearanceTheme = appearance !== null ? resolveTheme(appearance.themeId) : null;
+
+  // Схема темы — маркерам (светлый/тёмный набор Pocket-палитры); реактивность
+  // обеспечивают подписки useMarkerTheme/subscribeScheme (markers.ts).
+  useEffect(() => {
+    setActiveScheme(appearanceTheme?.scheme ?? null);
+  }, [appearanceTheme]);
+
+  /** Пользовательское изменение: применяется локально и сохраняется в appData. */
+  const updateAppearance = useCallback((next: AppearanceSettings): void => {
+    setAppearance(next);
+    setAppearanceError(null);
+    void window.desk.setAppearance(next).catch((cause: unknown) => {
+      // main отверг значение (границы/неизвестная тема) — состояние показано.
+      setAppearanceError(errorText(cause));
+    });
+  }, []);
+
+  // --- Zen и порядок Escape ---------------------------------------------------
+
+  const overlayRef = useRef({ popup, flyout, cardId, appearanceOpen, zen });
+  overlayRef.current = { popup, flyout, cardId, appearanceOpen, zen };
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      const overlay = overlayRef.current;
+      // Порядок: сначала всплывающие слои (попап обрабатывает и свой
+      // onKeyDown — двойное закрытие идемпотентно), затем сам Zen.
+      if (overlay.popup !== null) {
+        setPopup(null);
+        return;
+      }
+      if (overlay.flyout !== null) {
+        setFlyout(null);
+        return;
+      }
+      if (overlay.cardId !== null) {
+        setCardId(null);
+        return;
+      }
+      if (overlay.appearanceOpen) {
+        setAppearanceOpen(false);
+        return;
+      }
+      if (overlay.zen) setZen(false);
+    };
+    // Capture-фаза: Galley может перехватывать Escape в bubbling-фазе,
+    // а гарантированный порядок «popup → Zen» обязан работать при любом фокусе.
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
+
+  // --- поиск -------------------------------------------------------------------
+
+  /** Переход к находке: механика зависит от вида (выделение + прокрутка). */
+  const revealSearchResult = useCallback(
+    (range: SearchRange): void => {
+      if (snapshot === null) return;
+      if (mode === 'text') {
+        editorApi?.revealRange(range.from, range.to);
+        return;
+      }
+      if (mode === 'source') {
+        if (sourceRef.current !== null) revealTextOffset(sourceRef.current, range.from, range.to);
+        return;
+      }
+      // Сравнение: производные координаты → display через явные координаты
+      // сегментов (правки показаны парами before/after, введённая часть сдвинута).
+      if (comparisonRef.current === null) return;
+      const display = derivedRangeToDisplayRange(comparisonSegments(snapshot), range.from, range.to);
+      if (display !== null) revealTextOffset(comparisonRef.current, display.from, display.to);
+    },
+    [mode, snapshot, editorApi],
+  );
 
   useEffect(() => {
     if (chapterId === null) {
@@ -309,6 +448,13 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
     setCardId(null);
   }, []);
 
+  /** Вход в Zen: панели рецензии скрыты, слои без якоря гасятся (попап живёт). */
+  const enterZen = useCallback((): void => {
+    setFlyout(null);
+    setCardId(null);
+    setZen(true);
+  }, []);
+
   const handleSelectionWindow = useCallback(
     (range: { from: number; to: number; x: number; y: number; bottom: number } | null) => {
       setFlyout(range);
@@ -338,6 +484,9 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
       setCardId(null);
       const anchored = record.from !== null && record.to !== null;
       if (anchored && mode === 'text' && editorApi !== null && editorApi.reveal(record.id)) {
+        // Программный переход к записи не оставляет flyout: reveal выделяет
+        // диапазон (selection window успевает сработать) — гасим его здесь.
+        setFlyout(null);
         const coords = editorApi.coordsAt(record.to as number);
         setPopup({ kind: 'record', id: record.id, at: coords === null ? null : { x: coords.left, y: coords.top, bottom: coords.bottom } });
         return;
@@ -361,54 +510,114 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
   const saveState = saveError !== null ? 'error' : snapshot?.saveState ?? null;
   const popupRecord =
     popup?.kind === 'record' ? snapshot?.records.find((record) => record.id === popup.id) ?? null : null;
+  // Фильтр оглавления: сравнение по названию без изменения manifest.
+  const normalizedFilter = chapterFilter.trim().toLowerCase();
+  const visibleEntries =
+    normalizedFilter === ''
+      ? book.entries
+      : book.entries.filter((entry) =>
+          (entry.title !== '' ? entry.title : entry.path).toLowerCase().includes(normalizedFilter),
+        );
+  const containerStyle: CSSProperties | undefined =
+    appearance !== null && appearanceTheme !== null ? windowContainerStyle(appearanceTheme, appearance) : undefined;
+  const widthStyle: CSSProperties | undefined = appearance !== null ? contentWidthStyle(appearance.lineWidth) : undefined;
 
   return (
-    <div className="book">
-      <header className="book__header">
-        <h1 className="book__title">{book.title}</h1>
-        {saveState !== null && (
-          <span className={`book__save-state book__save-state--${saveState}`}>{SAVE_STATE_LABELS[saveState]}</span>
-        )}
-        {saveError !== null && (
-          <button type="button" className="book__reread" onClick={rereadChapter}>
-            Перечитать главу
+    <div className={zen ? 'book book--zen' : 'book'} style={containerStyle}>
+      {!zen && (
+        <header className="book__header">
+          <h1 className="book__title">{book.title}</h1>
+          {saveState !== null && (
+            <span className={`book__save-state book__save-state--${saveState}`}>{SAVE_STATE_LABELS[saveState]}</span>
+          )}
+          {saveError !== null && (
+            <button type="button" className="book__reread" onClick={rereadChapter}>
+              Перечитать главу
+            </button>
+          )}
+          {snapshot !== null && snapshot.saveState === 'external' && (
+            <span className="book__external-actions">
+              <button type="button" onClick={() => void resolveExternal('open-external')}>
+                Открыть внешнюю версию
+              </button>
+              <button type="button" onClick={() => void resolveExternal('export-local')}>
+                Экспортировать черновик…
+              </button>
+            </span>
+          )}
+          <button
+            type="button"
+            aria-expanded={appearanceOpen}
+            onClick={() => setAppearanceOpen((open) => !open)}
+          >
+            Оформление
           </button>
-        )}
-        {snapshot !== null && snapshot.saveState === 'external' && (
-          <span className="book__external-actions">
-            <button type="button" onClick={() => void resolveExternal('open-external')}>
-              Открыть внешнюю версию
-            </button>
-            <button type="button" onClick={() => void resolveExternal('export-local')}>
-              Экспортировать черновик…
-            </button>
-          </span>
-        )}
-        <button type="button" className="book__close" onClick={() => void closeBook()}>
-          Закрыть книгу
+          <button type="button" onClick={enterZen}>
+            Режим Zen
+          </button>
+          <button type="button" className="book__close" onClick={() => void closeBook()}>
+            Закрыть книгу
+          </button>
+        </header>
+      )}
+      {appearanceOpen && appearance !== null && (
+        <div className="book__appearance-panel">
+          <Appearance value={appearance} onChange={updateAppearance} />
+          {appearanceError !== null && (
+            <p className="app__error" role="alert">
+              {appearanceError}
+            </p>
+          )}
+        </div>
+      )}
+      {zen && (
+        // Постоянная доступная кнопка выхода: топбар скрыт, управление Zen
+        // остаётся на экране всегда (плюс Escape — после закрытия popup).
+        <button
+          type="button"
+          className="book__zen-exit"
+          onClick={() => setZen(false)}
+          title="Выйти из Zen (Esc)"
+        >
+          Выйти из Zen
         </button>
-      </header>
+      )}
       {error !== null && (
         <p className="app__error" role="alert">
           {error}
         </p>
       )}
-      <div className="book__body" style={{ gridTemplateColumns: '16rem 1fr 18rem' }}>
-        <nav className="book__chapters" aria-label="Оглавление">
-          {book.entries.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              className={entry.id === chapterId ? 'book__chapter book__chapter--active' : 'book__chapter'}
-              disabled={entry.missing}
-              title={entry.missing ? 'Файл главы отсутствует' : entry.path}
-              onClick={() => setChapterId(entry.id)}
-            >
-              {entry.title !== '' ? entry.title : entry.path}
-              {entry.missing ? ' (файл отсутствует)' : ''}
-            </button>
-          ))}
-        </nav>
+      <div
+        className="book__body"
+        style={{ gridTemplateColumns: zen ? '1fr' : '16rem 1fr 18rem' }}
+      >
+        {!zen && (
+          <nav className="book__chapters" aria-label="Оглавление">
+            <input
+              type="text"
+              className="book__chapter-filter"
+              aria-label="Фильтр глав"
+              placeholder="Фильтр глав…"
+              value={chapterFilter}
+              onChange={(event) => setChapterFilter(event.target.value)}
+            />
+            {/* Фильтр меняет только отображение списка; манифест не перезаписывается. */}
+            {visibleEntries.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={entry.id === chapterId ? 'book__chapter book__chapter--active' : 'book__chapter'}
+                disabled={entry.missing}
+                title={entry.missing ? 'Файл главы отсутствует' : entry.path}
+                onClick={() => setChapterId(entry.id)}
+              >
+                {entry.title !== '' ? entry.title : entry.path}
+                {entry.missing ? ' (файл отсутствует)' : ''}
+              </button>
+            ))}
+            {visibleEntries.length === 0 && <p className="book__chapters-empty">Главы не найдены</p>}
+          </nav>
+        )}
         <section className="book__content">
           {activeChapter !== null && <h2 className="book__chapter-title">{activeChapter.title || activeChapter.path}</h2>}
           <div className="book__view-toggle" aria-label="Режим просмотра">
@@ -437,9 +646,20 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
               Исходник
             </button>
           </div>
+          {snapshot !== null && (
+            // Поиск по главе: область подписана и зависит от вида (Текст/
+            // Сравнение — snapshot.text, Исходник — snapshot.sourceText).
+            <ChapterSearch
+              area={mode}
+              searchText={mode === 'source' ? snapshot.sourceText : snapshot.text}
+              onReveal={revealSearchResult}
+            />
+          )}
           {mode === 'source' ? (
             // Read-only исходник: отдельное presentation view, ввод недоступен, без маркеров.
-            <pre className="book__source">{snapshot?.sourceText ?? ''}</pre>
+            <pre className="book__source" ref={sourceRef} style={widthStyle}>
+              {snapshot?.sourceText ?? ''}
+            </pre>
           ) : mode === 'comparison' ? (
             <>
               {/* Применение имеет отдельный стек: кнопки контекста §6 только в «Сравнении». */}
@@ -459,12 +679,12 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
                   Повторить применение
                 </button>
               </div>
-              <div className="book__comparison" ref={comparisonRef}>
+              <div className="book__comparison" ref={comparisonRef} style={widthStyle}>
                 {snapshot !== null && <ComparisonView snapshot={snapshot} onRecordClick={(record, rect) => openRecordAt(record.id, rect)} />}
               </div>
             </>
           ) : (
-            <div className="book__text" ref={textRef}>
+            <div className="book__text" ref={textRef} style={widthStyle}>
               {snapshot !== null && (
                 <ReviewEditor
                   key={`${chapterId}:${editorEpoch}`}
@@ -482,29 +702,31 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
             </div>
           )}
         </section>
-        <aside
-          className="book__review"
-          aria-label="Рецензия"
-          style={{
-            borderLeft: '1px solid color-mix(in srgb, currentColor 20%, transparent)',
-            padding: '0.75rem',
-            overflowY: 'auto',
-            display: 'grid',
-            gap: '0.75rem',
-            alignContent: 'start',
-          }}
-        >
-          {/* Ключ по главе: заметка, черновик и попап принадлежат главе —
-              смена главы не переносит черновик в другую главу. */}
-          <ChapterNote key={chapterId ?? 'none'} value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />
-          <ReviewList
-            records={snapshot?.records ?? []}
-            cardRecordId={cardId}
-            onSelect={selectRecord}
-            onCommand={dispatchCommand}
-            onCardClose={() => setCardId(null)}
-          />
-        </aside>
+        {!zen && (
+          <aside
+            className="book__review"
+            aria-label="Рецензия"
+            style={{
+              borderLeft: '1px solid color-mix(in srgb, currentColor 20%, transparent)',
+              padding: '0.75rem',
+              overflowY: 'auto',
+              display: 'grid',
+              gap: '0.75rem',
+              alignContent: 'start',
+            }}
+          >
+            {/* Ключ по главе: заметка, черновик и попап принадлежат главе —
+                смена главы не переносит черновик в другую главу. */}
+            <ChapterNote key={chapterId ?? 'none'} value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />
+            <ReviewList
+              records={snapshot?.records ?? []}
+              cardRecordId={cardId}
+              onSelect={selectRecord}
+              onCommand={dispatchCommand}
+              onCardClose={() => setCardId(null)}
+            />
+          </aside>
+        )}
       </div>
       {mode === 'text' && flyout !== null && (
         <SignalFlyout x={flyout.x} bottom={flyout.bottom} onPick={openDraft} registerFocus={registerFlyoutFocus} />

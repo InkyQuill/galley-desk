@@ -4,14 +4,22 @@
 // the built DecorationSet is mapped through ordinary document changes (the
 // StateField below) and rebuilt fresh on every setRecordMarkers effect.
 //
-// Цвета типов сигналов повторяют ReviewColors из Pocket Editor (светлая и
-// тёмная темы отдельно), источник —
+// Взаимодействие тем и маркеров: цвета сигналов, правок и подложек —
+// НЕЗАВИСИМЫЕ константы, скопированные из Pocket Editor (Color.kt); они
+// остаются Pocket-совместимыми поверх любой темы оформления. Темам Galley
+// принадлежат поверхности приложения и редактора (CSS-переменные на
+// контейнере окна, см. Appearance.tsx/BookWindow.tsx); от темы маркерам
+// достаётся только выбор светлого/тёмного набора — активную схему задаёт
+// BookWindow после загрузки настроек оформления (setActiveScheme), до этого
+// действует prefers-color-scheme системы.
+// Источник цветов:
 // /home/inky/Development/pocket-editor/app/src/main/java/net/inkyquill/pocketeditor/ui/theme/Color.kt
 // (LightReviewColors/DarkReviewColors; оттенки правок — Umber/Amber и
 // deletion/additionContainer оттуда же). Рендерер не может импортировать
 // Kotlin, поэтому значения захардкожены здесь.
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { Range, StateEffect, StateField } from '@codemirror/state';
+import { useSyncExternalStore } from 'react';
 import type { DecorationSet } from '@codemirror/view';
 import type { Extension, Text } from '@codemirror/state';
 import type { RecordView } from '../../shared/api';
@@ -60,10 +68,43 @@ export function comparisonTint(kind: 'deletion' | 'addition', theme: ThemeName):
   return COMPARISON_TINTS[theme][kind];
 }
 
-/** Current renderer theme; appearance switching lands with the search task. */
+// --- theme scheme store ------------------------------------------------------
+
+/**
+ * Реактивная схема маркеров: BookWindow вызывает setActiveScheme при загрузке
+ * и смене темы оформления; компоненты (подложки, попапы, flyout, виджеты)
+ * подписываются через useMarkerTheme и перерисовываются вместе с темой.
+ * Сами цвета при любой схеме — константы Pocket Editor из таблиц выше.
+ */
+type SchemeListener = () => void;
+
+const schemeListeners = new Set<SchemeListener>();
+let activeScheme: ThemeName | null = null;
+
+/** Схема активной темы оформления; null возвращает системную схему. */
+export function setActiveScheme(scheme: ThemeName | null): void {
+  if (activeScheme === scheme) return;
+  activeScheme = scheme;
+  for (const listener of [...schemeListeners]) listener();
+}
+
+export function subscribeScheme(listener: SchemeListener): () => void {
+  schemeListeners.add(listener);
+  return () => {
+    schemeListeners.delete(listener);
+  };
+}
+
+/** Current marker palette scheme (settings-driven, falls back to the OS). */
 export function currentTheme(): ThemeName {
+  if (activeScheme !== null) return activeScheme;
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'light';
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+/** Реактивный вариант currentTheme для рендера: смена темы перерисовывает. */
+export function useMarkerTheme(): ThemeName {
+  return useSyncExternalStore(subscribeScheme, currentTheme, (): ThemeName => 'light');
 }
 
 // --- decorations -------------------------------------------------------------

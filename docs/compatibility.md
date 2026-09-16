@@ -10,9 +10,16 @@ Galley Desk хранит правки в формате sidecar-файлов Poc
 
 | Компонент | Версия/релиз | Проверенная редакция | Ветка |
 | --- | --- | --- | --- |
+| Galley Desk | `apps/desktop` 0.1.0 | этот репозиторий, ветка `main` (редакция фиксируется тегом выпуска; сборка и тесты — см. `docs/verification.md`) | `main` |
 | Pocket Editor | релиза tolerant-reviews ещё нет | `f3012aa8abb73cda32b943ff74f5b78039300d8f` | `galley-desk-tolerant-reviews` |
 | Galley Editor | `@inkyquill/galley-editor` 0.14.0, `@inkyquill/galley-themes` 0.14.0 | `e5769b6b161af5275f7c2b490707aad5f3a5af09` | `feat/galley-themes-workspace` |
 | Galley Pad | — | `16065357c6993b58d7e7262c41a8fac9e35729a9` | `main` |
+
+Сквозная проверка передачи папки (Desktop → Pocket Editor → Desktop) на
+эмуляторе Android на этой машине не выполнялась — процедура и статус:
+`docs/verification.md`. Контрактная совместимость кодеков при этом
+проверяется автоматически (`npm run test:contracts`) на редакции
+Pocket Editor из таблицы выше.
 
 Актуальные пины живут в `tests/contracts/baseline.json`; скрипт контрактов
 использует их при развёртывании изолированной копии Pocket Editor

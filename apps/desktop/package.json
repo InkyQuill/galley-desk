@@ -22,6 +22,7 @@
     "@galley-desk/pocket-format": "0.1.0",
     "@galley-desk/review-engine": "0.1.0",
     "@inkyquill/galley-editor": "0.14.0",
+    "@inkyquill/galley-themes": "0.14.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
@@ -29,7 +30,6 @@
     "@electron-forge/cli": "7.11.2",
     "@electron-forge/maker-deb": "7.11.2",
     "@electron-forge/maker-rpm": "7.11.2",
-    "@electron-forge/maker-squirrel": "7.11.2",
     "@electron-forge/maker-zip": "7.11.2",
     "@electron-forge/plugin-auto-unpack-natives": "7.11.2",
     "@electron-forge/plugin-fuses": "7.11.2",

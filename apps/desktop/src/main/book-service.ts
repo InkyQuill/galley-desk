@@ -516,7 +516,18 @@ export function createBookService(deps: BookServiceDeps): BookService {
     },
 
     async setAppearance(value: AppearanceSettings): Promise<void> {
-      await settings.saveAppearance(appData, settings.validateAppearance(value));
+      // Сообщения validateAppearance — безопасные константы (границы, тема),
+      // поэтому через IpcError они доходят до панели оформления как причина.
+      let validated: AppearanceSettings;
+      try {
+        validated = settings.validateAppearance(value);
+      } catch (cause) {
+        throw new IpcError(
+          'SAVE_FAILED',
+          cause instanceof Error ? cause.message : 'Настройки оформления не приняты',
+        );
+      }
+      await settings.saveAppearance(appData, validated);
     },
 
     async savePosition(bookId: string, chapterId: string, anchor: number, scrollTop: number): Promise<void> {
