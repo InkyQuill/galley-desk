@@ -1,5 +1,10 @@
 # Galley shared libraries Implementation Plan
 
+> **Закрыт и архивирован 2026-09-16 после аудита. Не является активным планом.**
+> Реализация проверена по коду и свежим запускам; неполные задачи перенесены в [отдельный план](../../../superpowers/plans/2026-09-16-galley-desk-audit-followup.md).
+> [Отчёт, дефекты и статус всех 18 задач](../../../reviews/2026-09-16-implementation-audit.md).
+> Исходные checkboxes ниже сохранены как историческая запись: они не отражают результат аудита и не являются очередью выполнения. Факт завершения/остаток указан под заголовками Task. Архивирование не означает «всё выполнено».
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Выделить общий пакет тем и проверить публичный API редактора на потребностях Galley Desk.
@@ -38,6 +43,8 @@ E = `/home/inky/Development/editors/galley-editor`, P = `/home/inky/Development/
 Предварительно прочитать AGENTS.md обоих проектов. В Pad сохранять Bun lockfile и запускать `mise run verify` перед commit. В E все публичные изменения документировать в docs-site.
 
 ### Task L1: Workspace и публикуемый пакет тем с сохранением API редактора
+
+> **Аудит 2026-09-16:** Реализовано; themes, tarballs, lint и сборки подтверждены.
 
 **Files:**
 - Move: `E/src/` → `E/packages/galley-editor/src/`
@@ -109,6 +116,8 @@ git commit -m "refactor: extract shared galley themes workspace"
 
 ### Task L2: Перевести Galley Pad на общие темы
 
+> **Аудит 2026-09-16:** Миграция реализована; общий gate и корректный baseline перенесены в A6.
+
 **Files:**
 - Modify: `P/package.json`, `P/bun.lock`
 - Modify: `P/src/themes/tokens.ts`, `P/src/themes/catalog.ts`, `P/src/themes/style.ts`
@@ -167,6 +176,8 @@ git commit -m "refactor(themes): consume shared galley palette package"
 ```
 
 ### Task L3: Проверить транзакции и позиции через существующий публичный API
+
+> **Аудит 2026-09-16:** Контракт реализован; нестабильный общий unit gate перенесён в A6.
 
 **Files:**
 - Create/Test: `E/packages/galley-editor/src/consumer-contract.test.ts`

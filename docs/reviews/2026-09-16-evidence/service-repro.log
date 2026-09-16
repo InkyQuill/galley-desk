@@ -1,0 +1,111 @@
+
+ RUN  v5.0.1 /home/inky/Development/galley-desk
+
+stderr | apps/desktop/src/main/audit-review.test.ts > audit: failed close retains session and recoverable draft
+[desk] close-book: code=SAVE_FAILED
+
+stdout | apps/desktop/src/main/audit-review.test.ts > audit: failed close retains session and recoverable draft
+audit failed close: { root: undefined, appData: [ 'recent-books.json' ] }
+
+stderr | apps/desktop/src/main/audit-review.test.ts > audit: unresolved third revision must block new writes and preserve journal
+[desk] open-book: восстановление отложено, код=SAVE_FAILED (внешнее изменение)
+
+stdout | apps/desktop/src/main/audit-review.test.ts > audit: unresolved third revision must block new writes and preserve journal
+audit recovery: { result: 'accepted', journals: 0 }
+
+ ❯ apps/desktop/src/main/audit-review.test.ts (4 tests | 4 failed) 39ms
+   × audit: failed close retains session and recoverable draft 15ms
+   × audit: changing a signal preserves id 11ms
+   × audit: missing manifest with existing sidecar must not create new identity 5ms
+   × audit: unresolved third revision must block new writes and preserve journal 7ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/desktop/src/main/audit-review.test.ts > audit: failed close retains session and recoverable draft
+AssertionError: expected undefined to be '/tmp/galley-book-0HYN32' // Object.is equality
+
+- Expected:
+"/tmp/galley-book-0HYN32"
+
++ Received:
+undefined
+
+ ❯ apps/desktop/src/main/audit-review.test.ts:81:34
+     79|  await expect(h.closeBook(v.bookId)).rejects.toThrow();
+     80|  console.log('audit failed close:',{root:h.getBookRoot(v.bookId),appDa…
+     81|  expect(h.getBookRoot(v.bookId)).toBe(h.bookRoot);
+       |                                  ^
+     82| });
+     83| test('audit: changing a signal preserves id', async()=>{
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  apps/desktop/src/main/audit-review.test.ts > audit: changing a signal preserves id
+AssertionError: expected '4611deb3-d5c7-443b-b870-3721aec9b4d9' to be '352a8b44-28ff-4ffc-9bad-93f5f8b05055' // Object.is equality
+
+Expected: "352a8b44-28ff-4ffc-9bad-93f5f8b05055"
+Received: "4611deb3-d5c7-443b-b870-3721aec9b4d9"
+
+ ❯ apps/desktop/src/main/audit-review.test.ts:89:27
+     87|  const old=a.records[0]!.id;
+     88|  const b=await h.command(v.bookId,c,a.revision,{type:'signal',id:old,f…
+     89|  expect(b.records[0]!.id).toBe(old);
+       |                           ^
+     90| });
+     91| test('audit: missing manifest with existing sidecar must not create ne…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  apps/desktop/src/main/audit-review.test.ts > audit: missing manifest with existing sidecar must not create new identity
+AssertionError: promise resolved "{ …(3) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "id": "54aa804f-215c-41b5-a83c-915b110dfb6a",
++   "manifest": {
++     "book_id": "54aa804f-215c-41b5-a83c-915b110dfb6a",
++     "chapters": [
++       {
++         "id": "d7a92038-a547-4b31-b0f6-cb29ecfe3ae5",
++         "path": "01.md",
++         "title": "01",
++       },
++     ],
++     "ignored_files": [],
++     "schema_version": 1,
++     "title": "galley-book-YcNmKo",
++   },
++   "root": "/tmp/galley-book-YcNmKo",
+  }
+
+ ❯ apps/desktop/src/main/audit-review.test.ts:93:36
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  apps/desktop/src/main/audit-review.test.ts > audit: unresolved third revision must block new writes and preserve journal
+AssertionError: expected 'accepted' to be 'blocked' // Object.is equality
+
+Expected: "blocked"
+Received: "accepted"
+
+ ❯ apps/desktop/src/main/audit-review.test.ts:104:17
+    102|  const result=await h.command(v.bookId,c,s.revision,{type:'note',text:…
+    103|  console.log('audit recovery:',{result,journals:(await readJournalsFor…
+    104|  expect(result).toBe('blocked');
+       |                 ^
+    105| });
+    106|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed (4)
+   Start at  10:32:37
+   Duration  325ms (import 45%, transform 39%, tests 16%, worker 1%)
+

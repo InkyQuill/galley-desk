@@ -1,0 +1,13 @@
+
+> @inkyquill/galley-editor@0.13.0 test
+> vitest run src/commands/tableEditing.test.ts
+
+
+ RUN  v4.1.2 /home/inky/Development/editors/galley-editor/.worktrees/galley-themes-workspace/packages/galley-editor
+
+
+ Test Files  1 passed (1)
+      Tests  15 passed (15)
+   Start at  10:28:15
+   Duration  806ms (transform 77ms, setup 0ms, import 141ms, tests 184ms, environment 385ms)
+

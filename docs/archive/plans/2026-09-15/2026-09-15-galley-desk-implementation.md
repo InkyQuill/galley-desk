@@ -1,5 +1,10 @@
 # Galley Desk v1 Implementation Plan
 
+> **Закрыт и архивирован 2026-09-16 после аудита. Не является активным планом.**
+> Реализация проверена по коду и свежим запускам; неполные задачи перенесены в [отдельный план](../../../superpowers/plans/2026-09-16-galley-desk-audit-followup.md).
+> [Отчёт, дефекты и статус всех 18 задач](../../../reviews/2026-09-16-implementation-audit.md).
+> Исходные checkboxes ниже сохранены как историческая запись: они не отражают результат аудита и не являются очередью выполнения. Факт завершения/остаток указан под заголовками Task. Архивирование не означает «всё выполнено».
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Реализовать согласованную первую версию Galley Desk и необходимые изменения трёх связанных проектов.

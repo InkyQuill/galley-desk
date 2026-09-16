@@ -1,5 +1,10 @@
 # Galley Desk core Implementation Plan
 
+> **Закрыт и архивирован 2026-09-16 после аудита. Не является активным планом.**
+> Реализация проверена по коду и свежим запускам; неполные задачи перенесены в [отдельный план](../../../superpowers/plans/2026-09-16-galley-desk-audit-followup.md).
+> [Отчёт, дефекты и статус всех 18 задач](../../../reviews/2026-09-16-implementation-audit.md).
+> Исходные checkboxes ниже сохранены как историческая запись: они не отражают результат аудита и не являются очередью выполнения. Факт завершения/остаток указан под заголовками Task. Архивирование не означает «всё выполнено».
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Получить тестируемую модель правок, совместимый формат и восстановимое локальное сохранение.
@@ -64,6 +69,8 @@ BigInt не попадает в JSON. Входные offsets должны быт
 
 ### Task C1: Сборка чистых пакетов, codec, anchors и обнаружение глав
 
+> **Аудит 2026-09-16:** Реализовано; codec/anchors/discovery и contracts подтверждены.
+
 **Files:**
 - Create: `package.json`, `package-lock.json`, `tsconfig.json`, `vitest.config.ts`, `.gitignore`
 - Create: `packages/pocket-format/package.json`, `tsconfig.json`, `src/index.ts`, `src/documents.ts`, `src/anchors.ts`, `src/availability.ts`, `src/discovery.ts`
@@ -127,6 +134,8 @@ git commit -m "feat(format): implement pocket documents and anchors"
 
 ### Task C2: Двусторонние Kotlin ↔ TypeScript контракты
 
+> **Аудит 2026-09-16:** Реализовано; 21 двусторонний тест подтверждён.
+
 **Files:**
 - Create: `scripts/check-contracts.mjs`, `tests/contracts/generate.ts`, `tests/contracts/exchange.test.ts`, `tests/contracts/cases.json`
 - Modify: `tests/contracts/baseline.json`, `package.json`
@@ -187,6 +196,8 @@ git commit -m "test(contracts): verify kotlin typescript exchange"
 ```
 
 ### Task C3: Модель производного текста и редактирование с происхождением фрагментов
+
+> **Аудит 2026-09-16:** Реализовано в unit-объёме; platform/IME проверка перенесена в A7.
 
 **Files:**
 - Create: `packages/review-engine/package.json`, `tsconfig.json`, `src/index.ts`, `src/model.ts`, `src/pieces.ts`, `src/edit.ts`
@@ -254,6 +265,8 @@ git commit -m "feat(review): track derived edits against source pieces"
 
 ### Task C4: Сигналы и история ввода только в сессии
 
+> **Аудит 2026-09-16:** Реализовано в engine; ошибка UUID desktop-handler вынесена в A4.
+
 **Files:**
 - Create: `packages/review-engine/src/signals.ts`, `src/history.ts`
 - Create/Test: `packages/review-engine/src/signals.test.ts`, `history.test.ts`
@@ -314,6 +327,8 @@ git commit -m "feat(review): add source anchored signals and session history"
 ```
 
 ### Task C5: Локальная книга, последовательные записи и восстановление пары файлов
+
+> **Аудит 2026-09-16:** Частично: очередь/журнал есть; R2/R3/R6 перенесены в A2/A3/A5.
 
 **Files:**
 - Create: `packages/book-storage/package.json`, `tsconfig.json`, `src/index.ts`, `src/files.ts`, `src/book.ts`, `src/save-queue.ts`, `src/journal.ts`
@@ -382,6 +397,8 @@ git commit -m "feat(storage): persist book revisions with recoverable writes"
 ```
 
 ### Task C6: Применение правки и Undo всей пары
+
+> **Аудит 2026-09-16:** Частично: apply/Undo есть; R1/R4 перенесены в A1.
 
 **Files:**
 - Create: `packages/review-engine/src/apply.ts`, `apply.test.ts`

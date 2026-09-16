@@ -1,5 +1,10 @@
 # Galley Desk desktop Implementation Plan
 
+> **Закрыт и архивирован 2026-09-16 после аудита. Не является активным планом.**
+> Реализация проверена по коду и свежим запускам; неполные задачи перенесены в [отдельный план](../../../superpowers/plans/2026-09-16-galley-desk-audit-followup.md).
+> [Отчёт, дефекты и статус всех 18 задач](../../../reviews/2026-09-16-implementation-audit.md).
+> Исходные checkboxes ниже сохранены как историческая запись: они не отражают результат аудита и не являются очередью выполнения. Факт завершения/остаток указан под заголовками Task. Архивирование не означает «всё выполнено».
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Собрать работающее Electron-приложение с редактором, рецензиями и проверками Linux/macOS.
@@ -84,6 +89,8 @@ RecordView.from/to — позиции производного Markdown UTF-16; 
 
 ### Task D1: Запускаемое изолированное окно и ранняя упаковка
 
+> **Аудит 2026-09-16:** Package собран; Linux runtime аварийно завершается, macOS не проверен → A7.
+
 **Files:**
 - Create: `apps/desktop/package.json`, `forge.config.ts`, `vite.main.config.ts`, `vite.preload.config.ts`, `vite.renderer.config.ts`, `tsconfig.json`, `index.html`
 - Create: `apps/desktop/src/main/main.ts`, `src/preload/index.ts`, `src/shared/api.ts`, `src/renderer/main.tsx`, `src/renderer/App.tsx`, `src/renderer/app.css`
@@ -147,6 +154,8 @@ git commit -m "feat(desktop): add isolated electron application shell"
 
 ### Task D2: Открытие папки, последние книги и безопасный IPC
 
+> **Аудит 2026-09-16:** Частично; identity/read-only и закрытие → A2/A5.
+
 **Files:**
 - Create: `apps/desktop/src/main/book-service.ts`, `ipc.ts`, `recent-books.ts`, `resources.ts`, `settings.ts`
 - Modify: `apps/desktop/src/main/main.ts`, `src/preload/index.ts`, `src/renderer/App.tsx`
@@ -207,6 +216,8 @@ git commit -m "feat(books): open local folders through typed ipc"
 ```
 
 ### Task D3: Galley ввод, ревизии, автосохранение и внешние изменения
+
+> **Аудит 2026-09-16:** Частично; безопасный flush/close и реальный UI gate → A2/A7.
 
 **Files:**
 - Create: `apps/desktop/src/renderer/editor/ReviewEditor.tsx`, `transaction-adapter.ts`, `transaction-adapter.test.ts`
@@ -269,6 +280,8 @@ git commit -m "feat(editor): connect galley transactions to review sessions"
 
 ### Task D4: Отметки, сигналы, заметка главы и применение
 
+> **Аудит 2026-09-16:** Частично; apply/signals/UUID и UI gate → A1/A4/A7.
+
 **Files:**
 - Create: `apps/desktop/src/renderer/editor/markers.ts`
 - Create: `apps/desktop/src/renderer/review/SignalFlyout.tsx`, `RecordPopup.tsx`, `ReviewList.tsx`, `ChapterNote.tsx`
@@ -328,6 +341,8 @@ git commit -m "feat(review): add inline signals and apply controls"
 ```
 
 ### Task D5: Поиск, оформление и итоговая проверка packaged-приложений
+
+> **Аудит 2026-09-16:** Функции в коде есть; platform/performance/roundtrip gate → A7.
 
 **Files:**
 - Create: `apps/desktop/src/renderer/search/ChapterSearch.tsx`, `search.ts`, `search.test.ts`

@@ -2,7 +2,7 @@
 
 Приложение для Linux и macOS для рецензирования Markdown-книг. Пользователь открывает папку книги и редактирует текст; изменения сохраняются как правки в формате Pocket Editor. Отдельную правку можно вручную применить к Markdown или отклонить.
 
-Стек: Electron, React, TypeScript, Galley Editor и Galley Themes. Реализован полный настольный контур: открытие папок и недавних книг, редактирование с session Undo, сигналы и заметки главы, виды «Текст»/«Сравнение»/«Исходник», поиск по главе, фильтр оглавления, оформление (темы Galley, шрифт, ширина строки), режим Zen, упаковка Electron Forge и Electron-тесты по собранному приложению.
+Стек: Electron, React, TypeScript, Galley Editor и Galley Themes. Реализован основной настольный контур: открытие папок и недавних книг, редактирование с session Undo, сигналы и заметки главы, виды «Текст»/«Сравнение»/«Исходник», поиск по главе, фильтр оглавления, оформление (темы Galley, шрифт, ширина строки), режим Zen, упаковка Electron Forge и Electron-тесты по собранному JS. [Аудит реализации](docs/reviews/2026-09-16-implementation-audit.md) выявил незакрытые ошибки сохранности данных и проверки платформ; v1 пока не прошла приёмку.
 
 ## Запуск и сборка
 
@@ -12,7 +12,7 @@
 - `npm start` — запустить приложение в режиме разработки (Electron Forge dev-сервер).
 - `npm run package` — собрать и упаковать приложение для текущей платформы в `apps/desktop/out`; собранный исполняемый файл (`Galley Desk`) запускается напрямую.
 - `npm run make --workspace @galley-desk/desktop` — дистрибутивы: Linux ZIP/deb/rpm, macOS ZIP (без подписи, см. `docs/runbooks/release.md`).
-- `npm run test:desktop` — Playwright-тесты Electron-приложения, включая производительность; перед запуском нужен `npm run package`.
+- `npm run test:desktop` — Playwright-тесты Electron-приложения; перед запуском нужен `npm run package`. Performance запускается отдельно: `GALLEY_PERF=1 npx playwright test tests/desktop/performance.spec.ts --workers=1`.
 - `npm test` — модульные тесты пакетов (Vitest).
 - `npm run test:contracts` — Kotlin ↔ TypeScript контракты с Pocket Editor (нужен JDK 17; детали в `docs/compatibility.md`).
 - `npm run typecheck` — проверка типов во всех рабочих пространствах.
@@ -39,7 +39,11 @@ npm run package
 
 ## План реализации
 
-[Порядок работ и четыре подробных плана](docs/superpowers/plans/2026-09-15-galley-desk-implementation.md) — 18 задач с интерфейсами, проверками и критериями готовности.
+- [Результаты аудита и статус всех 18 задач](docs/reviews/2026-09-16-implementation-audit.md).
+- [Активный план доведения](docs/superpowers/plans/2026-09-16-galley-desk-audit-followup.md) — исправления и оставшиеся проверки.
+- [Архив исходного плана и четырёх подпланов](docs/archive/plans/2026-09-15/2026-09-15-galley-desk-implementation.md) — закрыты 2026-09-16; незавершённые пункты перенесены.
+
+Редизайн интерфейса ведётся отдельно; аудит реализации его не изменяет.
 
 ## Связанные проекты
 

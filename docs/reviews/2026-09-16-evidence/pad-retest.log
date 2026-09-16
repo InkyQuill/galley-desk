@@ -1,0 +1,39 @@
+$ playwright test --grep "cancels middle-button"
+[WebServer] (node:2443415) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 1 test using 1 worker
+
+(node:2443474) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 [chromium] › tests/integration/app.spec.ts:472:1 › cancels middle-button editor events without cancelling tabstrip events (367ms)
+
+
+  1) [chromium] › tests/integration/app.spec.ts:472:1 › cancels middle-button editor events without cancelling tabstrip events 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 2
+    + Received  + 2
+
+      Object {
+    -   "defaultPrevented": false,
+    -   "dispatchResult": true,
+    +   "defaultPrevented": true,
+    +   "dispatchResult": false,
+      }
+
+      507 |     );
+      508 |
+    > 509 |     expect(tabstripResult).toEqual({
+          |                            ^
+      510 |       defaultPrevented: false,
+      511 |       dispatchResult: true,
+      512 |     });
+        at /home/inky/Development/galley-pad/.worktrees/shared-themes/tests/integration/app.spec.ts:509:28
+
+    Error Context: test-results/app-cancels-middle-button--465c8--cancelling-tabstrip-events-chromium/error-context.md
+
+  1 failed
+    [chromium] › tests/integration/app.spec.ts:472:1 › cancels middle-button editor events without cancelling tabstrip events 
+error: script "test:integration" exited with code 1

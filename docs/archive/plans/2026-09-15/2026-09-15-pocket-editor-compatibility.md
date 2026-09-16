@@ -1,5 +1,10 @@
 # Pocket Editor: tolerant reviews Implementation Plan
 
+> **Закрыт и архивирован 2026-09-16 после аудита. Не является активным планом.**
+> Реализация проверена по коду и свежим запускам; неполные задачи перенесены в [отдельный план](../../../superpowers/plans/2026-09-16-galley-desk-audit-followup.md).
+> [Отчёт, дефекты и статус всех 18 задач](../../../reviews/2026-09-16-implementation-audit.md).
+> Исходные checkboxes ниже сохранены как историческая запись: они не отражают результат аудита и не являются очередью выполнения. Факт завершения/остаток указан под заголовками Task. Архивирование не означает «всё выполнено».
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Читать и сохранять висящие/конфликтующие записи без отказа всей рецензии.
@@ -40,6 +45,8 @@
 Префикс production-путей: `app/src/main/java/net/inkyquill/pocketeditor/`; тестов: `app/src/test/java/net/inkyquill/pocketeditor/`. В Files пути указаны полностью. Структура JSON v1 не меняется. План самостоятельно заканчивается рабочим Android-приложением.
 
 ### Task P1: Разделить чтение JSON и разрешение диапазонов
+
+> **Аудит 2026-09-16:** Реализовано в feature-ветке; unit и Kotlin↔TS подтверждены.
 
 **Files:**
 - Modify: `app/src/main/java/net/inkyquill/pocketeditor/review/ReviewJson.kt`
@@ -110,6 +117,8 @@ git commit -m "fix(review): preserve unavailable and overlapping records"
 
 ### Task P2: Подключить классификатор к мутациям, проекции и merge
 
+> **Аудит 2026-09-16:** Реализовано в feature-ветке; unit подтверждены.
+
 **Files:**
 - Modify: `app/src/main/java/net/inkyquill/pocketeditor/review/EditValidator.kt`
 - Modify: `app/src/main/java/net/inkyquill/pocketeditor/reader/ReviewProjector.kt`
@@ -176,6 +185,8 @@ git commit -m "fix(reader): classify review availability before projection"
 ```
 
 ### Task P3: Карточки недоступных записей без мобильной перепривязки
+
+> **Аудит 2026-09-16:** Код реализован; Android UI/platform gate перенесён в A7.
 
 **Files:**
 - Create: `app/src/main/java/net/inkyquill/pocketeditor/ui/review/UnavailableReviewCard.kt`
@@ -246,6 +257,8 @@ git commit -m "feat(review): show unavailable records without rebinding"
 ```
 
 ### Task P4: Файловый Kotlin-мост для межъязыковых контрактов
+
+> **Аудит 2026-09-16:** Реализовано; реальный Kotlin-мост подтверждён.
 
 **Files:**
 - Create/Test: `app/src/test/java/net/inkyquill/pocketeditor/contracts/DesktopExchangeTest.kt`
