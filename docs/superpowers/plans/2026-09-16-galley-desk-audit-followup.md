@@ -205,7 +205,7 @@ mise run verify
 
 ### Task 7: A7 — Реально выполнить desktop/platform gate
 
-Статус 2026-09-16: Linux пакет/desktop/performance PASS; Mac/native IME not-run; Android app-layer roundtrip FAIL (Pocket ищет legacy имя sidecar). A7 остаётся открыт. См. [evidence](../../reviews/2026-09-16-evidence/a7/report.md).
+Статус 2026-09-16: Linux пакет/desktop/performance и Android app-layer folder roundtrip PASS после canonical/legacy filename fix; Mac/native IME not-run. A7 остаётся открыт только по невыполненным platform пунктам. См. [финальный evidence](../../reviews/2026-09-16-evidence/a7-compat/report.md).
 
 **Files:** Existing `tests/desktop/*.spec.ts`, `tests/desktop/performance.spec.ts`, `docs/verification.md`, `docs/runbooks/release.md`; Pocket existing `app/src/androidTest/java/net/inkyquill/pocketeditor/ui/review/UnavailableReviewCardTest.kt`. Create `tests/desktop/packaged-smoke.spec.ts` только для минимального запуска настоящего artifact без ослабления production fuses.
 
@@ -228,7 +228,7 @@ GALLEY_PERF=1 npx playwright test tests/desktop/performance.spec.ts --workers=1
 - [x] **Step 3:** Запустить настоящий packaged executable с отдельным временным профилем; открыть синтетическую книгу, ввести правку, дождаться сохранения, закрыть, открыть вновь, применить/undo и сравнить md+review bytes. Не отключать production fuses для подмены packaged smoke обычным electron.launch.
 - [x] **Step 4:** В performance-тесте оставить отдельный input→DOM показатель. Добавить latency до подтверждённой записи и проверку итогового текста после опустошения очереди/переоткрытия. Называть показатели точно: DOM не означает fsync. Измерить книгу 100 глав, главу1MiB/500 записей; критерии исходной спецификации: открытие ≤2s, input→render p95≤50ms. Указать машину и нагрузку, не переносить старые числа как новые.
 - [ ] **Step 5:** На macOS выполнить packaged smoke, Cmd+Z/Cmd+Shift+Z, закрытие окна без quit, быстрый ввод→Close, IME composition commit/cancel, вставку multiline/emoji/CRLF. На Linux проверить IME отдельно от синтетического dispatch CompositionEvent. Описать точные версии ОС, сборку и результат.
-- [ ] **Step 6:** Pocket: подключить тестовое устройство/эмулятор, выполнить `./gradlew connectedDebugAndroidTest`. Затем передать копию синтетической книги с active/stale/overlapping edits, signals, chapter_note через реально поддерживаемый Pocket путь открытия/синхронизации, вернуть в Desk; сравнить IDs/тексты/порядок. `adb push` само по себе не доказывает, что Pocket открыл эту папку. Не использовать личные книги/credentials в fixtures.
+- [x] **Step 6:** Pocket: подключить тестовое устройство/эмулятор, выполнить `./gradlew connectedDebugAndroidTest`. Затем передать копию синтетической книги с active/stale/overlapping edits, signals, chapter_note через реально поддерживаемый Pocket путь открытия/синхронизации, вернуть в Desk; сравнить IDs/тексты/порядок. `adb push` само по себе не доказывает, что Pocket открыл эту папку. Не использовать личные книги/credentials в fixtures.
 - [ ] **Step 7:** Обновить matrix: PASS/FAIL/not-run, команды и редакции. Если машины/устройства нет, этот шаг остаётся unchecked с конкретной причиной; весь v1 gate не объявлять завершённым. Коммит: `test(desktop): verify release artifacts and roundtrip`.
 
 ## Критерий закрытия этого плана

@@ -1,0 +1,118 @@
+
+ RUN  v5.0.1 /home/inky/Development/.worktrees/galley-desk-v0.1
+
+ ❯ packages/book-storage/src/book.test.ts (37 tests | 2 failed) 116ms
+   × legacy Pocket sidecar keeps its filename through write, undo pair and recovery 5ms
+   × dual canonical and legacy sidecars reject before changing either pair 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  packages/book-storage/src/book.test.ts > legacy Pocket sidecar keeps its filename through write, undo pair and recovery
+AssertionError: expected null to be '{\n  "schema_version": 1,\n  "chapter…' // Object.is equality
+
+- Expected:
+"{
+  \"schema_version\": 1,
+  \"chapter_id\": \"11111111-1111-4111-8111-111111111111\",
+  \"source_path\": \"01.md\",
+  \"chapter_note\": \"\",
+  \"signals\": [],
+  \"edits\": []
+}
+"
+
++ Received:
+null
+
+ ❯ packages/book-storage/src/book.test.ts:669:32
+    667|     const book = await openBook(root);
+    668|     const before = await readPair(book, ID1);
+    669|     expect(before.pair.review).toBe(original.toString());
+       |                                ^
+    670|     const target = { source: NEXT_SOURCE, review: reviewJson(ID1, '01.…
+    671|     const revision = await writePair(book, ID1, before.revision, targe…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  packages/book-storage/src/book.test.ts > dual canonical and legacy sidecars reject before changing either pair
+AssertionError: promise resolved "{ pair: { …(2) }, revision: { …(2) } }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "pair": {
++     "review": "{
++   \"schema_version\": 1,
++   \"chapter_id\": \"11111111-1111-4111-8111-111111111111\",
++   \"source_path\": \"01.md\",
++   \"chapter_note\": \"\",
++   \"signals\": [],
++   \"edits\": []
++ }
++ ",
++     "source": Uint8Array [
++       35,
++       32,
++       65,
++       108,
++       112,
++       104,
++       97,
++       13,
++       10,
++       13,
++       10,
++       208,
++       191,
++       208,
++       181,
++       209,
++       128,
++       208,
++       178,
++       208,
++       176,
++       209,
++       143,
++       32,
++       209,
++       129,
++       209,
++       130,
++       209,
++       128,
++       208,
++       190,
++       208,
++       186,
++       208,
++       176,
++       13,
++       10,
++     ],
++   },
++   "revision": {
++     "reviewHash": "996cae15faf2f0d74f54a1a83fe3e4010d359ea80dd617914283f5ca9f7663e6",
++     "sourceHash": "b0529066c6f1bc62648a920cff99937b249ed5d7fc9b4b2b8c4dcdbf2b81a29b",
++   },
+  }
+
+ ❯ packages/book-storage/src/book.test.ts:693:38
+    691|     const legacy = reviewJson(ID1, '01.md', 'Separate legacy');
+    692|     await writeFile(path.join(root, '01.md.review.json'), legacy);
+    693|     await expect(readPair(book, ID1)).rejects.toThrow(/Conflicting rev…
+       |                                      ^
+    694|     await expect(writePair(book, ID1, before.revision, { source: NEXT_…
+    695|       .rejects.toThrow(/Conflicting review filenames/);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 35 passed (37)
+   Start at  12:20:56
+   Duration  445ms (transform 37%, tests 32%, import 31%, worker 1%)
+

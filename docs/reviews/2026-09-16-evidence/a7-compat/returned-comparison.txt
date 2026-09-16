@@ -1,0 +1,2 @@
+PASS exact MD and manifest bytes; deep-equal edits/signals; Pocket roundtrip note 🦊
+Source SHA256 57a7164626f91075bb4674b3d96eadcacb6c08ce72559cbed7cdfdddb8ddadc8

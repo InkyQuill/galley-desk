@@ -50,80 +50,56 @@ macOS и бинарные релизы companion-приложений здесь
 Проверено не означает слито/выпущено: точные source pins и отдельный
 статус опубликованных артефактов — в [compatibility.md](compatibility.md).
 
-## A7: свежая проверка 2026-09-16
+## A7: итоговая проверка совместимости папок 2026-09-16
 
-База Desk `d30237cefd13fe84d8b4a0cc2c72ba537aceee00`; production fix A7
-`872a80a` восстанавливает фокус после Escape через CodeMirror API, сохраняя выделение.
-Pocket база `f3012aa8abb73cda32b943ff74f5b78039300d8f`, новый opt-in harness
-`f2d44a1` воспроизводит folder-level failure через production ReaderRepository.
-Полные команды, результаты и SHA артефактов: [A7 report](reviews/2026-09-16-evidence/a7/report.md).
+**Linux и Android folder compatibility PASS; общий platform gate открыт:**
+реального macOS и системной Linux IME на этой машине нет. Их пункты остаются
+not-run; подготовка к Mac запуску не считается выполнением.
 
-| Проверка | Результат |
+Desk production fixes: `872a80a` (Esc selection), `bb332c1` (canonical/legacy
+sidecar resolver и recovery). Pocket: `002f609818b913db66680320da198d7eb7c972c6`. Проверялся новый
+Forge package с production fuses; [SHA256](reviews/2026-09-16-evidence/a7-compat/artifact-sha256.txt).
+Полные команды, RED→GREEN и ограничения: [A7 compatibility report](reviews/2026-09-16-evidence/a7-compat/report.md).
+[Первоначальный A7 отчёт](reviews/2026-09-16-evidence/a7/report.md) — история,
+его Android RED устранён последующим filename fix.
+
+| Проверка | Финальный результат |
 | --- | --- |
-| TypeScript / unit | PASS, 274 tests |
-| Kotlin ↔ TS contracts | PASS, 21 cases; это не folder roundtrip |
-| Forge package | PASS, Electron 44.4.0, production fuses включены |
-| Packaged executable | PASS: изолированный профиль, UI open/save/restart/apply/byte-exact undo |
-| Desktop suite | PASS: 44 passed, 1 perf skip; после fix первоначального Esc selection FAIL |
-| Performance | PASS, ниже |
-| Chromium CDP IME commit/cancel и multiline/emoji/CRLF | PASS; source CRLF bytes сохранены |
-| Linux системная IME / настоящий clipboard | not-run; ibus/fcitx5 отсутствуют |
-| Android connected suite (до нового harness) | PASS: 237 passed, 5 skipped, 0 failures; Pocket f3012aa |
-| Android реальная загрузка переданной папки | **FAIL**: chapter_note ожидается, Reader возвращает null |
-| Реальный macOS packaged/manual | **not-run**, имеется только Linux; инструкция подготовлена |
-| GitHub CI dispatch / подпись / notarization | not-run |
+| TypeScript / unit | PASS, 276 tests |
+| Kotlin ↔ TS contracts | PASS, 21 cases, новый Pocket pin |
+| Pocket unit / lint / APK compile | PASS; точные totals в отчёте |
+| Android full connected suite | PASS: 240 passed / 6 opt-in skipped / 0 failures (246 XML cases) |
+| Canonical folder → production Reader → SaveNote → export | PASS, точные MD/manifest bytes, edits/signals deep-equal, note `Pocket roundtrip note 🦊` |
+| Forge package / packaged executable | PASS, пересобран после filename fix |
+| Полный desktop suite | PASS, 46 passed / 1 perf skip |
+| Финальный exported folder в packaged Desk | PASS, canonical и legacy варианты; 3 active / 2 conflicting / 1 unavailable; Apply→Undo exact pair |
+| Performance | PASS: open 1013 ms ≤2000; input→DOM p95 27.8 ms ≤50 |
+| Chromium CDP composition и multiline/emoji/CRLF | PASS в полном desktop suite |
+| Реальный macOS / Linux system IME / native clipboard | not-run |
+| Native picker в packaged smoke / подпись / notarization / GitHub dispatch | not-run |
 
-### Машина и performance
+Машина: CachyOS rolling, Linux 7.2.4-3-cachyos, glibc2.44, Ryzen7 5800X,
+65,741,008 kB RAM; Node26.2.0/npm11.13.0/Electron44.4.0. DISPLAY/XAUTHORITY/
+GTK_MODULES взяты из текущей desktop user-manager среды; fuses не ослаблялись.
+Android emulator-5554: Android15/API35, sdk_gphone64_x86_64.
 
-CachyOS rolling, kernel 7.2.4-3-cachyos x86_64, glibc 2.44; Ryzen 7 5800X,
-MemTotal 65,741,008 kB; Node 26.2.0, npm 11.13.0, Electron 44.4.0.
-Один performance worker, без параллельного Electron suite; Android emulator
-оставался запущен в этой desktop-сессии. Машина не была
-изолирована от всех фоновых процессов, числа не являются гарантией для CI.
+Performance: 100 глав, 1,048,645-byte глава, 500 records, 24 inputs; один worker,
+без параллельного Electron suite, Android emulator продолжал работу.
+[Все финальные samples](reviews/2026-09-16-evidence/a7-compat/performance-results.json).
+DOM timing не равен paint/fsync. Отдельная метрика confirmed save включает
+host dispatch, polling sidecar reconstruction и UI ack. Close/reopen подтверждает
+точный полный текст без потерянного/двойного ввода и неизменные исходные bytes.
 
-Синтетическая книга: 100 глав; большая глава 1,048,645 UTF-8 bytes,
-500 review records, 24 последовательных input samples.
+Android harness импортирует только synthetic fixture в поддерживаемый offline
+cache/Room availability, затем вызывает production ReaderRepository и
+saveChapterNote. Это не проверка облачного транспорта и не визуальный UI-test
+Pocket. Экспорт действительно возвращён в production packaged Desk. Harness
+удаляет только собственную synthetic регистрацию/cache после экспорта: первая
+full-suite попытка обнаружила загрязнение тестовой среды этой регистрацией;
+сохраняются её failure log и финальный полный прогон после исправления cleanup.
 
-| Метрика | Результат | Бюджет |
-| --- | --- | --- |
-| Запуск + открытие книги | 573 ms | нет |
-| Открытие большой главы | 957 ms | ≤2000 ms |
-| beforeinput → первая DOM mutation, median / p95 / max | 18.8 / 27.6 / 31 ms | p95 ≤50 ms |
-| input dispatch → подтверждённое сохранение, p95 | 1033.0 ms | нет |
-| RSS main / renderer heap | 432,361,472 / 29,400,000 bytes | фиксация |
-
-[Все samples](reviews/2026-09-16-evidence/a7-performance-results.json) доступны в evidence
-`reviews/2026-09-16-evidence/a7-performance-results.json`.
-Метрика сохранения включает host keyboard dispatch, чтение sidecar,
-реконструкцию точного текста движком и UI ack «Сохранено», включая overhead
-polling. Это **не** измерение физического fsync. После опустошения очереди
-через Close и reopen проверены точный полный текст и неизменность source bytes.
-DOM mutation не означает ни сохранение, ни завершение paint.
-
-### Реальные ограничения и диагностика
-
-Linux SIGSEGV происходил и в минимальном Electron из-за GTK appmenu module
-lifetime; воспроизведение и диагностика ранее выполнены контроллером.
-Унаследованное KDE `GTK_MODULES=colorreload-gtk-module:appmenu-gtk-module`
-устранило запуск. DISPLAY/XAUTHORITY взяты из текущей user-manager сессии;
-production workaround или отключения fuses нет.
-
-Packaged test использует Chromium renderer CDP, а обычные desktop tests —
-`node_modules/electron` с Forge `.vite` entry. Оба пути реально проверены.
-В packaged smoke recent-запись подготавливается в тестовом профиле; native
-folder picker и native window close отдельно этим smoke не доказываются.
-
-Pocket emulator-5554: Android 15 / API 35, sdk_gphone64_x86_64. Harness
-копирует **только синтетическую** папку в offline cache, регистрирует её в
-Room и вызывает production ReaderRepository.observeChapter. Файл
-`chapter.review.json` остаётся под настоящим Desk именем. Reader ищет
-`chapter.md.review.json`: chapter_note=null и записи не найдены.
-Это fail реального app-layer discovery, несмотря на зелёные codec contracts.
-SaveNote/return-to-Desk пока не достигнуты; копирование adb не засчитывается
-как успех. Требуется совместимый canonical/legacy fix с защитой от коллизий.
-
-Предупреждения сборки: три Vite native-config compatibility warnings,
-inlineDynamicImports deprecation, bundle-size warnings. Первоначально был
-NO_COLOR/FORCE_COLOR conflict; финальные запуски очищают обе переменные.
-Forge make ZIP: FAIL (`spawn zip ENOENT`). ZIP создан отдельно Python с
-permission bits/symlinks; deb/rpm не собраны. Release остаётся не завершён.
+Предупреждения package: native-config compatibility, inlineDynamicImports
+и размер bundle; Pocket build без YANDEX_CLIENT_ID, известный JVM CDS warning.
+Forge ZIP maker ранее не прошёл из-за `spawn zip ENOENT`; новый portable ZIP
+создан тем же Python builder с UNIX permissions/symlinks и CRC check. Проверялся
+исходный packaged executable; отдельный запуск распакованного ZIP не выполнен.

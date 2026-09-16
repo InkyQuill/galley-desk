@@ -1,6 +1,13 @@
-# A7 platform acceptance — 2026-09-16
+# Historical A7 platform acceptance — 2026-09-16
 
-## Status: partial PASS; platform gate remains OPEN
+## Superseded Android status
+
+The initial Android RED below is now GREEN after the canonical/legacy filename
+fix. See [final compatibility report](../a7-compat/report.md). Linux artifacts
+were rebuilt after that production change; hashes below identify the historical
+build only. Mac and native IME remain not-run.
+
+## Historical status: partial PASS; platform gate remains OPEN
 
 Desk base: `d30237cefd13fe84d8b4a0cc2c72ba537aceee00` in
 `/home/inky/Development/.worktrees/galley-desk-v0.1`.

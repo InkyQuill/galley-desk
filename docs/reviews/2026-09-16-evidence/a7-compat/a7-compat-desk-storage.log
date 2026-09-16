@@ -1,0 +1,9 @@
+
+ RUN  v5.0.1 /home/inky/Development/.worktrees/galley-desk-v0.1
+
+
+ Test Files  1 passed (1)
+      Tests  37 passed (37)
+   Start at  12:22:06
+   Duration  449ms (transform 37%, import 35%, tests 27%, worker 1%)
+

@@ -1,0 +1,14 @@
+{
+  "unit": {
+    "tests": 691,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "instrumentation": {
+    "tests": 246,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 6
+  }
+}

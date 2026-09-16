@@ -1,0 +1,109 @@
+
+net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest:......
+Error in readerReviewMutationStartedDuringReplacementTargetsTheCommittedChapterPath(net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest):
+java.lang.AssertionError: expected:<During> but was:<null>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotEquals(Assert.java:835)
+	at org.junit.Assert.assertEquals(Assert.java:120)
+	at org.junit.Assert.assertEquals(Assert.java:146)
+	at net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest$readerReviewMutationStartedDuringReplacementTargetsTheCommittedChapterPath$1.invokeSuspend(RoomYandexBookLibraryDataTest.kt:1703)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source:1)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source:1)
+	at net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest.readerReviewMutationStartedDuringReplacementTargetsTheCommittedChapterPath(RoomYandexBookLibraryDataTest.kt:1666)
+....................
+Error in replacementPreservesIdentityCopiesReviewClampsPositionAndQueuesExactBaseMutations(net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest):
+java.lang.AssertionError: expected:<ReviewDocument(schemaVersion=1, chapterId=00000000-0000-0000-0000-000000000302, sourcePath=replacement.md, chapterNote=Keep this, signals=[], edits=[])> but was:<null>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotEquals(Assert.java:835)
+	at org.junit.Assert.assertEquals(Assert.java:120)
+	at org.junit.Assert.assertEquals(Assert.java:146)
+	at net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest$replacementPreservesIdentityCopiesReviewClampsPositionAndQueuesExactBaseMutations$1.invokeSuspend(RoomYandexBookLibraryDataTest.kt:1516)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source:1)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source:1)
+	at net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest.replacementPreservesIdentityCopiesReviewClampsPositionAndQueuesExactBaseMutations(RoomYandexBookLibraryDataTest.kt:1473)
+...................
+Error in discoveryMutationsUseLocalManifestOutboxRetainCacheAndMigrateReviewWithoutRemoteDeletion(net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest):
+java.lang.AssertionError: expected:<Keep this> but was:<null>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotEquals(Assert.java:835)
+	at org.junit.Assert.assertEquals(Assert.java:120)
+	at org.junit.Assert.assertEquals(Assert.java:146)
+	at net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest$discoveryMutationsUseLocalManifestOutboxRetainCacheAndMigrateReviewWithoutRemoteDeletion$1.invokeSuspend(RoomYandexBookLibraryDataTest.kt:1433)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source:1)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source:1)
+	at net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest.discoveryMutationsUseLocalManifestOutboxRetainCacheAndMigrateReviewWithoutRemoteDeletion(RoomYandexBookLibraryDataTest.kt:1404)
+.......
+
+Time: 2.978
+There were 3 failures:
+1) readerReviewMutationStartedDuringReplacementTargetsTheCommittedChapterPath(net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest)
+java.lang.AssertionError: expected:<During> but was:<null>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotEquals(Assert.java:835)
+	at org.junit.Assert.assertEquals(Assert.java:120)
+	at org.junit.Assert.assertEquals(Assert.java:146)
+	at net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest$readerReviewMutationStartedDuringReplacementTargetsTheCommittedChapterPath$1.invokeSuspend(RoomYandexBookLibraryDataTest.kt:1703)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source:1)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source:1)
+	at net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest.readerReviewMutationStartedDuringReplacementTargetsTheCommittedChapterPath(RoomYandexBookLibraryDataTest.kt:1666)
+2) replacementPreservesIdentityCopiesReviewClampsPositionAndQueuesExactBaseMutations(net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest)
+java.lang.AssertionError: expected:<ReviewDocument(schemaVersion=1, chapterId=00000000-0000-0000-0000-000000000302, sourcePath=replacement.md, chapterNote=Keep this, signals=[], edits=[])> but was:<null>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotEquals(Assert.java:835)
+	at org.junit.Assert.assertEquals(Assert.java:120)
+	at org.junit.Assert.assertEquals(Assert.java:146)
+	at net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest$replacementPreservesIdentityCopiesReviewClampsPositionAndQueuesExactBaseMutations$1.invokeSuspend(RoomYandexBookLibraryDataTest.kt:1516)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source:1)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source:1)
+	at net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest.replacementPreservesIdentityCopiesReviewClampsPositionAndQueuesExactBaseMutations(RoomYandexBookLibraryDataTest.kt:1473)
+3) discoveryMutationsUseLocalManifestOutboxRetainCacheAndMigrateReviewWithoutRemoteDeletion(net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest)
+java.lang.AssertionError: expected:<Keep this> but was:<null>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotEquals(Assert.java:835)
+	at org.junit.Assert.assertEquals(Assert.java:120)
+	at org.junit.Assert.assertEquals(Assert.java:146)
+	at net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest$discoveryMutationsUseLocalManifestOutboxRetainCacheAndMigrateReviewWithoutRemoteDeletion$1.invokeSuspend(RoomYandexBookLibraryDataTest.kt:1433)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source:1)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source:1)
+	at net.inkyquill.pocketeditor.ui.books.RoomYandexBookLibraryDataTest.discoveryMutationsUseLocalManifestOutboxRetainCacheAndMigrateReviewWithoutRemoteDeletion(RoomYandexBookLibraryDataTest.kt:1404)
+
+FAILURES!!!
+Tests run: 55,  Failures: 3
+
+
