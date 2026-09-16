@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
@@ -106,6 +106,61 @@ test('внешнее изменение принимается: чужая ве�
     await expect(content).toContainText('внешний текст!');
     await expect(session.page.getByText('Сохранено')).toBeVisible();
     expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe('внешний текст');
+  } finally {
+    await session.app.close();
+  }
+});
+
+test('STALE_REVISION при внешнем изменении не маскируется под «Ошибка сохранения»', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-external-chip-');
+  const session = await launch(bookRoot, { 'Глава.md': 'кот\n' });
+  const sourcePath = path.join(bookRoot, 'Глава.md');
+  try {
+    await openOwnBook(session);
+    const content = session.page.locator('.cm-content');
+    await expect(content).toContainText('кот');
+
+    // Шаг 1: настоящий сбой записи (каталог книги только для чтения) —
+    // сессия переходит в 'error', чип «Ошибка сохранения» уместен.
+    await chmod(bookRoot, 0o555);
+    await content.click();
+    await session.page.keyboard.press('Control+End');
+    await session.page.keyboard.type('?');
+    await expect(session.page.getByText('Ошибка сохранения')).toBeVisible();
+    await expect(session.page.getByRole('alert')).toContainText('локальный текст сохранён');
+    await chmod(bookRoot, 0o755);
+
+    // Шаг 2: чужая версия на диске; ожидающая работа уходит в черновик
+    // (appData), сессия переходит в 'external'. Локальный флаг сбоя ещё
+    // держит чип «Ошибка сохранения» (снимок сбоя не прячется молча).
+    await writeFile(sourcePath, 'чужая версия', 'utf8');
+    await expect(
+      session.page.getByRole('button', { name: 'Открыть внешнюю версию' }),
+    ).toBeVisible({ timeout: 20_000 });
+
+    // Шаг 3: «Перечитать главу» снимает локальный флаг; теперь чип —
+    // аффорданс внешнего изменения.
+    await session.page.getByRole('button', { name: 'Перечитать главу' }).click();
+    await expect(session.page.getByText('Внешнее изменение')).toBeVisible();
+    await expect(session.page.getByRole('button', { name: 'Открыть внешнюю версию' })).toBeVisible();
+
+    // Шаг 4: ввод при неразрешённом внешнем изменении отклоняется
+    // (STALE_REVISION). Чип обязан остаться аффордансом внешнего изменения,
+    // а не превращаться в «Ошибка сохранения» с «Перечитать главу».
+    await content.click();
+    await session.page.keyboard.press('Control+End');
+    await session.page.keyboard.type('#');
+    // Отказ команды обработан очередью: синхронизируемся на его алерте,
+    // прежде чем судить о стабильном состоянии чипа.
+    await expect(session.page.getByRole('alert')).toContainText('локальный текст сохранён', { timeout: 10_000 });
+    await expect(session.page.getByText('Внешнее изменение')).toBeVisible();
+    await expect(session.page.getByText('Ошибка сохранения')).toHaveCount(0);
+    await expect(session.page.getByRole('button', { name: 'Перечитать главу' })).toHaveCount(0);
+
+    // Правильный аффорданс работает: явное разрешение принимает чужую базу.
+    await session.page.getByRole('button', { name: 'Открыть внешнюю версию' }).click();
+    await expect(content).toContainText('чужая версия', { timeout: 20_000 });
+    await expect(session.page.getByText('Сохранено')).toBeVisible();
   } finally {
     await session.app.close();
   }

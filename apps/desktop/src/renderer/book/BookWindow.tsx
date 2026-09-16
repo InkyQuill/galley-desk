@@ -106,7 +106,13 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
   const [chapterId, setChapterId] = useState<string | null>(
     validRestore?.chapterId ?? cached?.chapterId ?? firstOpenEntryId(book),
   );
+  // Актуальная глава вне React-потока: поздние ack и снимки сравниваются с
+  // ней, а не с устаревшим замыканием (гон смены главы, см. applySnapshot).
+  const chapterIdRef = useRef<string | null>(chapterId);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  // Зеркало показанного снимка для решений вне React-потока (чип сбоя
+  // сохранения при внешнем изменении — см. handleCommand).
+  const snapshotRef = useRef<Snapshot | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<ViewMode>('text');
@@ -146,10 +152,30 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
 
   const applySnapshot = useCallback((next: Snapshot) => {
     revisionsRef.current.set(next.chapterId, next.revision);
+    // Поздний снимок чужой главы (пользователь уже переключился) не трогает
+    // показанный документ: иначе редактор новой главы был бы пересоздан по
+    // тексту прежней, а ввод новой главы ушёл бы в её сессию по смещённым
+    // позициям (порча рукописи обычным «печатал и переключился»).
+    if (next.chapterId !== chapterIdRef.current) return;
     // Локальный флаг ошибки сохранения снимается только явным действием
     // (успешная команда, «Перечитать главу», resolveExternal) — приход
     // снимка само по себе не прячет сбой и не принимает внешнюю версию.
+    snapshotRef.current = next;
     setSnapshot(next);
+  }, []);
+
+  /**
+   * Смена главы: снимок прежней главы сбрасывается синхронно, до ответа
+   * openChapter. Окно без снимка не показывает чужой текст: редактор
+   * (key={chapterId}) и заметка главы ремонтируются только по снимку новой
+   * главы, набранный в промежутке текст не уходит в чужую сессию.
+   */
+  const switchChapter = useCallback((next: string): void => {
+    if (next === chapterIdRef.current) return;
+    chapterIdRef.current = next;
+    snapshotRef.current = null;
+    setSnapshot(null);
+    setChapterId(next);
   }, []);
 
   // --- оформление ------------------------------------------------------------
@@ -245,7 +271,9 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
   );
 
   useEffect(() => {
+    chapterIdRef.current = chapterId;
     if (chapterId === null) {
+      snapshotRef.current = null;
       setSnapshot(null);
       return;
     }
@@ -365,7 +393,17 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
         setSaveError(null);
         return next;
       } catch (cause) {
-        setSaveError(errorText(cause));
+        // Отказ ввода при показанном внешнем изменении — не сбой сохранения:
+        // на main сессия в состоянии external отвергает любой ввод как
+        // устаревший (STALE_REVISION), поэтому чип остаётся аффордансом
+        // «Внешнее изменение» с кнопками разрешения, а не уводит пользователя
+        // к «Перечитать главу». Настоящие сбои (SAVE_FAILED и прочие) при
+        // любом другом состоянии показываются как «Ошибка сохранения».
+        // Код ошибки через contextBridge не переносится (у Error сохраняется
+        // только message), поэтому признак — состояние снимка.
+        if (snapshotRef.current?.saveState !== 'external') {
+          setSaveError(errorText(cause));
+        }
         throw cause;
       }
     },
@@ -609,7 +647,7 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
                 className={entry.id === chapterId ? 'book__chapter book__chapter--active' : 'book__chapter'}
                 disabled={entry.missing}
                 title={entry.missing ? 'Файл главы отсутствует' : entry.path}
-                onClick={() => setChapterId(entry.id)}
+                onClick={() => switchChapter(entry.id)}
               >
                 {entry.title !== '' ? entry.title : entry.path}
                 {entry.missing ? ' (файл отсутствует)' : ''}

@@ -1,7 +1,10 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { openChapter } from '../../packages/review-engine/src/index';
+import type { Review } from '../../packages/pocket-format/src/index';
 
 const tempDirs: string[] = [];
 
@@ -121,6 +124,103 @@ test('ввод кот→кит пишет sidecar, исходник цел, по
     await session.page.keyboard.press('Control+z');
     await expect(session.page.locator('.cm-content')).toContainText('кит');
     expect(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')).toBe(sidecarBeforeUndo);
+  } finally {
+    await session.app.close();
+  }
+});
+
+test('смена главы во время пачки ввода не переносит правки между главами', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-switch-race-');
+  // Большая глава B: её открытие перестраивает движок заметно дольше кадра —
+  // это «окно смены главы», в котором защищённое окно не показывает ни
+  // одного редактора, а незащищённое показывает текст прежней главы.
+  const bigB = 'пёс спит.\n' + 'текст '.repeat(180000);
+  const manifest = {
+    schema_version: 1,
+    book_id: randomUUID(),
+    title: 'Две главы',
+    chapters: [
+      { id: randomUUID(), path: 'Глава.md', title: 'Глава' },
+      { id: randomUUID(), path: 'Вторая.md', title: 'Вторая' },
+    ],
+    ignored_files: [],
+  };
+  await writeFile(path.join(bookRoot, '.pocket-editor.json'), JSON.stringify(manifest, null, 2));
+  const session = await launch(bookRoot, { 'Глава.md': 'кот спит.\n', 'Вторая.md': bigB });
+  try {
+    await openOwnBook(session);
+    const content = session.page.locator('.cm-content');
+    await expect(content).toContainText('кот спит.');
+
+    // Пачка в главе A и немедленная смена главы: подтверждения продолжают
+    // приходить уже после переключения — окно обязано их игнорировать.
+    const burstA = 'abc'.repeat(10);
+    await content.click();
+    await session.page.keyboard.press('Control+End');
+    // insertText — одна атомарная вставка: одна команда с одним тяжёлым
+    // сохранением двухмегабайтной главы — её ack живёт дольше смены главы.
+    await session.page.keyboard.insertText(burstA);
+    // CM виртуализирует строки большой главы: видимость хвоста пачки не
+    // проверяем через innerText — точность докажет sidecar-проверка движком.
+    await session.page.getByRole('button', { name: 'Вторая' }).click();
+
+    // «Окно смены главы»: пока снимок B не пришёл, области ввода быть не
+    // должно, а появившийся редактор обязан показывать только текст B —
+    // текст прежней главы в окне B недопустим (иначе ввод ушёл бы в сессию
+    // B по позициям текста A). Открывающаяся глава B большая: окно живёт
+    // заметно дольше кадра, проба успевает его увидеть.
+    const sweep = await session.page.evaluate(async () => {
+      const seen: { count: number; head: string | null }[] = [];
+      const deadline = performance.now() + 400;
+      while (performance.now() < deadline) {
+        const editors = document.querySelectorAll('.cm-content');
+        const head = editors[0] ? (editors[0].textContent ?? '').slice(0, 24) : null;
+        seen.push({ count: editors.length, head });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      return seen;
+    });
+    // Каждый кадр окна: либо редактора ещё нет (снимок B не пришёл), либо
+    // он уже показывает B. Текст A под именем B запрещён.
+    const stale = sweep.find(
+      (sample) => sample.count > 0 && (sample.head === null || !sample.head.startsWith('пёс спит.')),
+    );
+    expect(stale).toBeUndefined();
+    await expect(content).toContainText('пёс спит.');
+
+    // Ввод в главе B работает поверх стабильного документа.
+    const burstB = 'xyzxyzxyzxyzx';
+    await content.click();
+    await session.page.keyboard.press('Control+End');
+    await session.page.keyboard.insertText(burstB);
+    await expect(content).toContainText(burstB);
+
+    // Тишина на диске по обоим sidecar.
+    await waitSaveDrained(session.page, path.join(bookRoot, 'Глава.review.json'));
+    await waitSaveDrained(session.page, path.join(bookRoot, 'Вторая.review.json'));
+
+    // Основная истина на диске: закрытие дожидается очередей сохранения.
+    await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+
+    // Sidecar каждой главы содержит ровно правки своей главы: точный текст
+    // движком (никакого переноса/смещения якорей и чужих символов).
+    const sourceA = await readFile(path.join(bookRoot, 'Глава.md'));
+    const sourceB = await readFile(path.join(bookRoot, 'Вторая.md'));
+    const reviewA = JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')) as Review;
+    expect(openChapter(sourceA, reviewA).text).toBe(`кот спит.\n${burstA}`);
+    const reviewB = JSON.parse(await readFile(path.join(bookRoot, 'Вторая.review.json'), 'utf8')) as Review;
+    expect(openChapter(sourceB, reviewB).text).toBe(`${bigB}${burstB}`);
+
+    // Повторное открытие: в каждой главе ровно её собственный текст
+    // (открывается последняя глава B — переходим в A явно; у большой главы
+    // CM показывает только начало, точность хвостов проверена движком выше).
+    await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
+    await expect(session.page.locator('.cm-content')).toBeVisible();
+    await session.page.getByRole('button', { name: 'Глава', exact: true }).click();
+    await expect(content).toContainText(`кот спит.${burstA}`);
+    await session.page.getByRole('button', { name: 'Вторая' }).click();
+    await expect(content).toContainText('пёс спит.');
   } finally {
     await session.app.close();
   }
