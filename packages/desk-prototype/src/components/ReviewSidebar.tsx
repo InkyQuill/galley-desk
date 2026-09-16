@@ -10,7 +10,7 @@ type Props = {
 
 export function ReviewSidebar({ chapterNote, records, onSelect }: Props) {
   return (
-    <aside aria-label="Рецензия" className="flex w-56 flex-none flex-col gap-2 rounded-2xl bg-app-panel p-3">
+    <aside aria-label="Рецензия" className="flex h-full w-56 flex-none flex-col gap-2 overflow-y-auto bg-app-panel p-3">
       {chapterNote !== '' && <p className="rounded-lg bg-app-panel-muted p-2 text-xs text-app-text-muted">{chapterNote}</p>}
       <ul className="flex flex-col gap-1">
         {records.map((record) => {

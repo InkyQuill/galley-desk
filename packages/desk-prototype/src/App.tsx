@@ -66,20 +66,26 @@ export default function App() {
 
   return (
     <AppearanceProvider>
-      <div className="mx-auto flex max-w-6xl flex-col gap-3 p-3">
-        {!zen && <TitleBar />}
+      <div className="flex h-full min-h-0 flex-1 flex-col">
+        {/* Шапка окна — с горизонтальными отступами; сайдбары ниже идут
+            во всю высоту и прилеплены к краям экрана без отступов. */}
         {!zen && (
-          <Header
-            bookTitle={book.title}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            zen={zen}
-            onToggleZen={() => setZen(true)}
-            onOpenAppearance={() => setAppearanceOpen((open) => !open)}
-            searchText={activeChapter.text}
-          />
+          <div className="flex-none px-3 pt-3">
+            <TitleBar />
+            <div className="mt-3">
+              <Header
+                bookTitle={book.title}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                zen={zen}
+                onToggleZen={() => setZen(true)}
+                onOpenAppearance={() => setAppearanceOpen((open) => !open)}
+                searchText={activeChapter.text}
+              />
+            </div>
+          </div>
         )}
-        {appearanceOpen && !zen && <AppearancePanel />}
+        {appearanceOpen && !zen && <AppearancePanel onClose={() => setAppearanceOpen(false)} />}
         {zen && (
           <button
             type="button"
@@ -92,9 +98,9 @@ export default function App() {
             Выйти из Zen
           </button>
         )}
-        <div className="flex gap-3">
+        <div className="mt-3 flex min-h-0 flex-1">
           {!zen && <ChapterSidebar chapters={book.chapters} activeChapterId={chapterId} onSelect={setChapterId} />}
-          <div className="relative flex-1">
+          <div className="relative min-h-0 flex-1 p-3">
             <ChapterContent
               chapter={activeChapter}
               records={records}

@@ -1,4 +1,5 @@
 import type { SignalType } from '../data/fixtures';
+import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick';
 import { recordColor } from '../lib/record-format';
 import { IconBolt } from '../icons';
 
@@ -17,13 +18,15 @@ const OPTIONS: { type: SignalType; label: string }[] = [
 ];
 
 export function SignalPicker({ x, y, onPick, onDismiss }: Props) {
+  const ref = useDismissOnOutsideClick<HTMLDivElement>(onDismiss);
+
   return (
     <div
+      ref={ref}
       role="menu"
       aria-label="Выбор типа сигнала"
       style={{ position: 'fixed', left: x, top: y }}
       className="z-30 flex gap-1 rounded-full bg-app-panel p-1 shadow-[var(--app-card-shadow)]"
-      onMouseLeave={onDismiss}
     >
       {OPTIONS.map(({ type, label }) => (
         <button

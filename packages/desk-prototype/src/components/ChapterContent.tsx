@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useAppearance } from '../appearance/AppearanceProvider';
 import type { Chapter, RecordMarker } from '../data/fixtures';
 import { markText } from '../lib/marked-text';
-import { recordColor, recordDisplay } from '../lib/record-format';
+import { recordBackground, recordColor, recordDisplay } from '../lib/record-format';
 import { IconBolt, IconPencil } from '../icons';
 import { EditFlyout } from './EditFlyout';
 
@@ -50,9 +50,9 @@ export function ChapterContent({ chapter, records, onMarkerActivate, onTextSelec
   };
 
   return (
-    <section className="mx-auto" style={{ width: `min(100%, ${appearance.lineWidth}px)` }}>
-      <h2 className="mb-2 text-sm text-app-text-muted">{chapter.title}</h2>
-      <div className="flex gap-2 rounded-2xl bg-app-panel p-5 shadow-[var(--app-card-shadow)]">
+    <section className="mx-auto flex h-full flex-col" style={{ width: `min(100%, ${appearance.lineWidth}px)` }}>
+      <h2 className="mb-2 flex-none text-sm text-app-text-muted">{chapter.title}</h2>
+      <div className="flex flex-1 gap-2 overflow-y-auto rounded-2xl bg-app-panel p-5 shadow-[var(--app-card-shadow)]">
         <div className="flex w-5 flex-none flex-col items-center gap-1 pt-1" aria-hidden="true">
           {records.map((record) => {
             const display = recordDisplay(record);
@@ -81,12 +81,11 @@ export function ChapterContent({ chapter, records, onMarkerActivate, onTextSelec
             if (segment.record === null) return <span key={index}>{segment.text}</span>;
             const record = segment.record;
             const display = recordDisplay(record);
-            const color = recordColor(display.colorKey);
             const highlightStyle =
               record.kind === 'edit'
-                ? { boxShadow: `inset 0 0 0 100vw ${color}22` }
+                ? { backgroundColor: recordBackground(display.colorKey, 28) }
                 : {
-                    backgroundImage: `linear-gradient(${color}55, ${color}55)`,
+                    backgroundImage: `linear-gradient(${recordBackground(display.colorKey, 55)}, ${recordBackground(display.colorKey, 55)})`,
                     backgroundRepeat: 'no-repeat' as const,
                     backgroundSize: '100% 34%',
                     backgroundPosition: 'bottom' as const,

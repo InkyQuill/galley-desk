@@ -32,7 +32,9 @@ function containerStyle(appearance: AppearanceState): CSSProperties {
     color: 'var(--app-text)',
     fontFamily: appearance.uiFontFamily,
     fontSize: `${appearance.fontSize}px`,
-    minHeight: '100vh',
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
     ...custom,
   } as CSSProperties;
 }

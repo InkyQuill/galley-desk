@@ -14,8 +14,15 @@
 /* Нейтральная системная подложка до первой покраски AppearanceProvider —
    тот же приём, что и в apps/desktop/src/renderer/app.css, чтобы не
    мигать чужой темой на первом кадре. */
+/* Нет мобильной версии — минимальная ширина окна 800px. */
 body {
   margin: 0;
+  min-width: 800px;
+  height: 100vh;
   background: Canvas;
   color: CanvasText;
+}
+
+#root {
+  height: 100%;
 }

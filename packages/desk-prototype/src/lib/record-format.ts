@@ -40,3 +40,12 @@ export function recordDisplay(record: RecordMarker, maxLength = 48): RecordDispl
 export function recordColor(colorKey: RecordDisplay['colorKey']): string {
   return colorKey === 'accent' ? 'var(--app-accent)' : SIGNAL_COLOR[colorKey];
 }
+
+/**
+ * Полупрозрачный фон на основе recordColor. color-mix работает и с hex, и
+ * с var(--app-accent) — прямая конкатенация цвета со строкой альфа-канала
+ * ломается именно на var(), поэтому она здесь не используется.
+ */
+export function recordBackground(colorKey: RecordDisplay['colorKey'], alphaPercent: number): string {
+  return `color-mix(in srgb, ${recordColor(colorKey)} ${alphaPercent}%, transparent)`;
+}

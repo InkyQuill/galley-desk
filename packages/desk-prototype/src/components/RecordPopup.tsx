@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { RecordMarker } from '../data/fixtures';
+import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick';
 import { IconCheck, IconTrash, IconX } from '../icons';
 
 type Props = {
@@ -11,9 +12,15 @@ type Props = {
 
 export function RecordPopup({ record, onClose, onSaveComment, onDelete }: Props) {
   const [comment, setComment] = useState(record.kind === 'signal' ? record.comment : '');
+  const ref = useDismissOnOutsideClick<HTMLDivElement>(onClose);
 
   return (
-    <div role="dialog" aria-label={record.kind === 'edit' ? 'Правка' : 'Сигнал'} className="w-64 rounded-2xl bg-app-panel p-3 shadow-[var(--app-card-shadow)]">
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label={record.kind === 'edit' ? 'Правка' : 'Сигнал'}
+      className="w-[560px] rounded-2xl bg-app-panel p-4 shadow-[var(--app-card-shadow)]"
+    >
       {record.kind === 'edit' ? (
         <div className="flex flex-col gap-2 text-sm">
           <p>
@@ -29,10 +36,10 @@ export function RecordPopup({ record, onClose, onSaveComment, onDelete }: Props)
           onChange={(event) => setComment(event.target.value)}
           placeholder="Комментарий…"
           aria-label="Комментарий сигнала"
-          className="h-16 w-full resize-none rounded-lg bg-app-panel-muted p-2 text-sm outline-none placeholder:text-app-text-muted"
+          className="h-24 w-full resize-none rounded-lg bg-app-panel-muted p-2 text-sm outline-none placeholder:text-app-text-muted"
         />
       )}
-      <div className="mt-2 flex justify-end gap-1">
+      <div className="mt-3 flex justify-end gap-1">
         <button
           type="button"
           title="Удалить"

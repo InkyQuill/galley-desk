@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { recordColor, recordDisplay, truncate } from './record-format';
+import { recordBackground, recordColor, recordDisplay, truncate } from './record-format';
 import type { EditMarker, SignalMarker } from '../data/fixtures';
 
 describe('truncate', () => {
@@ -47,5 +47,15 @@ describe('recordColor', () => {
     expect(recordColor('change_required')).toMatch(/^#[0-9a-f]{6}$/);
     expect(recordColor('warning')).toMatch(/^#[0-9a-f]{6}$/);
     expect(recordColor('review')).toMatch(/^#[0-9a-f]{6}$/);
+  });
+});
+
+describe('recordBackground', () => {
+  it('wraps the accent CSS variable in color-mix instead of concatenating an alpha suffix', () => {
+    expect(recordBackground('accent', 20)).toBe('color-mix(in srgb, var(--app-accent) 20%, transparent)');
+  });
+
+  it('wraps a fixed signal hex color in color-mix', () => {
+    expect(recordBackground('warning', 45)).toBe(`color-mix(in srgb, ${recordColor('warning')} 45%, transparent)`);
   });
 });

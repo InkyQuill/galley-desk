@@ -13,7 +13,7 @@ export function ChapterSidebar({ chapters, activeChapterId, onSelect }: Props) {
   const visible = normalized === '' ? chapters : chapters.filter((chapter) => chapter.title.toLowerCase().includes(normalized));
 
   return (
-    <nav aria-label="Оглавление" className="flex w-48 flex-col gap-1 rounded-2xl bg-app-panel p-3">
+    <nav aria-label="Оглавление" className="flex h-full w-48 flex-none flex-col gap-1 overflow-y-auto bg-app-panel p-3">
       <input
         type="text"
         value={filter}
