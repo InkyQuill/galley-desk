@@ -184,8 +184,8 @@ export function Appearance({ value, onChange }: Props) {
           value={uiSizeDraft ?? String(value.uiFontSize)} onBlur={() => setUiSizeDraft(null)}
           onChange={(event) => {
             setUiSizeDraft(event.target.value);
-            const size = Number.parseInt(event.target.value, 10);
-            if (Number.isFinite(size)) onChange({ ...value, uiFontSize: clamp(size, UI_FONT_SIZE_BOUNDS) });
+            const size = event.target.valueAsNumber;
+            if (Number.isSafeInteger(size)) onChange({ ...value, uiFontSize: clamp(size, UI_FONT_SIZE_BOUNDS) });
           }} />
       </div>
       <div className="book__appearance-row">
