@@ -28,7 +28,7 @@ import type { Command, Snapshot } from '../../shared/api';
 import { bookResourceUrl, isHttpHttpsUrl, isLocalImagePath } from '../book/bookres';
 import { dispatchRecordMarkers, mappedRecords, recordMarkers, subscribeScheme } from './markers';
 import { CommandQueue, TypingGroups, fromSnapshot, isHistoryCommand, toTextChanges } from './transaction-adapter';
-import { dismissRecordPreview, recordPreview } from './record-preview';
+import { dismissRecordPreview, recordPreview, setRecordPreviewBlocked } from './record-preview';
 import '@inkyquill/galley-editor/style.css';
 
 /** Императивный доступ панели/попапов к FIFO-очереди и геометрии редактора. */
@@ -48,6 +48,7 @@ export type ReviewEditorApi = {
 type Props = {
   snapshot: Snapshot;
   theme: 'light' | 'dark';
+  previewBlocked?: boolean;
   onCommand: (c: Command) => Promise<Snapshot>;
   /** Реальный якорь выделения — уходит в savePosition (контракт Recent). */
   onSelectionChange?: (anchor: number) => void;
@@ -74,6 +75,7 @@ function errorText(error: unknown): string {
 export function ReviewEditor({
   snapshot,
   theme,
+  previewBlocked = false,
   onCommand,
   onSelectionChange,
   onScrollChange,
@@ -147,6 +149,9 @@ export function ReviewEditor({
   const readOnlyRef = useRef(readOnly);
   readOnlyRef.current = readOnly;
   const readOnlyCompartment = useRef(new Compartment());
+  useEffect(() => {
+    handleRef.current?.view?.dispatch({ effects: setRecordPreviewBlocked.of(previewBlocked) });
+  }, [previewBlocked]);
   // Galley supplies its own editable facets; these must win from creation.
   const readOnlyExtensions = (value: boolean): Extension[] => [
     Prec.highest(EditorState.readOnly.of(value)),

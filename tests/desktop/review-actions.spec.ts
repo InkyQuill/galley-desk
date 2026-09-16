@@ -742,7 +742,10 @@ test('gutter: before preview preserves typing focus, selection flyout wins, butt
     await expect(content).toBeFocused();
     await page.locator('.gd-edit-range').click();
     await expect(page.getByRole('dialog', { name: 'Правка' })).toBeVisible();
+    await page.locator('.gd-edit-range').hover();
+    await expect(preview).toHaveCount(0);
     await page.keyboard.press('Escape');
+    await expect(preview).toHaveCount(0);
     await selectFromStart(page, 0, 2);
     await expect(preview).toHaveCount(0);
     await expect(page.locator('[data-review-flyout]')).toBeVisible();

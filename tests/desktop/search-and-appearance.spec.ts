@@ -352,6 +352,7 @@ test('Zen: панели и topbar скрыты, Escape сначала закры
     // Первый Escape закрывает попап, Zen остаётся.
     await zenPage.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
+    await expect(zenPage.getByRole('tooltip', { name: 'До правки' })).toHaveCount(0);
     await expect(zenPage.locator('.book__zen-exit')).toBeVisible();
 
     // Второй Escape выходит из Zen.

@@ -766,6 +766,7 @@ export function BookWindow({
             <div className="book__text" ref={textRef} style={widthStyle}>
               {snapshot?.recoveryConflict ? <pre aria-label="Локальная версия восстановления">{snapshot.text}</pre> : snapshot !== null && (
                 <ReviewEditor
+                  previewBlocked={popup !== null || cardId !== null}
                   key={`${chapterId}:${editorEpoch}`}
                   snapshot={snapshot}
                   theme={appearanceTheme.scheme}
