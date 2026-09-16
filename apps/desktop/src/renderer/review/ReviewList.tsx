@@ -1,5 +1,5 @@
 import { IconPencil, IconBolt } from '@tabler/icons-react';
-import { useMarkerTheme, signalColor } from '../editor/markers';
+import { EDIT_MARKER_COLOR, useMarkerTheme, signalColor } from '../editor/markers';
 // Правая панель рецензии: список правок и сигналов для перехода между ними.
 // Панель не содержит форм редактирования — выбор записи открывает тот же
 // попап (в BookWindow); у записи без якоря карточка раскрывается прямо здесь.
@@ -43,7 +43,7 @@ export function ReviewList({ records, cardRecordId, onSelect, onCommand, onCardC
               aria-label={recordLabel(record)}
               title={recordLabel(record)}
             >
-              {record.kind === 'edit' ? <IconPencil style={{ color: 'var(--desk-accent)' }} /> : <IconBolt style={{ color: signalColor(record.signalType ?? 'note', theme) }} />}
+              {record.kind === 'edit' ? <IconPencil style={{ color: EDIT_MARKER_COLOR }} /> : <IconBolt style={{ color: signalColor(record.signalType ?? 'note', theme) }} />}
               <span className="book__record-summary">{record.kind === 'edit' ? `${record.before} → ${record.after}` : record.comment || signalLabels[record.signalType ?? 'note']}</span>
             </button>
             {cardRecordId === record.id && (

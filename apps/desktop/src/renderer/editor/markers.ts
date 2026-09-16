@@ -31,6 +31,9 @@ export const SIGNAL_TYPES = ['note', 'change_required', 'warning', 'review'] as 
 export type SignalTypeName = (typeof SIGNAL_TYPES)[number];
 export type ThemeName = 'light' | 'dark';
 
+/** Shared ordinary-edit icon color; follows the active application theme. */
+export const EDIT_MARKER_COLOR = 'var(--desk-accent)';
+
 /** Four signal type colors per theme, copied from Pocket Editor Color.kt. */
 export const SIGNAL_TYPE_COLORS: Record<ThemeName, Record<SignalTypeName, string>> = {
   light: {
@@ -188,7 +191,7 @@ class RecordGutterMarker extends GutterMarker {
       button.title = record.kind === 'signal' ? `Сигнал: ${record.comment || record.before}` :
         deletion ? `Удаление: ${record.before}` : `Правка: ${record.before} → ${record.after}`;
       button.style.color = record.kind === 'signal' ? signalColor(record.signalType ?? 'note', this.theme) :
-        deletion ? deletionColor(this.theme) : 'var(--app-text-muted)';
+        deletion ? deletionColor(this.theme) : EDIT_MARKER_COLOR;
       button.innerHTML = record.kind === 'signal' ? bolt : pencil;
       group.appendChild(button);
     }
