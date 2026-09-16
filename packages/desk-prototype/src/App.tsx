@@ -7,8 +7,10 @@ import { Header } from './components/Header';
 import { RecordPopup } from './components/RecordPopup';
 import { ReviewSidebar } from './components/ReviewSidebar';
 import { SignalPicker } from './components/SignalPicker';
+import { TitleBar } from './components/TitleBar';
 import { book, findChapter } from './data/fixtures';
 import type { RecordMarker, SignalType } from './data/fixtures';
+import { IconTargetOff } from './icons';
 import type { ViewMode } from './types';
 
 type DraftSelection = { from: number; to: number; x: number; y: number };
@@ -28,6 +30,14 @@ export default function App() {
     setSelectedRecordId(null);
     setDraftSelection(null);
   }, [activeChapter]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' && zen) setZen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [zen]);
 
   const selectedRecord = records.find((record) => record.id === selectedRecordId) ?? null;
 
@@ -57,16 +67,31 @@ export default function App() {
   return (
     <AppearanceProvider>
       <div className="mx-auto flex max-w-6xl flex-col gap-3 p-3">
-        <Header
-          bookTitle={book.title}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          zen={zen}
-          onToggleZen={() => setZen((value) => !value)}
-          onOpenAppearance={() => setAppearanceOpen((open) => !open)}
-          searchText={activeChapter.text}
-        />
-        {appearanceOpen && <AppearancePanel />}
+        {!zen && <TitleBar />}
+        {!zen && (
+          <Header
+            bookTitle={book.title}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            zen={zen}
+            onToggleZen={() => setZen(true)}
+            onOpenAppearance={() => setAppearanceOpen((open) => !open)}
+            searchText={activeChapter.text}
+          />
+        )}
+        {appearanceOpen && !zen && <AppearancePanel />}
+        {zen && (
+          <button
+            type="button"
+            title="Выйти из Zen (Esc)"
+            aria-label="Выйти из Zen"
+            onClick={() => setZen(false)}
+            className="fixed right-3 top-3 z-40 flex items-center gap-1 rounded-full bg-app-panel px-3 py-1.5 text-sm shadow-[var(--app-card-shadow)]"
+          >
+            <IconTargetOff size={14} />
+            Выйти из Zen
+          </button>
+        )}
         <div className="flex gap-3">
           {!zen && <ChapterSidebar chapters={book.chapters} activeChapterId={chapterId} onSelect={setChapterId} />}
           <div className="relative flex-1">
