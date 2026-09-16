@@ -29,7 +29,7 @@ test('metadata display, protected body start, validation, save and title refresh
     await expect(page.locator('.book__chapter-name')).toHaveText('Старая 🐈');
     await expect(page.locator('.cm-content')).not.toContainText('complex:');
     await page.locator('.cm-content').click();
-    await page.keyboard.press('Control+Home');
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
     await page.keyboard.press('Backspace');
     await page.keyboard.type('New ');
     await expect(page.locator('.cm-content')).toContainText('New First body');
@@ -40,11 +40,11 @@ test('metadata display, protected body start, validation, save and title refresh
             .edits.length,
       )
       .toBe(1);
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.press('Backspace');
     await expect(page.locator('.cm-content')).not.toContainText('title:');
     // Undo body deletion; metadata was protected and original source is untouched.
-    await page.keyboard.press('Control+z');
+    await page.keyboard.press('ControlOrMeta+z');
     await expect(page.locator('.cm-content')).toContainText('New First body');
     expect(await readFile(path.join(root, '01.md'), 'utf8')).toBe(source);
     await page.getByRole('button', { name: 'Изменить метаданные' }).click();

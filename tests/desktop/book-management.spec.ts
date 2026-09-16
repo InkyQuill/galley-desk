@@ -47,7 +47,7 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
       },
     );
     await page.locator('.cm-content').click();
-    await page.keyboard.press('Control+Home');
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
     await page.keyboard.type('New ');
     // Open management immediately after input; pending save must drain before removal.
     const open = async () => {
@@ -307,7 +307,7 @@ for (const failure of ['trash', 'manifest-conflict'] as const) {
         .getByRole('button', { name: 'Закрыть управление книгой' })
         .click();
       await page.locator('.cm-content').click();
-      await page.keyboard.press('Control+Home');
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
       await page.keyboard.type('y');
       await expect
         .poll(() =>
@@ -318,7 +318,7 @@ for (const failure of ['trash', 'manifest-conflict'] as const) {
           ),
         )
         .toBe('yxxxxAlpha body\n');
-      await page.keyboard.press('Control+z');
+      await page.keyboard.press('ControlOrMeta+z');
       await expect
         .poll(() =>
           page.evaluate(
@@ -329,7 +329,7 @@ for (const failure of ['trash', 'manifest-conflict'] as const) {
         )
         .toBe('xxxxAlpha body\n');
       await expect(page.locator('.cm-content')).toHaveText('xxxxAlpha body');
-      await page.keyboard.press('Control+z');
+      await page.keyboard.press('ControlOrMeta+z');
       await expect
         .poll(() =>
           page.evaluate(

@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, realpath, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { encodeReview, makeAnchor } from '@galley-desk/pocket-format';
@@ -9,7 +9,8 @@ const tempDirs: string[] = [];
 async function makeTempDir(prefix: string): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), prefix));
   tempDirs.push(dir);
-  return dir;
+  // Journals are keyed by the canonical root used by openBook.
+  return realpath(dir);
 }
 
 type Session = { app: ElectronApplication; page: Page; userData: string; bookRoot: string };
