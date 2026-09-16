@@ -1,0 +1,35 @@
+
+Running 1 test using 1 worker
+
+  ✘  1 tests/desktop/review-actions.spec.ts:1075:1 › older snapshot cannot replace accepted marker positions, including after theme changes (11.1s)
+
+
+  1) tests/desktop/review-actions.spec.ts:1075:1 › older snapshot cannot replace accepted marker positions, including after theme changes
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator:  locator('.gd-edit-range')
+    Expected: "YbX"
+    Received: "b"
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toHaveText" locator('.gd-edit-range') with timeout 10000ms
+      - waiting for locator('.gd-edit-range')
+        24 × locator resolved to <span class="gd-edit-range" data-record-id="264d64b6-1741-4613-9af1-ac808443c35b">b</span>
+           - unexpected value "b"
+
+
+      1092 |     await page.waitForTimeout(100);
+      1093 |     await expect(page.locator('.cm-content')).toContainText('aYbXc trailing');
+    > 1094 |     await expect(page.locator('.gd-edit-range')).toHaveText('YbX');
+           |                                                  ^
+      1095 |     await app.evaluate(({nativeTheme}) => { nativeTheme.themeSource = 'dark'; });
+      1096 |     await expect(page.locator('.gd-edit-range')).toHaveText('YbX');
+      1097 |     await page.getByRole('button', {name: /^Правка: abc/}).click();
+        at /home/inky/Development/galley-desk/tests/desktop/review-actions.spec.ts:1094:50
+
+    Error Context: test-results/review-actions-older-snaps-1d93d-cluding-after-theme-changes/error-context.md
+
+  1 failed
+    tests/desktop/review-actions.spec.ts:1075:1 › older snapshot cannot replace accepted marker positions, including after theme changes

@@ -1,0 +1,9 @@
+
+Running 4 tests using 1 worker
+
+  ✓  1 tests/desktop/external-change.spec.ts:74:1 › внешнее изменение принимается: чужая версия в редакторе, локальные правки не затёрты (1.0s)
+  ✓  2 tests/desktop/review-actions.spec.ts:988:1 › delayed ACK maps highlighted support-prefix edit, gutter, preview and reveal together (961ms)
+  ✓  3 tests/desktop/review-actions.spec.ts:1026:1 › delayed ACK keeps edit popup open for typing inside its live mapped range (1.4s)
+  ✓  4 tests/desktop/review-actions.spec.ts:1075:1 › older snapshot cannot replace accepted marker positions, including after theme changes (1.0s)
+
+  4 passed (5.2s)

@@ -1,0 +1,8 @@
+
+Running 3 tests using 1 worker
+
+  ✓  1 tests/desktop/review-actions.spec.ts:988:1 › delayed ACK maps highlighted support-prefix edit, gutter, preview and reveal together (928ms)
+  ✓  2 tests/desktop/review-actions.spec.ts:1026:1 › delayed ACK keeps edit popup open for typing inside its live mapped range (1.4s)
+  ✓  3 tests/desktop/review-actions.spec.ts:1075:1 › older snapshot cannot replace accepted marker positions, including after theme changes (1.0s)
+
+  3 passed (4.1s)

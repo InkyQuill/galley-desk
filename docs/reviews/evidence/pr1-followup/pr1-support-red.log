@@ -1,0 +1,24 @@
+
+ RUN  v5.0.1 /home/inky/Development/galley-desk
+
+ ❯ apps/desktop/src/main/book-service.test.ts (54 tests | 2 failed | 52 skipped) 34ms
+   × editing a body-start insertion preserves its metadata support prefix ("\n") 26ms
+   × editing a body-start insertion preserves its metadata support prefix ("\r\n") 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/desktop/src/main/book-service.test.ts > editing a body-start insertion preserves its metadata support prefix ("\n")
+ FAIL  apps/desktop/src/main/book-service.test.ts > editing a body-start insertion preserves its metadata support prefix ("\r\n")
+IpcError: Используйте изменение метаданных
+ ❯ applyCommand apps/desktop/src/main/book-service.ts:527:141
+
+ ❯ Object.command apps/desktop/src/main/book-service.ts:748:15
+ ❯ apps/desktop/src/main/book-service.test.ts:1250:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 52 skipped (54)
+   Start at  20:47:38
+   Duration  538ms (transform 52%, import 39%, tests 8%, worker 1%)

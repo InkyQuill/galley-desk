@@ -1,0 +1,16 @@
+
+> test
+> vitest run
+
+
+ RUN  v5.0.1 /home/inky/Development/galley-desk
+
+
+ Test Files  29 passed (29)
+      Tests  362 passed (362)
+   Start at  20:49:20
+   Duration  1.55s (transform 39%, import 38%, tests 20%, worker 2%)
+
+  Transform  transforming modules took 4.19s · 39% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
