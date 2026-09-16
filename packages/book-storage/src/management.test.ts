@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
+import * as files from './files';
 import {
   mkdtemp,
   readFile,
@@ -13,6 +14,7 @@ import { encodeReview } from '@galley-desk/pocket-format';
 import { openBook, readPair, manageBook, discoverChapters } from './book';
 const dirs: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const dir of dirs.splice(0))
     await rm(dir, { recursive: true, force: true });
 });
@@ -206,4 +208,50 @@ test('trash moves both validated files before removing spine; rejects sidecar sy
   await manageBook(book, { type: 'trash', chapterId: chapter.id }, trash);
   expect(moved).toEqual([path.join(root, 'a.md'), reviewPath]);
   expect((await openBook(root)).manifest.chapters).toEqual([]);
+});
+
+
+test.each([
+  ['extra.review.json', false],
+  ['extra.md.review.json', false],
+  ['extra.review.json', true],
+  ['extra.md.review.json', true],
+] as const)('refuses sidecar %s changed during addition preparation (existing=%s)', async (reviewName, existing) => {
+  const { root, book } = await fixture();
+  await writeFile(path.join(root, 'extra.md'), '# Extra\n');
+  await writeFile(path.join(root, 'later.md'), '# Later\n');
+  const review = (id: string) => encodeReview({ schema_version: 1, chapter_id: id,
+    source_path: 'extra.md', chapter_note: '', edits: [], signals: [] });
+  if (existing) await writeFile(path.join(root, reviewName), review('22222222-2222-4222-8222-222222222222'));
+  const external = review('33333333-3333-4333-8333-333333333333');
+  const before = await readFile(path.join(root, '.pocket-editor.json'));
+  const originalRead = files.readFileBytes;
+  // A second candidate gives an exact interleaving after the first was validated.
+  vi.spyOn(files, 'readFileBytes').mockImplementation(async target => {
+    if (target === path.join(root, 'later.md')) await writeFile(path.join(root, reviewName), external);
+    return originalRead(target);
+  });
+  await expect(manageBook(book, { type: 'add', paths: ['extra.md', 'later.md'] }))
+    .rejects.toThrow(/рецензии.*изменился/);
+  expect(await readFile(path.join(root, '.pocket-editor.json'))).toEqual(before);
+  expect(await readFile(path.join(root, reviewName), 'utf8')).toBe(external);
+  expect(book.manifest.chapters.map(chapter => chapter.path)).toEqual(['a.md']);
+});
+
+test('refuses a sidecar appearing during exclusive chapter creation and leaves the new source discoverable', async () => {
+  const { root, book } = await fixture();
+  const before = await readFile(path.join(root, '.pocket-editor.json'));
+  const external = encodeReview({ schema_version: 1, chapter_id: '33333333-3333-4333-8333-333333333333',
+    source_path: 'new.md', chapter_note: '', edits: [], signals: [] });
+  const originalWrite = files.writeFileSynced;
+  vi.spyOn(files, 'writeFileSynced').mockImplementation(async (target, bytes, flag) => {
+    await originalWrite(target, bytes, flag);
+    if (target === path.join(root, 'new.md')) await writeFile(path.join(root, 'new.md.review.json'), external);
+  });
+  await expect(manageBook(book, { type: 'create', path: 'new.md', title: 'New' }))
+    .rejects.toThrow(/рецензии.*изменился/);
+  expect(await readFile(path.join(root, '.pocket-editor.json'))).toEqual(before);
+  expect(await readFile(path.join(root, 'new.md.review.json'), 'utf8')).toBe(external);
+  expect(await readFile(path.join(root, 'new.md'), 'utf8')).toBe('# New\n');
+  expect(await discoverChapters(book)).toEqual([{ path: 'new.md' }]);
 });

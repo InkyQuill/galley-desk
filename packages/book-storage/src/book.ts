@@ -486,7 +486,7 @@ export async function discoverChapters(book: BookHandle): Promise<Array<{ path: 
     .map(path => ({ path }));
 }
 
-async function addition(book: BookHandle, name: string): Promise<Chapter> {
+async function addition(book: BookHandle, name: string, expectedReviews: Map<string, Uint8Array | null>): Promise<Chapter> {
   reviewPathFor(name);
   if (name.startsWith('.') || book.manifest.ignored_files.includes(name) || book.manifest.chapters.some(chapter => chapter.path === name)) {
     throw new BookManagementError('Файл уже в книге, скрыт или исключён из книги.');
@@ -498,6 +498,7 @@ async function addition(book: BookHandle, name: string): Promise<Chapter> {
   for (const reviewName of [reviewPathFor(name), `${name}.review.json`]) {
     await assertWritableFileTarget(path.join(book.root, reviewName));
     const bytes = await readOptionalFileBytes(path.join(book.root, reviewName));
+    expectedReviews.set(reviewName, bytes);
     if (bytes === null) continue;
     if (found) throw new BookManagementError('Два файла рецензии у одной главы. Разрешите конфликт имён перед добавлением.');
     found = true;
@@ -524,6 +525,7 @@ export function manageBook(book: BookHandle, change: BookChange, trashItem?: (ab
         if (!change.title.trim() || change.title.includes('\n') || change.title.includes('\r')) throw new BookManagementError('Введите непустое название в одну строку.');
       }
       let created: { name: string; bytes: Uint8Array } | undefined;
+      const expectedReviews = new Map<string, Uint8Array | null>();
       if (change.type === 'rename') wire.title = change.title.trim();
       else if (change.type === 'create' || change.type === 'add') {
         const names = change.type === 'create' ? [change.path] : change.paths;
@@ -536,9 +538,10 @@ export function manageBook(book: BookHandle, change: BookChange, trashItem?: (ab
               await assertWritableFileTarget(path.join(book.root, target));
               if (await readOptionalFileBytes(path.join(book.root, target)) !== null) throw new BookManagementError('Файл с этим именем уже существует.');
             }
+            for (const reviewName of [reviewPathFor(name), `${name}.review.json`]) expectedReviews.set(reviewName, null);
             created = { name, bytes: utf8Bytes(`# ${change.title.trim()}\n`) };
           }
-          const chapter = change.type === 'create' ? { id: randomUUID(), path: name, title: change.title.trim() } : await addition(book, name);
+          const chapter = change.type === 'create' ? { id: randomUUID(), path: name, title: change.title.trim() } : await addition(book, name, expectedReviews);
           if (chapters.some(c => c.id === chapter.id)) throw new BookManagementError('Идентификатор рецензии уже принадлежит другой главе.');
           const reviewNames = [reviewPathFor(chapter.path), `${chapter.path}.review.json`];
           if (chapters.some(c => reviewNames.some(name => name === reviewPathFor(c.path as string) || name === `${c.path}.review.json`))) throw new BookManagementError('Имена файлов рецензии пересекаются с другой главой.');
@@ -579,6 +582,16 @@ export function manageBook(book: BookHandle, change: BookChange, trashItem?: (ab
       // leave this new chapter discoverable so it can be explicitly added later.
       if (created) { await writeFileSynced(path.join(book.root, created.name), created.bytes, 'wx'); await fsyncDir(book.root); }
       await checkedManifest(book);
+      // Optimistic detection of external changes during preparation, including a
+      // previously absent sidecar. External programs can still race after this
+      // check; ordinary filesystem renames cannot atomically commit this set.
+      for (const [name, expected] of expectedReviews) {
+        const target = path.join(book.root, name);
+        await assertWritableFileTarget(target);
+        if (!isDeepStrictEqual(await readOptionalFileBytes(target), expected)) {
+          throw new BookManagementError('Файл рецензии изменился во время добавления главы. Оглавление не изменено; обновите список и повторите добавление.');
+        }
+      }
       await replaceFileSynced(book.root, MANIFEST_NAME, next);
       book.manifest = manifest;
       manifestBytes.set(book, next);
