@@ -489,8 +489,16 @@ export function createBookService(deps: BookServiceDeps): BookService {
         await session.edit(command.changes, command.selection, command.group);
         return;
       case 'signal': {
+        if (command.id !== undefined) {
+          const isCurrentSignal = session.model.review.signals.some((signal) => signal.id === command.id);
+          const isAvailable = classifyReview(session.model.source, session.model.review).signals.has(command.id);
+          if (!isCurrentSignal || !isAvailable) {
+            throw new IpcError('UNAVAILABLE_RECORD', 'Сигнал недоступен для изменения');
+          }
+        }
+        const id = command.id ?? randomUUID();
         const withoutReplaced = command.id === undefined ? session.model : removeRecord(session.model, command.id);
-        const next = addSignal(withoutReplaced, command.from, command.to, command.signalType, command.comment, randomUUID());
+        const next = addSignal(withoutReplaced, command.from, command.to, command.signalType, command.comment, id);
         await session.replaceReview(next.review);
         return;
       }

@@ -1,5 +1,6 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
@@ -52,6 +53,19 @@ async function openOwnBook(session: Session): Promise<void> {
   await stubDialog(session.app, { canceled: false, filePaths: [session.bookRoot] });
   await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
   await expect(session.page.locator('.cm-content')).toBeVisible();
+}
+
+/** Failed-save cases intentionally cannot pass the app's graceful close gate. */
+async function forceStop(app: ElectronApplication): Promise<void> {
+  let child;
+  try {
+    child = app.process();
+  } catch {
+    return;
+  }
+  const exited = child.exitCode !== null ? Promise.resolve() : once(child, 'exit');
+  await app.evaluate(({ app: electronApp }) => electronApp.exit(0)).catch(() => undefined);
+  await exited;
 }
 
 /** Дожидается завершения сохранения: sidecar на диске перестаёт меняться. */
@@ -272,7 +286,7 @@ test('заметка главы сохраняется в sidecar; при оши
     await expect(page.getByRole('alert')).toBeVisible();
     await expect(note).toHaveValue('Глава требует вычитки и правки');
   } finally {
-    await session.app.close();
+    await forceStop(session.app);
   }
 });
 
@@ -492,7 +506,8 @@ test('изменение существующего сигнала заменя�
     await openOwnBook(session);
     const sidecarPath = path.join(bookRoot, SIDECAR_PATH);
 
-    await createSignalByKeyboard(page, sidecarPath, { skip: 0, length: 3 }, 'note', 'Первый');
+    const before = await createSignalByKeyboard(page, sidecarPath, { skip: 0, length: 3 }, 'note', 'Первый');
+    const signalId = before.signals[0]!.id;
 
     // Клик по молнии открывает тот же попап с типом и комментарием.
     await page.getByRole('button', { name: 'Сигнал', exact: true }).click();
@@ -507,6 +522,7 @@ test('изменение существующего сигнала заменя�
     const sidecar = await waitSidecar(page, sidecarPath, (review) =>
       review.signals.length === 1 && review.signals[0] !== undefined && review.signals[0].comment === 'Второй');
     expect(sidecar.signals[0]?.type).toBe('review');
+    expect(sidecar.signals[0]?.id).toBe(signalId);
     expect(sidecar.signals).toHaveLength(1);
   } finally {
     await session.app.close();

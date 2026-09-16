@@ -107,6 +107,7 @@ const ID_EDIT_A = '33333333-3333-4333-8333-333333333333';
 const ID_EDIT_B = '44444444-4444-4444-8444-444444444444';
 const ID_SIGNAL_1 = '55555555-5555-4555-8555-555555555555';
 const ID_EDIT_APPLY = '66666666-6666-4666-8666-666666666666';
+const ID_SIGNAL_2 = '77777777-7777-4777-8777-777777777777';
 
 test('chooseBook без манифеста создаёт совместимый манифест без рекурсивного обхода', async () => {
   const harness = await makeService({
@@ -412,6 +413,68 @@ test('сигнал на исходном диапазоне получает п�
   expect(signal).toMatchObject({ kind: 'signal', status: 'active', before: 'спит', signalType: 'warning' });
   expect(signal.from).toBe(snapshot.text.indexOf('спит'));
   expect(signal.to).toBe(snapshot.text.indexOf('спит') + 4);
+});
+
+test('audit: changing a signal preserves id, history and unrelated records', async () => {
+  const source = 'кот спит.';
+  const harness = await makeService({ 'Глава.md': source });
+  const view = (await harness.chooseBook())!;
+  const chapterId = view.entries[0]!.id;
+  await harness.closeBook(view.bookId);
+  const bytes = utf8.encode(source);
+  await writeSidecar(harness, 'Глава.md', {
+    chapter_note: '',
+    edits: [{ id: ID_EDIT_ACTIVE, before: 'кот', after: 'кит', anchor: makeAnchor(bytes, { from: 0, to: 6 }) }],
+    signals: [
+      { id: ID_SIGNAL_1, type: 'note', selected_text: 'кот', comment: 'Первый', anchor: makeAnchor(bytes, { from: 0, to: 6 }) },
+      { id: ID_SIGNAL_2, type: 'warning', selected_text: 'спит', comment: 'Другой', anchor: makeAnchor(bytes, { from: 7, to: 15 }) },
+    ],
+  });
+
+  const reopened = await harness.openRecent((await harness.recent())[0]!.path);
+  let snapshot = await harness.openChapter(reopened.bookId, chapterId);
+  const target = snapshot.records.find((record) => record.id === ID_SIGNAL_1)!;
+  snapshot = await harness.command(reopened.bookId, chapterId, snapshot.revision, {
+    type: 'signal', id: ID_SIGNAL_1, from: target.from, to: target.to, signalType: 'review', comment: 'Обновлён',
+  });
+  expect(snapshot.records.find((record) => record.id === ID_SIGNAL_1)).toMatchObject({ signalType: 'review', comment: 'Обновлён' });
+  expect(snapshot.records.map((record) => record.id).sort()).toEqual([ID_EDIT_ACTIVE, ID_SIGNAL_1, ID_SIGNAL_2].sort());
+
+  snapshot = await harness.command(reopened.bookId, chapterId, snapshot.revision, { type: 'undo-input' });
+  expect(snapshot.records.find((record) => record.id === ID_SIGNAL_1)).toMatchObject({ signalType: 'note', comment: 'Первый' });
+  snapshot = await harness.command(reopened.bookId, chapterId, snapshot.revision, { type: 'redo-input' });
+  expect(snapshot.records.find((record) => record.id === ID_SIGNAL_1)).toMatchObject({ signalType: 'review', comment: 'Обновлён' });
+
+  await harness.closeBook(reopened.bookId);
+  const openedAgain = await harness.openRecent((await harness.recent())[0]!.path);
+  snapshot = await harness.openChapter(openedAgain.bookId, chapterId);
+  expect(snapshot.records.find((record) => record.id === ID_SIGNAL_1)).toMatchObject({ signalType: 'review', comment: 'Обновлён' });
+  expect(snapshot.records.map((record) => record.id).sort()).toEqual([ID_EDIT_ACTIVE, ID_SIGNAL_1, ID_SIGNAL_2].sort());
+});
+
+test('signal update rejects an edit id, an unknown id and an unavailable signal', async () => {
+  const source = 'кот спит.';
+  const harness = await makeService({ 'Глава.md': source });
+  const view = (await harness.chooseBook())!;
+  const chapterId = view.entries[0]!.id;
+  await harness.closeBook(view.bookId);
+  const bytes = utf8.encode(source);
+  const wrong = utf8.encode('другой текст');
+  await writeSidecar(harness, 'Глава.md', {
+    chapter_note: '',
+    edits: [{ id: ID_EDIT_ACTIVE, before: 'кот', after: 'кит', anchor: makeAnchor(bytes, { from: 0, to: 6 }) }],
+    signals: [{ id: ID_SIGNAL_STALE, type: 'note', selected_text: 'друг', comment: '', anchor: makeAnchor(wrong, { from: 0, to: 12 }) }],
+  });
+  const reopened = await harness.openRecent((await harness.recent())[0]!.path);
+  const snapshot = await harness.openChapter(reopened.bookId, chapterId);
+  for (const id of [ID_EDIT_ACTIVE, ID_SIGNAL_1, ID_SIGNAL_STALE]) {
+    await expect(harness.command(reopened.bookId, chapterId, snapshot.revision, {
+      type: 'signal', id, from: 0, to: 3, signalType: 'warning', comment: 'нет',
+    })).rejects.toMatchObject({ code: 'UNAVAILABLE_RECORD' });
+  }
+  const unchanged = await harness.openChapter(reopened.bookId, chapterId);
+  expect(unchanged.revision).toBe(snapshot.revision);
+  expect(unchanged.records.map((record) => record.id).sort()).toEqual([ID_EDIT_ACTIVE, ID_SIGNAL_STALE].sort());
 });
 
 test('undo/redo флаги следуют истории применения', async () => {
