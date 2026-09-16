@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AppearancePanel } from './appearance/AppearancePanel';
 import { AppearanceProvider } from './appearance/AppearanceProvider';
 import { ChapterContent } from './components/ChapterContent';
 import { ChapterSidebar } from './components/ChapterSidebar';
@@ -15,6 +16,7 @@ type DraftSelection = { from: number; to: number; x: number; y: number };
 export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('text');
   const [zen, setZen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [chapterId, setChapterId] = useState(book.chapters[0]!.id);
   const activeChapter = findChapter(book, chapterId) ?? book.chapters[0]!;
   const [records, setRecords] = useState<RecordMarker[]>(activeChapter.records);
@@ -61,9 +63,10 @@ export default function App() {
           onViewModeChange={setViewMode}
           zen={zen}
           onToggleZen={() => setZen((value) => !value)}
-          onOpenAppearance={() => undefined}
+          onOpenAppearance={() => setAppearanceOpen((open) => !open)}
           searchText={activeChapter.text}
         />
+        {appearanceOpen && <AppearancePanel />}
         <div className="flex gap-3">
           {!zen && <ChapterSidebar chapters={book.chapters} activeChapterId={chapterId} onSelect={setChapterId} />}
           <div className="relative flex-1">
