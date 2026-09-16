@@ -36,3 +36,6 @@ npm audit — отдельная проверка дерева зависимо�
 отказ разрешений и блокировку навигации. Правила не подавлялись. Оставшиеся
 CSP/AUXCLICK/два OPEN_EXTERNAL имеют тот же разбор, что выше.
 [JSON/SARIF и runtime evidence](docs/reviews/evidence/real-book-fixes/).
+
+Финальный повтор на `48246d4`: те же 6 находок, 0 ошибок разбора.
+[Финальный JSON/SARIF](docs/reviews/evidence/real-book-fixes/final/security/).

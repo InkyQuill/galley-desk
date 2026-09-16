@@ -152,3 +152,29 @@ npm run make --workspace @galley-desk/desktop -- --skip-package --targets=@elect
 Ранее отсутствие `zip` приводило к `spawn zip ENOENT`; теперь пакет установлен,
 и используется штатный Forge maker. deb/rpm требуют собственных системных
 инструментов и не входят в эту команду.
+
+
+### Headless Linux: проверка собственной рамки
+
+Для X11-сценариев нужны `Xvfb`, Openbox, `xdotool` и `xprop` (в Arch:
+`xorg-server-xvfb openbox xdotool xorg-xprop`). Запускайте WM только внутри
+изолированного дисплея; рабочую KDE-сессию менять не требуется:
+
+```bash
+export GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/Galley Desk-linux-x64/Galley Desk"
+xvfb-run -a sh -c '
+  openbox >/tmp/galley-test-openbox.log 2>&1 &
+  galley_wm_pid=$!
+  trap "kill $galley_wm_pid 2>/dev/null || true" EXIT
+  npm run test:desktop -- --workers=1
+'
+```
+
+На проверенной CachyOS перед `xvfb-run` добавлялось:
+`env -u XAUTHORITY -u WAYLAND_DISPLAY -u NO_COLOR -u FORCE_COLOR GTK_MODULES=colorreload-gtk-module:appmenu-gtk-module`.
+Не запускайте Openbox с DISPLAY вашей рабочей сессии.
+
+Тесты настоящей корзины используют одноразовые каталоги в `~/.cache`:
+перенос из `/tmp` на внутреннем tmpfs может быть запрещён системным gio.
+Передача `GALLEY_PACKAGED_EXECUTABLE` включает проверки настоящего
+упакованного приложения; Linux X11-проверки не заменяют ручные Mac-пункты.

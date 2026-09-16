@@ -1,6 +1,6 @@
 # Galley Desk — исправления после проверки на реальных книгах
 
-Статус: в работе. Основание: 16 замечаний пользователя от 16 сентября 2026.
+Статус: завершён на Linux; код `48246d4`, все шесть задач и завершающее ревью одобрены. Основание: 16 замечаний пользователя от 16 сентября 2026.
 Предыдущие решения об отсутствии комментариев под абзацами и inline-маркеров удаления заменены этими требованиями.
 
 ## Global Constraints
@@ -57,3 +57,9 @@ Test window config and actual packaged window/control behavior on Linux; prepare
 ## Acceptance and closure
 
 All sixteen items mapped above. After task reviews: full unit/type/contract checks, package, full Electron suite including packaged smoke, performance separately if annotations affect large chapters, security scanner, screenshots of light/dark real fixture. Review whole branch once and resolve material findings. Record commands/results/limits in docs/reviews/2026-09-16-real-book-fixes.md. Mark this plan complete only after verified. Install a versioned local executable and update launcher symlink; do not forcibly close user’s running older instance. Report restart needed if it remains running.
+
+## Завершение
+
+383 unit / 67 native / отдельный performance PASS; локальная установка обновлена.
+[Отчёт, ограничения и артефакты](../../reviews/2026-09-16-real-book-fixes.md).
+macOS runtime не проверен; подготовлена проверка на Mac.

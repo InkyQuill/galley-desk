@@ -1,0 +1,11 @@
+{
+  "source_commit": "48246d4",
+  "installed_version": "0.1.0-48246d4",
+  "executable": "/home/inky/.local/opt/galley-desk/0.1.0-48246d4/Galley Desk",
+  "archive": "/home/inky/Development/galley-desk/apps/desktop/out/make/zip/linux/x64/Galley Desk-linux-x64-0.1.0.zip",
+  "archive_bytes": 124045350,
+  "archive_sha256": "e853eac9a69e2907d72daaa21131e54e648dc668ab1ea4a90cb3755368266942",
+  "app_asar_sha256": "f09f01981d84308e740dd7dd3826b4d9cfcaaa683e577ba01d182f4bd049d3f9",
+  "zip_crc": "PASS",
+  "executable_mode": "0o100755"
+}

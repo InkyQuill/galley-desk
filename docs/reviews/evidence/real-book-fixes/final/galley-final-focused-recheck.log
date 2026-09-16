@@ -1,0 +1,7 @@
+
+Running 2 tests using 1 worker
+
+  ✓  1 tests/desktop/edit-and-reopen.spec.ts:133:1 › смена главы во время пачки ввода не переносит правки между главами (6.5s)
+  ✓  2 tests/desktop/review-actions.spec.ts:988:1 › delayed ACK maps highlighted support-prefix edit, gutter, preview and reveal together (710ms)
+
+  2 passed (7.9s)

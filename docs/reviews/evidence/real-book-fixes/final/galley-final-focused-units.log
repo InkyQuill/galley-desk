@@ -1,0 +1,12 @@
+
+> test
+> vitest run apps/desktop/src/shared/metadata.test.ts apps/desktop/src/renderer/editor/frontmatter.test.ts apps/desktop/src/renderer/editor/markers.test.ts
+
+
+ RUN  v5.0.1 /home/inky/Development/galley-desk
+
+
+ Test Files  3 passed (3)
+      Tests  16 passed (16)
+   Start at  19:25:26
+   Duration  291ms (import 57%, transform 33%, tests 8%, worker 2%)

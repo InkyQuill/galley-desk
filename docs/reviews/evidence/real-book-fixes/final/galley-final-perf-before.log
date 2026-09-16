@@ -1,0 +1,26 @@
+
+Running 1 test using 1 worker
+
+  ✘  1 tests/desktop/performance.spec.ts:140:1 › синтетическая книга: открытие главы, p95 ввода и RSS в бюджете (32.7s)
+
+
+  1) tests/desktop/performance.spec.ts:140:1 › синтетическая книга: открытие главы, p95 ввода и RSS в бюджете
+
+    Error: expect(received).toBeLessThanOrEqual(expected)
+
+    Expected: <= 50
+    Received:    75.7000000178814
+
+      262 |     await writeFile('test-results/performance-results.json', JSON.stringify(result, null, 2), 'utf8');
+      263 |     expect(openChapterMs).toBeLessThanOrEqual(OPEN_BUDGET_MS);
+    > 264 |     expect(p95).toBeLessThanOrEqual(P95_BUDGET_MS);
+          |                 ^
+      265 |   } finally {
+      266 |     await app.close().catch(() => undefined);
+      267 |   }
+        at /home/inky/Development/galley-desk/tests/desktop/performance.spec.ts:264:17
+
+    Error Context: test-results/performance-синтетическая--9c420-ы-p95-ввода-и-RSS-в-бюджете/error-context.md
+
+  1 failed
+    tests/desktop/performance.spec.ts:140:1 › синтетическая книга: открытие главы, p95 ввода и RSS в бюджете

@@ -1,0 +1,12 @@
+
+> test
+> vitest run apps/desktop/src/main/book-service.test.ts
+
+
+ RUN  v5.0.1 /home/inky/Development/galley-desk
+
+
+ Test Files  1 passed (1)
+      Tests  49 passed (49)
+   Start at  19:31:29
+   Duration  837ms (tests 59%, transform 23%, import 18%)
