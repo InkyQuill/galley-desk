@@ -309,7 +309,7 @@ test('черновик заметки главы не переезжает в д
     await noteA.fill('Черновик главы A');
 
     // Смена главы закрывает попап: у главы B своя (пустая) заметка.
-    await page.getByRole('button', { name: 'Вторая', exact: true }).click();
+    await page.getByRole('button', { name: 'Вторая Вторая.md', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Заметка главы' })).toHaveCount(0);
     await page.getByRole('button', { name: 'Заметка главы' }).click();
     const noteB = page.getByRole('textbox', { name: 'Текст заметки' });

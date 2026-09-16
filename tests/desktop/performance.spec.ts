@@ -163,7 +163,6 @@ test('синтетическая книга: открытие главы, p95 в
     await page.getByRole('button', { name: BIG_CHAPTER_TITLE }).click();
     await expect(page.locator('.book__text .cm-content')).toContainText('Абзац 000000', { timeout: 30_000 });
     const openChapterMs = Date.now() - openStartedAt;
-    expect(openChapterMs).toBeLessThanOrEqual(OPEN_BUDGET_MS);
 
     // 500 записей в панели и счётчик списка — фиксируем, что стресс реально создан.
     const recordCount = await page.locator('.book__records .book__record').count();
@@ -192,6 +191,8 @@ test('синтетическая книга: открытие главы, p95 в
       }).observe(content, { characterData: true, childList: true, subtree: true });
     });
 
+    const profiler = process.env.GALLEY_PROFILE ? await page.context().newCDPSession(page) : null;
+    if (profiler) { await profiler.send('Profiler.enable'); await profiler.send('Profiler.start'); }
     const latencies: number[] = [];
     const confirmedSaveLatencies: number[] = [];
     for (let sample = 0; sample < TYPING_SAMPLES; sample++) {
@@ -212,6 +213,12 @@ test('синтетическая книга: открытие главы, p95 в
       await expect(page.locator('.book__save-state')).toHaveText('Сохранено');
       confirmedSaveLatencies.push(performance.now() - saveStartedAt);
     }
+    if (profiler) {
+      const profile = await profiler.send('Profiler.stop');
+      await mkdir('test-results', { recursive: true });
+      await writeFile('test-results/typing.cpuprofile', JSON.stringify(profile.profile));
+      await profiler.detach();
+    }
     await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await page.getByRole('button', { name: 'Открыть', exact: true }).click();
@@ -222,7 +229,6 @@ test('синтетическая книга: открытие главы, p95 в
     const sorted = [...latencies].sort((left, right) => left - right);
     const p95 = percentile(sorted, 0.95);
     const median = percentile(sorted, 0.5);
-    expect(p95).toBeLessThanOrEqual(P95_BUDGET_MS);
 
     // RSS main-процесса и heap рендерера — фиксация факта (бюджета нет).
     const rssMainBytes = await app.evaluate(() => process.memoryUsage().rss);
@@ -252,6 +258,8 @@ test('синтетическая книга: открытие главы, p95 в
     };
     await mkdir('test-results', { recursive: true });
     await writeFile('test-results/performance-results.json', JSON.stringify(result, null, 2), 'utf8');
+    expect(openChapterMs).toBeLessThanOrEqual(OPEN_BUDGET_MS);
+    expect(p95).toBeLessThanOrEqual(P95_BUDGET_MS);
   } finally {
     await app.close().catch(() => undefined);
   }

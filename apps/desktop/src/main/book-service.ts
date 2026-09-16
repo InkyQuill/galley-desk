@@ -1,4 +1,4 @@
-import { frontmatter, metadataReplacement, resolveTitle } from '../shared/metadata';
+import { frontmatter, metadataReplacement, resolveTitle, sourceMetadata } from '../shared/metadata';
 // Book service: the main-process owner of open books and chapter sessions.
 // The renderer only ever sees BookView/Snapshot over typed IPC — no file
 //system handles cross the boundary. Main owns the book-id registry, the
@@ -489,8 +489,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
     return {
       ...head,
       text: model.text,
-      sourceText: sourceUtf8.decode(model.source),
-      title: resolveTitle(strictUtf8.decode(model.source), chapter?.title ?? '', chapter?.path ?? ''),
+      ...sourceMetadata(model.source, chapter?.title ?? '', chapter?.path ?? ''),
       records: buildRecordViews(model),
       chapterNote: model.review.chapter_note,
       saveState: entry.kind === 'recovery' ? 'external' : entry.kind === 'live' ? entry.session.state : 'error',

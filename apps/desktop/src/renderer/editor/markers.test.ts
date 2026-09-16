@@ -65,3 +65,19 @@ test('pending support-prefix typing maps visual endpoints instead of trimming st
   state = state.update({ effects: setRecordMarkers.of([{ ...record('edit', 0, 5), before: 'abc', after: 'aYbXc' }]) }).state;
   expect(state.field(mappedVisualRecords)[0]).toMatchObject({ from: 1, to: 4, before: 'b', after: 'YbX' });
 });
+
+test('gutter lookup preserves boundary/tie order and refreshes after pending mapping and snapshots', async () => {
+  const { recordsForGutterLine, mappedVisualRecords } = await import('./markers');
+  let state = EditorState.create({ doc: 'one two three', extensions: [mappedRecords, mappedVisualRecords] });
+  state = state.update({ effects: setRecordMarkers.of([
+    record('z', 4, 7), record('a', 4, 7), { ...record('deleted', 8, 8), after: '' },
+  ]) }).state;
+  const rows = () => state.field(mappedVisualRecords);
+  expect(recordsForGutterLine(rows(), 4, 8).map(r => r.id)).toEqual(['a', 'z', 'deleted']);
+  expect(recordsForGutterLine(rows(), 0, 3)).toEqual([]);
+  state = state.update({ changes: { from: 0, insert: 'intro ' } }).state;
+  expect(recordsForGutterLine(rows(), 4, 8)).toEqual([]);
+  expect(recordsForGutterLine(rows(), 10, 14).map(r => r.id)).toEqual(['a', 'z', 'deleted']);
+  state = state.update({ effects: setRecordMarkers.of([record('fresh', 0, 3)]) }).state;
+  expect(recordsForGutterLine(rows(), 0, 3).map(r => r.id)).toEqual(['fresh']);
+});

@@ -254,7 +254,7 @@ test('recovery conflict blocks input and preserves local pair before explicit ac
     await expect(session.page.getByRole('textbox', { name: 'Комментарий сигнала' })).toHaveAttribute('readonly', '');
     await expect(session.page.getByRole('button', { name: 'Сохранить', exact: true })).toBeDisabled();
     await expect(session.page.getByRole('button', { name: 'Удалить', exact: true })).toBeDisabled();
-    await expect(session.page.getByRole('button', { name: 'warning', exact: true })).toBeDisabled();
+    await expect(session.page.getByRole('button', { name: 'Предупреждение', exact: true })).toBeDisabled();
     expect(JSON.parse(await readFile(path.join(session.userData, name), 'utf8'))).toEqual(record);
     expect(await readFile(path.join(bookRoot, '01.md'), 'utf8')).toBe('external fox');
     await session.page.getByRole('button', { name: 'Открыть внешнюю версию' }).click();

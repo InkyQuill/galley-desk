@@ -3,12 +3,26 @@ import { Decoration, EditorView } from '@codemirror/view';
 import { frontmatter } from '../../shared/metadata';
 import { fromSnapshot } from './transaction-adapter';
 
+function metadataEnd(state: EditorState): number {
+  // Most chapters have no metadata. Avoid flattening their entire CM rope.
+  if (!/^(?:\uFEFF)?---[ \t]*$/.test(state.doc.line(1).text)) return 0;
+  return frontmatter(state.doc.toString())?.end ?? 0;
+}
+const boundary = StateField.define<number>({
+  create: metadataEnd,
+  update(end, tr) {
+    if (!tr.docChanged) return end;
+    let touchesPrefix = end === 0 || end === tr.startState.doc.length;
+    tr.changes.iterChangedRanges((from) => { if (from < end) touchesPrefix = true; });
+    return touchesPrefix ? metadataEnd(tr.state) : end;
+  },
+});
 const hidden = StateField.define({
   create(state) {
     return decorations(state);
   },
   update(value, tr) {
-    return tr.docChanged ? decorations(tr.state) : value;
+    return tr.startState.field(boundary) !== tr.state.field(boundary) ? decorations(tr.state) : value;
   },
   provide: (field) => [
     EditorView.decorations.from(field),
@@ -16,7 +30,7 @@ const hidden = StateField.define({
   ],
 });
 function decorations(state: EditorState) {
-  const end = frontmatter(state.doc.toString())?.end ?? 0;
+  const end = state.field(boundary);
   return end
     ? Decoration.set([Decoration.replace({ block: true }).range(0, end)])
     : Decoration.none;
@@ -24,10 +38,11 @@ function decorations(state: EditorState) {
 /** Keep absolute source coordinates. Crossing edits are rejected, never clipped or moved. */
 export function protectedFrontmatter() {
   return [
+    boundary,
     hidden,
     EditorState.transactionFilter.of((tr) => {
       if (tr.annotation(fromSnapshot)) return tr;
-      const end = frontmatter(tr.startState.doc.toString())?.end ?? 0;
+      const end = tr.startState.field(boundary);
       if (!end) return tr;
       let crosses = false;
       tr.changes.iterChangedRanges((from) => {

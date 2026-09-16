@@ -100,3 +100,17 @@ export function resolveTitle(
     filename.split(/[\\/]/).pop()!.replace(/\.md$/i, '')
   );
 }
+
+// Chapter models retain immutable source arrays through suggestions. Explicit source
+// writes/reloads replace the array; weak keys keep closed books collectible.
+const sourceCache = new WeakMap<Uint8Array, { sourceText: string; title: string }>();
+const rawUtf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+export function sourceMetadata(source: Uint8Array, manifest: string, filename: string): { sourceText: string; title: string } {
+  let cached = sourceCache.get(source);
+  if (!cached) {
+    const sourceText = rawUtf8.decode(source);
+    cached = { sourceText, title: resolveTitle(sourceText.replace(/^\uFEFF/, ''), '', '') };
+    sourceCache.set(source, cached);
+  }
+  return { sourceText: cached.sourceText, title: cached.title || manifest.trim() || filename.split(/[\\/]/).pop()!.replace(/\.md$/i, '') };
+}

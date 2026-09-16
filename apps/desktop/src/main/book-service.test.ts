@@ -1177,3 +1177,22 @@ test('partial trash replaces the missing chapter snapshot with a strictly newer 
   expect(JSON.parse(await readFile(path.join(h.bookRoot,'.pocket-editor.json'),'utf8')).chapters[0].id).toBe(id);
   await h.closeAll();
 });
+
+test('snapshot source title refreshes on apply and undo while suggestions retain the source title', async () => {
+  const h = await makeService({ '01.md': '# Original\nBody' });
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  expect(initial.title).toBe('Original');
+  const edited = await h.command(book.bookId, id, initial.revision, {
+    type: 'text', changes: [{ from: 2, to: 10, insert: 'Changed' }], selection: { anchor: 9, head: 9 },
+  });
+  expect(edited.title).toBe('Original');
+  const applied = await h.command(book.bookId, id, edited.revision, { type: 'apply', id: edited.records[0]!.id });
+  expect(applied.title).toBe('Changed');
+  expect(applied.sourceText).toBe('# Changed\nBody');
+  const undone = await h.command(book.bookId, id, applied.revision, { type: 'undo-apply' });
+  expect(undone.title).toBe('Original');
+  expect(undone.sourceText).toBe('# Original\nBody');
+  await h.closeAll();
+});

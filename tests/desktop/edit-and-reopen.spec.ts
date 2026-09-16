@@ -216,12 +216,15 @@ test('смена главы во время пачки ввода не пере�
 
     // Повторное открытие: в каждой главе ровно её собственный текст
     // (открывается последняя глава B — переходим в A явно; у большой главы
-    // CM показывает только начало, точность хвостов проверена движком выше).
+    // CM виртуализирует текст; начало покажем явно, точность хвостов проверена движком выше).
     await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
     await expect(session.page.locator('.cm-content')).toBeVisible();
-    await session.page.getByRole('button', { name: 'Глава', exact: true }).click();
+    await session.page.getByRole('button', { name: 'Глава Глава.md', exact: true }).click();
     await expect(content).toContainText(`кот спит.${burstA}`);
     await session.page.getByRole('button', { name: 'Вторая' }).click();
+    // Reopening restores the previous end-of-chapter caret; reveal the virtualized start explicitly.
+    await content.click();
+    await session.page.keyboard.press('ControlOrMeta+Home');
     await expect(content).toContainText('пёс спит.');
   } finally {
     await session.app.close();

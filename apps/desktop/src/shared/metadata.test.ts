@@ -53,3 +53,32 @@ test('BOM counts in source bytes but not in normalized editor metadata boundary'
   expect(fm.derivedEnd).toBe(prefix.slice(1).replace(/\r\n/g,'\n').length);
   expect(metadataReplacement(prefix+'Body','title: New')).toBe(prefix.replace('Old','New'));
 });
+
+test('immutable source metadata cache reuses parsing but refreshes replaced source and manifest fallback', async () => {
+  const { sourceMetadata } = await import('./metadata');
+  const bytes = new TextEncoder().encode('\uFEFF---\r\ntitle: Old\r\n---\r\nBody');
+  expect(sourceMetadata(bytes, 'Manifest', '01.md')).toEqual({ sourceText: '\uFEFF---\r\ntitle: Old\r\n---\r\nBody', title: 'Old' });
+  expect(sourceMetadata(bytes, 'Changed manifest', '02.md').title).toBe('Old');
+  const replacement = new TextEncoder().encode('---\ntitle: New\n---\nBody');
+  expect(sourceMetadata(replacement, '', '01.md').title).toBe('New');
+  expect(sourceMetadata(new TextEncoder().encode('# Applied heading'), '', '01.md').title).toBe('Applied heading');
+  const body = new TextEncoder().encode('No heading');
+  expect(sourceMetadata(body, 'First', '01.md').title).toBe('First');
+  expect(sourceMetadata(body, 'Second', '01.md').title).toBe('Second');
+  expect(sourceMetadata(body, '', '02.md').title).toBe('02');
+});
+
+test('repeated snapshots parse an unchanged source only once', async () => {
+  const { vi } = await import('vitest');
+  const { parser } = await import('@lezer/markdown');
+  const { sourceMetadata } = await import('./metadata');
+  const parse = vi.spyOn(parser, 'parse');
+  try {
+    const source = new TextEncoder().encode('# Cached heading\nbody');
+    sourceMetadata(source, '', 'a.md');
+    sourceMetadata(source, '', 'a.md');
+    expect(parse).toHaveBeenCalledTimes(1);
+    sourceMetadata(new TextEncoder().encode('# External heading'), '', 'a.md');
+    expect(parse).toHaveBeenCalledTimes(2);
+  } finally { parse.mockRestore(); }
+});

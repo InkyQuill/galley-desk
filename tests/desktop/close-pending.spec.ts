@@ -109,7 +109,11 @@ test('custom window close flushes pending text before destroying the window', as
   try {
     await burst(page, 'y');
     const closed = page.waitForEvent('close');
-    await page.getByRole('button', { name: 'Закрыть окно' }).click();
+    if (process.platform === 'darwin') {
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
+    } else {
+      await page.getByRole('button', { name: 'Закрыть окно' }).click();
+    }
     await closed;
     const second = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, GALLEY_DESK_USER_DATA: await temp('desk-reopen-') } });
     try {

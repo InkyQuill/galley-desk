@@ -244,7 +244,11 @@ class RecordGutterMarker extends GutterMarker {
   constructor(readonly records: RecordView[], readonly theme: ThemeName) { super(); }
   eq(other: RecordGutterMarker): boolean {
     return this.theme === other.theme && this.records.length === other.records.length &&
-      this.records.every((record, index) => record === other.records[index]);
+      this.records.every((record, index) => {
+        const next = other.records[index]!;
+        return record.id === next.id && record.kind === next.kind &&
+          record.before === next.before && record.after === next.after && record.signalType === next.signalType;
+      });
   }
   toDOM(): HTMLElement {
     const group = document.createElement('div');
@@ -275,20 +279,24 @@ const gutterGeometry = ViewPlugin.fromClass(class {
       key: this,
       read: (view) => {
         const rows = new Map<string, number>();
+        // Resolve positions from this state, so stable DOM survives shifted anchors.
+        const records = new Map(view.state.field(mappedVisualRecords).map(record => [record.id, record]));
         return [...view.dom.querySelectorAll<HTMLElement>('.gd-gutter-records .gd-record-marker')].map((button) => {
-          const pos = Number(button.dataset.recordPos);
+          const pos = records.get(button.dataset.recordId!)?.from;
+          if (pos === null || pos === undefined) return { button, pos: null, top: 0, column: 0 };
           const coords = view.coordsAtPos(pos);
           const block = button.parentElement!.parentElement!.getBoundingClientRect();
           const top = coords === null ? 0 : coords.top - block.top;
           const row = String(Math.round(coords?.top ?? block.top));
           const column = rows.get(row) ?? 0;
           rows.set(row, column + 1);
-          return { button, top, column };
+          return { button, pos, top, column };
         });
       },
       write: (positions, view) => {
         let columns = 1;
-        for (const { button, top, column } of positions) {
+        for (const { button, pos, top, column } of positions) {
+          if (pos !== null) button.dataset.recordPos = String(pos);
           button.style.top = `${top}px`;
           button.style.left = `${column * 24}px`;
           columns = Math.max(columns, column + 1);
@@ -304,14 +312,32 @@ const gutterGeometry = ViewPlugin.fromClass(class {
   }
 });
 
+// Each state has one sorted index, shared by all visible gutter lines.
+const gutterIndex = new WeakMap<RecordView[], RecordView[]>();
+export function recordsForGutterLine(records: RecordView[], from: number, to: number): RecordView[] {
+  let sorted = gutterIndex.get(records);
+  if (!sorted) {
+    sorted = records.filter(record => record.from !== null).sort((a, b) =>
+      a.from! - b.from! || a.to! - b.to! || a.id.localeCompare(b.id));
+    gutterIndex.set(records, sorted);
+  }
+  let low = 0, high = sorted.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (sorted[middle]!.from! < from) low = middle + 1;
+    else high = middle;
+  }
+  let end = low;
+  while (end < sorted.length && sorted[end]!.from! <= to) end++;
+  return sorted.slice(low, end);
+}
+
 /** CM6 extensions appended after Galley internals. */
 export function recordMarkers(): Extension {
   return [mappedRecords, mappedVisualRecords, recordMarkersField, gutter({
     class: 'gd-review-gutter',
     lineMarker: (view, line) => {
-      const records = view.state.field(mappedVisualRecords).filter((record) =>
-        record.from !== null && record.from >= line.from && record.from <= line.to)
-        .sort((a, b) => a.from! - b.from! || a.to! - b.to! || a.id.localeCompare(b.id));
+      const records = recordsForGutterLine(view.state.field(mappedVisualRecords), line.from, line.to);
       return records.length ? new RecordGutterMarker(records, currentTheme()) : null;
     },
     lineMarkerChange: (update) => update.startState.field(mappedVisualRecords) !== update.state.field(mappedVisualRecords),

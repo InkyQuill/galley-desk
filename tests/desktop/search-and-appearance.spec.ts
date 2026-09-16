@@ -307,6 +307,7 @@ test('оформление: тема красит контейнер, настр
     for (let i = 0; i < 5; i++) await page.keyboard.press('Shift+ArrowRight');
     await page.keyboard.type('правка');
     await expect(content).toContainText('правка');
+    await page.keyboard.press('ArrowLeft');
     const preview = page.getByRole('tooltip', { name: 'До правки' });
     await expect(preview).toContainText('текст');
     await expect(preview).toHaveCSS('font-size', '18px');
@@ -404,7 +405,7 @@ test('поиск открывается с клавиатуры и Escape очи
     await expect(field).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Поиск по главе', exact: true })).toBeFocused();
     await page.getByRole('button', { name: 'Меню книги' }).click();
-    await expect(page.getByRole('button', { name: 'Оформление', exact: true })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Управление книгой', exact: true })).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'Оформление', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Меню книги' })).toBeFocused();

@@ -77,6 +77,8 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
           ).title,
       )
       .toBe('Renamed book');
+    await expect(page.locator('.book__title')).toHaveText('Renamed book');
+    await expect(page.locator('.titlebar__title')).toHaveText('Renamed book');
     const review = await readFile(path.join(root, 'a.review.json'), 'utf8');
     const originalId = JSON.parse(review).chapter_id;
     expect(JSON.parse(review).signals).toHaveLength(1);

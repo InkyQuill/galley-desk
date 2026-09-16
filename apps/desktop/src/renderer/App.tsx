@@ -117,6 +117,7 @@ export function App() {
           book={book}
           restore={restore}
           onClose={closeBook}
+          onBookChange={setBook}
           appearance={appearance}
           appearanceTheme={appearanceTheme}
           appearanceError={appearanceError}

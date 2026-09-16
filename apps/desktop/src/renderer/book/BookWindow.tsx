@@ -25,6 +25,7 @@ type Props = {
   /** Сохранённая позиция из записи недавних (восстановление после перезапуска). */
   restore?: ReadingRestore | null;
   onClose: () => void;
+  onBookChange?: (book: BookView) => void;
   /** Настройки оформления: источник — App (один тематический контейнер). */
   appearance: AppearanceSettings;
   /** Резолв темы в App («Системная» уже развёрнута по схеме ОС). */
@@ -114,6 +115,7 @@ export function BookWindow({
   book: initialBook,
   restore = null,
   onClose,
+  onBookChange,
   appearance,
   appearanceTheme,
   appearanceError,
@@ -229,6 +231,7 @@ export function BookWindow({
 
   const refreshBook = useCallback(async (next: BookView) => {
     setBook(next);
+    onBookChange?.(next);
     if (!next.entries.some(entry => entry.id === chapterIdRef.current)) {
       const nextId = firstOpenEntryId(next);
       chapterIdRef.current = nextId;
@@ -239,7 +242,7 @@ export function BookWindow({
     } else if (chapterIdRef.current !== null) {
       applySnapshot(await window.desk.openChapter(next.bookId, chapterIdRef.current));
     }
-  }, [applySnapshot]);
+  }, [applySnapshot, onBookChange]);
 
   // --- оформление ------------------------------------------------------------
 

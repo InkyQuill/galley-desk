@@ -45,8 +45,16 @@ jobs:
       # performance.spec исключён (бюджеты честны только для выделенного
       # железа; запускается вручную: GALLEY_PERF=1 … --workers=1,
       # результаты — в docs/verification.md).
-      - name: Electron tests (Xvfb)
-        run: xvfb-run --auto-servernum npm run test:desktop
+      - name: Install Linux window test tools
+        run: sudo apt-get update && sudo apt-get install -y xvfb openbox xdotool x11-utils
+      - name: Electron tests (Xvfb and Openbox)
+        run: |
+          xvfb-run --auto-servernum sh -c '
+            openbox > /tmp/galley-openbox.log 2>&1 &
+            wm_pid=$!
+            trap "kill $wm_pid 2>/dev/null || true" EXIT
+            npm run test:desktop
+          '
         env:
           CI: true
           GALLEY_PACKAGED_EXECUTABLE: ${{ github.workspace }}/apps/desktop/out/Galley Desk-linux-x64/Galley Desk
