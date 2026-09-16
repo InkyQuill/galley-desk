@@ -5,6 +5,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isThemeId } from '@inkyquill/galley-themes';
 import type { AppearanceSettings } from '../shared/api';
+import { UI_FONT_SIZE_BOUNDS } from '../shared/appearance';
 
 const SETTINGS_FILE = 'settings.json';
 
@@ -13,9 +14,11 @@ export const LINE_WIDTH_BOUNDS = { min: 320, max: 1600 } as const;
 
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   themeId: 'auto',
-  fontFamily: 'system-ui',
-  fontSize: 16,
-  lineWidth: 720,
+  fontFamily: 'Literata',
+  fontSize: 18,
+  uiFontFamily: 'Geist',
+  uiFontSize: 13,
+  lineWidth: 700,
 };
 
 export type DeskSettings = {
@@ -59,7 +62,17 @@ export function validateAppearance(value: unknown): AppearanceSettings {
       `Ширина строки должна быть целым числом от ${LINE_WIDTH_BOUNDS.min} до ${LINE_WIDTH_BOUNDS.max}`,
     );
   }
-  return { themeId, fontFamily, fontSize: record.fontSize, lineWidth: record.lineWidth };
+  // Old files did not store separate chrome typography. Preserve every old
+  // reading setting and supply defaults only for absent new fields.
+  const uiFontFamily = record.uiFontFamily === undefined ? DEFAULT_APPEARANCE.uiFontFamily : record.uiFontFamily;
+  const uiFontSize = record.uiFontSize === undefined ? DEFAULT_APPEARANCE.uiFontSize : record.uiFontSize;
+  if (typeof uiFontFamily !== 'string' || !uiFontFamily.trim() || uiFontFamily.length > 200) {
+    throw new Error('Некорректное имя шрифта интерфейса');
+  }
+  if (typeof uiFontSize !== 'number' || !Number.isSafeInteger(uiFontSize) || uiFontSize < UI_FONT_SIZE_BOUNDS.min || uiFontSize > UI_FONT_SIZE_BOUNDS.max) {
+    throw new Error('Размер шрифта интерфейса должен быть целым числом от 10 до 24');
+  }
+  return { themeId, fontFamily, fontSize: record.fontSize, lineWidth: record.lineWidth, uiFontFamily, uiFontSize };
 }
 
 /** Loads settings; a missing or corrupt file yields the defaults. */

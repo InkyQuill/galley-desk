@@ -166,7 +166,7 @@ test('открывает главу: правка из sidecar, локальна
       await expect(reopened.page.locator('.book__text')).toContainText('кит спит.');
       // Исходный файл не изменён: правка живёт в sidecar.
       expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe(chapterText);
-      await expect(reopened.page.getByText('Правка: кот спит → кит спит', { exact: false })).toBeVisible();
+      await expect(reopened.page.getByRole('button', { name: 'Правка: кот спит → кит спит', exact: false })).toBeVisible();
 
       // Курсор уводится с картинки: в live-режиме Galley прячет виджет под
       // курсором. Локальная картинка отображается через защищённую схему.
@@ -225,6 +225,7 @@ test('восстанавливает главу и прокрутку в жив�
     });
     // Дожидаемся сохранения позиции (debounce 200 мс) и закрываем книгу.
     await session.page.waitForTimeout(700);
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
 
@@ -280,6 +281,7 @@ test('недоступная папка помечается, забывание
     await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
     await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
     await expect(session.page.getByRole('button', { name: 'Глава' })).toBeVisible();
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
 

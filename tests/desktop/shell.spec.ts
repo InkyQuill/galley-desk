@@ -5,6 +5,7 @@ test('launches without node access in renderer', async () => {
     const page = await app.firstWindow();
     await expect(page.getByRole('heading',{name:'Galley Desk'})).toBeVisible();
     expect(await page.evaluate(() => typeof (window as any).require)).toBe('undefined');
+    expect(await page.evaluate(() => Notification.requestPermission())).toBe('denied');
   } finally { await app.close(); }
 });
 

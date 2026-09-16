@@ -4,7 +4,7 @@ import { chromium, type Browser, type Page } from '@playwright/test';
 const LAUNCH_TIMEOUT_MS = 30_000;
 const STOP_TIMEOUT_MS = 3_000;
 
-type PackagedApp = { page: Page; stop: () => Promise<void> };
+type PackagedApp = { page: Page; pid: number; stop: () => Promise<void> };
 
 async function bounded<T>(operation: Promise<T>, timeout: number, message: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
@@ -34,7 +34,11 @@ function waitForExit(child: ChildProcess): Promise<boolean> {
 
 /** Real executable + renderer CDP only; no Node inspector or fuse changes. */
 export async function launchPackaged(executable: string, profile: string): Promise<PackagedApp> {
-  const child = spawn(executable, ['--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1'], {
+  // Exercise the root-owned SUID fallback explicitly on CI. This selects the
+  // other Chromium sandbox implementation; it never disables sandboxing.
+  const sandboxArgs = process.platform === 'linux' && process.env.GALLEY_TEST_FORCE_SUID_SANDBOX === '1'
+    ? ['--disable-namespace-sandbox'] : [];
+  const child = spawn(executable, ['--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', ...sandboxArgs], {
     env: { ...process.env, GALLEY_DESK_USER_DATA: profile }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   // Drain both pipes so verbose Chromium diagnostics cannot block the child.
@@ -85,7 +89,8 @@ export async function launchPackaged(executable: string, profile: string): Promi
     const context = browser.contexts()[0];
     if (!context) throw new Error('Packaged executable did not expose a browser context');
     const page = context.pages()[0] ?? await context.waitForEvent('page', { timeout: LAUNCH_TIMEOUT_MS });
-    return { page, stop };
+    if (child.pid === undefined) throw new Error('Packaged executable has no process id');
+    return { page, pid: child.pid, stop };
   } catch (error) {
     try {
       await stop();

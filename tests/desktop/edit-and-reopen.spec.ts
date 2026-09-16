@@ -54,26 +54,15 @@ async function openOwnBook(session: Session): Promise<void> {
   await expect(session.page.locator('.cm-content')).toBeVisible();
 }
 
-/** Дожидается завершения сохранения: sidecar на диске перестаёт меняться. */
-async function waitSaveDrained(page: Page, sidecarPath: string): Promise<string> {
-  let previous = '';
-  try {
-    previous = await readFile(sidecarPath, 'utf8');
-  } catch {
-    previous = '';
-  }
-  for (let attempt = 0; attempt < 60; attempt++) {
-    await page.waitForTimeout(250);
-    let current: string;
-    try {
-      current = await readFile(sidecarPath, 'utf8');
-    } catch {
-      current = '';
-    }
-    if (current !== '' && current === previous) return current;
-    previous = current;
-  }
-  throw new Error(`Сохранение не завершилось: ${sidecarPath}`);
+/** Wait for the complete expected text on disk, not a pause between writes. */
+async function waitSavedText(sidecarPath: string, source: Buffer, expectedText: string): Promise<void> {
+  await expect.poll(async () => {
+    const sidecar = await readFile(sidecarPath, 'utf8').catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    return sidecar === null ? null : openChapter(source, JSON.parse(sidecar) as Review).text;
+  }, { timeout: 15_000 }).toBe(expectedText);
 }
 
 test.afterEach(async () => {
@@ -88,14 +77,27 @@ test('ввод кот→кит пишет sidecar, исходник цел, по
     const content = session.page.locator('.cm-content');
     await expect(content).toContainText('кот спит.');
 
+    // Leave the first character persisted while the next command is in flight.
+    // A quiet sidecar (or the previous «Сохранено» snapshot) is not a queue drain.
+    await session.app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>> })._invokeHandlers;
+      const original = handlers.get('desk:command')!;
+      let commands = 0;
+      ipcMain.removeHandler('desk:command');
+      ipcMain.handle('desk:command', async (...args) => {
+        if (++commands === 2) await new Promise(resolve => setTimeout(resolve, 1500));
+        return original(...args);
+      });
+    });
+
     // Замена кот спит. → кит одним вводом поверх выделения всего текста.
     await content.click();
     await session.page.keyboard.press('ControlOrMeta+a');
     await session.page.keyboard.type('кит');
     await expect(content).toContainText('кит');
     await expect(session.page.getByText('Сохранено')).toBeVisible();
-    // Дожидаемся тишины на диске: нажатия Undo не пересекаются с пачкой.
-    await waitSaveDrained(session.page, path.join(bookRoot, 'Глава.review.json'));
+    // Дожидаемся всей пачки на диске перед Undo.
+    await waitSavedText(path.join(bookRoot, 'Глава.review.json'), Buffer.from('кот спит.\n'), 'кит');
 
     // Исходный Markdown не меняется, правка живёт в sidecar.
     expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe('кот спит.\n');
@@ -112,6 +114,7 @@ test('ввод кот→кит пишет sidecar, исходник цел, по
     await expect(content).toContainText('кит');
 
     // Закрытие книги дожидается очереди сохранения.
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
     expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe('кот спит.\n');
@@ -170,22 +173,26 @@ test('смена главы во время пачки ввода не пере�
     // B по позициям текста A). Открывающаяся глава B большая: окно живёт
     // заметно дольше кадра, проба успевает его увидеть.
     const sweep = await session.page.evaluate(async () => {
-      const seen: { count: number; head: string | null }[] = [];
-      const deadline = performance.now() + 400;
+      const seen: { count: number; head: string | null; chapter: string | null }[] = [];
+      const deadline = performance.now() + 10000;
       while (performance.now() < deadline) {
         const editors = document.querySelectorAll('.cm-content');
         const head = editors[0] ? (editors[0].textContent ?? '').slice(0, 24) : null;
-        seen.push({ count: editors.length, head });
+        const chapter = document.querySelector('.book__chapter--active .book__chapter-name')?.textContent ?? null;
+        seen.push({ count: editors.length, head, chapter });
+        if (chapter === 'Вторая' && head?.startsWith('пёс спит.')) break;
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
       return seen;
     });
-    // Каждый кадр окна: либо редактора ещё нет (снимок B не пришёл), либо
+    // Пока очередь A сохраняется, A ещё активна. После смены активной главы
+    // каждый кадр: либо редактора ещё нет (снимок B не пришёл), либо
     // он уже показывает B. Текст A под именем B запрещён.
     const stale = sweep.find(
-      (sample) => sample.count > 0 && (sample.head === null || !sample.head.startsWith('пёс спит.')),
+      (sample) => sample.chapter === 'Вторая' && sample.count > 0 && (sample.head === null || !sample.head.startsWith('пёс спит.')),
     );
     expect(stale).toBeUndefined();
+    expect(sweep.some(sample => sample.chapter === 'Вторая')).toBe(true);
     await expect(content).toContainText('пёс спит.');
 
     // Ввод в главе B работает поверх стабильного документа.
@@ -195,11 +202,12 @@ test('смена главы во время пачки ввода не пере�
     await session.page.keyboard.insertText(burstB);
     await expect(content).toContainText(burstB);
 
-    // Тишина на диске по обоим sidecar.
-    await waitSaveDrained(session.page, path.join(bookRoot, 'Глава.review.json'));
-    await waitSaveDrained(session.page, path.join(bookRoot, 'Вторая.review.json'));
+    // Проверяем полный результат ввода в обоих sidecar.
+    await waitSavedText(path.join(bookRoot, 'Глава.review.json'), Buffer.from('кот спит.\n'), `кот спит.\n${burstA}`);
+    await waitSavedText(path.join(bookRoot, 'Вторая.review.json'), Buffer.from(bigB), `${bigB}${burstB}`);
 
     // Основная истина на диске: закрытие дожидается очередей сохранения.
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
 
@@ -214,12 +222,15 @@ test('смена главы во время пачки ввода не пере�
 
     // Повторное открытие: в каждой главе ровно её собственный текст
     // (открывается последняя глава B — переходим в A явно; у большой главы
-    // CM показывает только начало, точность хвостов проверена движком выше).
+    // CM виртуализирует текст; начало покажем явно, точность хвостов проверена движком выше).
     await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
     await expect(session.page.locator('.cm-content')).toBeVisible();
-    await session.page.getByRole('button', { name: 'Глава', exact: true }).click();
+    await session.page.getByRole('button', { name: 'Глава Глава.md', exact: true }).click();
     await expect(content).toContainText(`кот спит.${burstA}`);
     await session.page.getByRole('button', { name: 'Вторая' }).click();
+    // Reopening restores the previous end-of-chapter caret; reveal the virtualized start explicitly.
+    await content.click();
+    await session.page.keyboard.press('ControlOrMeta+Home');
     await expect(content).toContainText('пёс спит.');
   } finally {
     await session.app.close();
@@ -241,10 +252,10 @@ test('быстрый ввод 50 транзакций не теряет и не 
     await session.page.keyboard.type(burst, { delay: 5 });
     await expect(content).toContainText(burst);
 
-    const sidecar = await waitSaveDrained(session.page, path.join(bookRoot, 'Глава.review.json'));
-    expect(sidecar.length).toBeGreaterThan(0);
+    await waitSavedText(path.join(bookRoot, 'Глава.review.json'), Buffer.from('Текст\n'), `Текст\n${burst}`);
 
     // Основная истина на диске: закрытие и повторное открытие книги.
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
     await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
@@ -276,7 +287,9 @@ test('Chromium composition commit/cancel and multiline emoji CRLF insertion surv
     await cdp.send('Input.imeSetComposition', { text: 'cancel', selectionStart: 6, selectionEnd: 6 });
     await cdp.send('Input.imeSetComposition', { text: '', selectionStart: 0, selectionEnd: 0 });
     await expect(content).not.toContainText('cancel');
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
     const compositionReview = JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')) as Review;
     expect(openChapter(original, compositionReview).text).toBe('日本');
     expect(await readFile(path.join(bookRoot, 'Глава.md'))).toEqual(original);
@@ -288,7 +301,9 @@ test('Chromium composition commit/cancel and multiline emoji CRLF insertion surv
     await content.click();
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.insertText('line one\r\nemoji 🦊\r\nlast');
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
     const review = JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')) as Review;
     expect(openChapter(original, review).text).toBe('line one\nemoji 🦊\nlast');
     expect(await readFile(path.join(bookRoot, 'Глава.md'))).toEqual(original);

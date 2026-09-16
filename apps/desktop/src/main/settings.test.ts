@@ -74,3 +74,19 @@ describe('validateAppearance', () => {
     expect(after.positions.book?.chapter).toEqual({ anchor: 1, scrollTop: 2 });
   });
 });
+
+
+test('legacy appearance preserves book typography, width, theme and positions', async () => {
+  const appData = await mkdtemp(path.join(tmpdir(), 'galley-settings-'));
+  const legacy = { themeId: 'galley-dark', fontFamily: 'Lora', fontSize: 23, lineWidth: 940 };
+  await writeFile(path.join(appData, 'settings.json'), JSON.stringify({ appearance: legacy, positions: { b: { c: { anchor: 4, scrollTop: 9 } } } }));
+  const settings = await loadSettings(appData);
+  expect(settings.appearance).toEqual({ ...legacy, uiFontFamily: 'Geist', uiFontSize: 13 });
+  expect(settings.positions.b?.c).toEqual({ anchor: 4, scrollTop: 9 });
+});
+
+test('UI typography validates independently from reading typography', () => {
+  expect(validateAppearance({ ...valid, uiFontFamily: 'Arial', uiFontSize: 15, fontSize: 32 })).toEqual({ ...valid, uiFontFamily: 'Arial', uiFontSize: 15, fontSize: 32 });
+  for (const uiFontSize of [9, 25, 13.5, NaN]) expect(() => validateAppearance({ ...valid, uiFontSize })).toThrow();
+  expect(() => validateAppearance({ ...valid, uiFontFamily: '' })).toThrow();
+});

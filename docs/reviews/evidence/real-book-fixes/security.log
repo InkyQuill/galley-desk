@@ -1,0 +1,13 @@
+
+> check:security
+> node scripts/check-electron-security.mjs
+
+Could not retrieve updated translations for the current locale
+Electronegativity: 36 atomic / 6 global checks; 6 findings; 0 parser errors.
+LOW CSP_GLOBAL_CHECK apps/desktop/index.html:9
+MEDIUM AUXCLICK_JS_CHECK apps/desktop/src/main/main.ts:49
+HIGH CONTEXT_ISOLATION_JS_CHECK apps/desktop/src/main/main.ts:49
+MEDIUM SANDBOX_JS_CHECK apps/desktop/src/main/main.ts:49
+MEDIUM OPEN_EXTERNAL_JS_CHECK apps/desktop/src/main/main.ts:158
+MEDIUM OPEN_EXTERNAL_JS_CHECK apps/desktop/src/renderer/editor/ReviewEditor.tsx:402
+Reports: test-results/security/. Findings require review; a successful scan is not a security clearance.

@@ -27,7 +27,7 @@ jobs:
           ref: f3012aa8abb73cda32b943ff74f5b78039300d8f
           path: .cache/contracts/pocket-editor
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm

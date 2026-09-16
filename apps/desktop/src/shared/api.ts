@@ -3,7 +3,7 @@ export type Entry = {id:string; path:string; title:string; missing:boolean};
 export type RecordView = {id:string; kind:'edit'|'signal'; status:'active'|'unavailable'|'conflicting';
   reason:string; from:number|null; to:number|null; before:string; after:string;
   comment:string; signalType:'note'|'change_required'|'warning'|'review'|null};
-export type Snapshot = {bookId:string; chapterId:string; revision:number; text:string; sourceText:string;
+export type Snapshot = {bookId:string; chapterId:string; revision:number; text:string; sourceText:string; title?:string;
   records:RecordView[]; chapterNote:string; readOnlyReason:string|null; recoveryConflict?:boolean; saveState:'saved'|'saving'|'error'|'external';
   canUndoInput:boolean; canRedoInput:boolean; canUndoApply:boolean; canRedoApply:boolean};
 export type BookView = {bookId:string; title:string; entries:Entry[]};
@@ -14,10 +14,21 @@ export type Command =
     group?:string}
  | {type:'signal'; id?:string; from:number;to:number; signalType:'note'|'change_required'|'warning'|'review';comment:string}
  | {type:'note';text:string}
+ | {type:'metadata';yaml:string;sourceText:string}
  | {type:'remove'|'apply';id:string}
  | {type:'undo-input'|'redo-input'|'undo-apply'|'redo-apply'};
-export type AppearanceSettings = {themeId:string; fontFamily:string; fontSize:number; lineWidth:number};
+export type AppearanceSettings = {themeId:string; fontFamily:string; fontSize:number; uiFontFamily:string; uiFontSize:number; lineWidth:number};
+export type BookChange =
+ | {type:'rename';title:string}
+ | {type:'create';path:string;title:string}
+ | {type:'add';paths:string[]}
+ | {type:'remove'|'trash';chapterId:string};
+export type ChapterDiscovery = {book:BookView;files:{path:string}[]};
+export type WindowAction = 'minimize'|'toggle-maximize'|'close';
+export type WindowState = {maximized:boolean;platform:NodeJS.Platform};
 export interface DeskApi {
+  manageBook(bookId:string,change:BookChange):Promise<BookView>;
+  discoverChapters(bookId:string):Promise<ChapterDiscovery>;
   onCloseRequest(listener:(closing:boolean)=>Promise<void>):()=>void;
   appearance():Promise<AppearanceSettings>;
   setAppearance(value:AppearanceSettings):Promise<void>;
@@ -32,4 +43,7 @@ export interface DeskApi {
   openExternal(url:string):Promise<void>;
   onSnapshot(listener:(snapshot:Snapshot)=>void):()=>void;
   resolveExternal(bookId:string,chapterId:string,choice:'open-external'|'export-local'):Promise<Snapshot>;
+  windowState():Promise<WindowState>;
+  windowAction(action:WindowAction):Promise<WindowState>;
+  onWindowState(listener:(state:WindowState)=>void):()=>void;
 }

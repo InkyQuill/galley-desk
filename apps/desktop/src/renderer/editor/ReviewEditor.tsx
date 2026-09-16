@@ -1,3 +1,5 @@
+import { protectedFrontmatter } from './frontmatter';
+import { frontmatter } from '../../shared/metadata';
 // ReviewEditor: один экземпляр Galley на главу, связывающий транзакции
 // редактора с сессией рецензирования через desk.command.
 //
@@ -26,12 +28,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { Command, Snapshot } from '../../shared/api';
 import { bookResourceUrl, isHttpHttpsUrl, isLocalImagePath } from '../book/bookres';
-import { dispatchRecordMarkers, installMarkerStyles, recordMarkers, subscribeScheme } from './markers';
+import { dispatchRecordMarkers, mappedVisualRecords, recordMarkers, subscribeScheme } from './markers';
 import { CommandQueue, TypingGroups, fromSnapshot, isHistoryCommand, toTextChanges } from './transaction-adapter';
+import { dismissRecordPreview, recordPreview, setRecordPreviewBlocked } from './record-preview';
+import { snapshotChange } from './snapshot-change';
 import '@inkyquill/galley-editor/style.css';
-
-// Значки маркеров правок/сигналов рисуются стилями — один раз на рендерер.
-installMarkerStyles();
 
 /** Императивный доступ панели/попапов к FIFO-очереди и геометрии редактора. */
 export type ReviewEditorApi = {
@@ -39,6 +40,7 @@ export type ReviewEditorApi = {
   enqueue: (command: Command) => void;
   flushPending: () => Promise<void>;
   focus: () => void;
+  dismissPreview: () => boolean;
   /** Скроллит к записи и выделяет её диапазон; false, если якоря нет. */
   reveal: (recordId: string) => boolean;
   /** Выделяет произвольный диапазон (поиск) и скроллит к нему; false без view. */
@@ -48,6 +50,8 @@ export type ReviewEditorApi = {
 
 type Props = {
   snapshot: Snapshot;
+  theme: 'light' | 'dark';
+  previewBlocked?: boolean;
   onCommand: (c: Command) => Promise<Snapshot>;
   /** Реальный якорь выделения — уходит в savePosition (контракт Recent). */
   onSelectionChange?: (anchor: number) => void;
@@ -57,7 +61,7 @@ type Props = {
   initialAnchor?: number | null;
   /** Непустое выделение → координаты flyout; схлопывание → null. */
   onSelectionWindow?: (range: { from: number; to: number; x: number; y: number; bottom: number } | null) => void;
-  /** Клик по маркеру правки/сигнала (или подстроке комментария). */
+  /** Клик по маркеру или выделенной подложке правки/сигнала. */
   onRecordClick?: (recordId: string, rect: { x: number; y: number; bottom: number }) => void;
   /** Куда SignalFlyout кладёт функцию фокуса для Tab-пути из редактора. */
   flyoutFocusRef?: MutableRefObject<(() => void) | null>;
@@ -73,6 +77,8 @@ function errorText(error: unknown): string {
 
 export function ReviewEditor({
   snapshot,
+  theme,
+  previewBlocked = false,
   onCommand,
   onSelectionChange,
   onScrollChange,
@@ -110,8 +116,9 @@ export function ReviewEditor({
   const flyoutFocusPropRef = useRef(flyoutFocusRef);
   flyoutFocusPropRef.current = flyoutFocusRef;
   // Свежие записи для диспетчера украшений и reveal из панели.
-  const recordsRef = useRef(snapshot.records);
-  recordsRef.current = snapshot.records;
+  // Initial mount is an explicit acceptance path. Later renders may be older
+  // than a completed command ACK, so only the synchronization effect accepts them.
+  const recordsRef = useRef({ chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records });
 
   const setDocRef = useRef<((value: { chapterId: string; text: string }) => void) | null>(null);
   const setCommandErrorRef = useRef<((value: string | null) => void) | null>(null);
@@ -146,6 +153,9 @@ export function ReviewEditor({
   const readOnlyRef = useRef(readOnly);
   readOnlyRef.current = readOnly;
   const readOnlyCompartment = useRef(new Compartment());
+  useEffect(() => {
+    handleRef.current?.view?.dispatch({ effects: setRecordPreviewBlocked.of(previewBlocked) });
+  }, [previewBlocked]);
   // Galley supplies its own editable facets; these must win from creation.
   const readOnlyExtensions = (value: boolean): Extension[] => [
     Prec.highest(EditorState.readOnly.of(value)),
@@ -185,15 +195,21 @@ export function ReviewEditor({
     pendingRef.current = null;
     groupsRef.current.reset();
     // Якорь ограничивается длиной нового текста: вне диапазона dispatch падает.
-    const anchor = Math.max(0, Math.min(pending.anchor, pending.text.length));
+    const anchor = Math.max(frontmatter(pending.text)?.end ?? 0, Math.min(pending.anchor, pending.text.length));
     if (view.state.doc.toString() !== pending.text) {
+      const changes = snapshotChange(view.state.doc.toString(), pending.text);
+      // Same-chapter updates retain logical selection and the viewport's text
+      // anchor. Mapping a whole-document replacement sends that anchor to an
+      // edge of the book. Capture at application time (also after IME deferral).
+      const sync = pending.kind === 'sync';
       view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: pending.text },
-        selection: { anchor, head: anchor },
+        changes,
+        selection: sync ? view.state.selection.map(changes, -1) : { anchor, head: anchor },
+        effects: sync ? view.scrollSnapshot().map(changes) : EditorView.scrollIntoView(anchor),
         annotations: fromSnapshot.of(true),
       });
-    } else if (pending.anchor > 0) {
-      view.dispatch({ selection: { anchor, head: anchor } });
+    } else if (pending.kind === 'switch') {
+      view.dispatch({ selection: { anchor, head: anchor }, effects: EditorView.scrollIntoView(anchor) });
     }
     setDocRef.current?.({ chapterId: pending.chapterId, text: pending.text });
   }
@@ -251,6 +267,7 @@ export function ReviewEditor({
       state.chapterId = snapshot.chapterId;
       state.expectedRevision = snapshot.revision;
       state.mounted = true;
+      recordsRef.current = { chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records };
       queue.unblock();
       setCommandError(null);
       groupsRef.current.reset();
@@ -260,8 +277,13 @@ export function ReviewEditor({
     if (!state.mounted) {
       state.mounted = true;
       state.expectedRevision = snapshot.revision;
+      recordsRef.current = { chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records };
       return;
     }
+    // React may commit an older render after the command queue has already
+    // acknowledged newer input. An empty queue does not make that old snapshot
+    // authoritative: replacing from it would erase confirmed keystrokes.
+    if (snapshot.revision < state.expectedRevision) return;
     if (snapshot.revision > state.expectedRevision) {
       state.expectedRevision = snapshot.revision;
       if (queue.blocked) {
@@ -274,6 +296,7 @@ export function ReviewEditor({
       queue.unblock();
       setCommandError(null);
     }
+    if (!queue.blocked) recordsRef.current = { chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records };
     // Авторитетный текст main расходится с локальным документом после команд,
     // меняющих производный текст на main (применение, отклонение/снятие
     // конфликта записи): при пустой очереди документ заменяется снимком.
@@ -349,7 +372,7 @@ export function ReviewEditor({
   }
   const extensionsRef = useRef<Extension[] | null>(null);
   if (extensionsRef.current === null) {
-    extensionsRef.current = [readOnlyCompartment.current.of(readOnlyExtensions(readOnly)), Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers()];
+    extensionsRef.current = [protectedFrontmatter(), readOnlyCompartment.current.of(readOnlyExtensions(readOnly)), Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers(), recordPreview()];
   }
 
   // Выделение → окно flyout: непустой диапазон даёт координаты конца выделения,
@@ -385,11 +408,12 @@ export function ReviewEditor({
     return true;
   }, []);
 
-  // Клик по маркеру правки/сигнала или подстроке комментария (делегирование).
+  // Клик по маркеру или подложке диапазона (делегирование).
   const handleHostClick = useCallback((event: React.MouseEvent<HTMLDivElement>): void => {
     const target = event.target as HTMLElement | null;
     const marker = target?.closest?.('[data-record-id]') ?? null;
     if (marker === null) return;
+    if (!marker.matches('button, .gd-signal-comment') && handleRef.current?.view?.state.selection.main.empty === false) return;
     const recordId = marker.getAttribute('data-record-id');
     if (recordId === null) return;
     const rect = marker.getBoundingClientRect();
@@ -413,9 +437,10 @@ export function ReviewEditor({
       },
       enqueue: (command) => enqueueRef.current(command),
       focus: () => handleRef.current?.focus(),
+      dismissPreview: () => handleRef.current?.view ? dismissRecordPreview(handleRef.current.view) : false,
       reveal: (recordId) => {
-        const record = recordsRef.current.find((candidate) => candidate.id === recordId);
         const view = handleRef.current?.view ?? null;
+        const record = view?.state.field(mappedVisualRecords).find((candidate) => candidate.id === recordId);
         if (record === undefined || record.from === null || record.to === null || view === null) return false;
         const from = Math.max(0, Math.min(record.from, view.state.doc.length));
         const to = Math.max(0, Math.min(record.to, view.state.doc.length));
@@ -446,6 +471,17 @@ export function ReviewEditor({
     };
   }, []);
 
+  function publishAcceptedMarkers(view: EditorView): void {
+    const accepted = recordsRef.current;
+    const current = stateRef.current;
+    if (queue.blocked || queue.inFlight > 0 || accepted.chapterId !== current.chapterId || accepted.revision !== current.expectedRevision) return;
+    // An IME-deferred replacement must install its document before its markers.
+    if (pendingRef.current !== null) return;
+    dispatchRecordMarkers(view, accepted.records);
+  }
+  const publishMarkersRef = useRef(publishAcceptedMarkers);
+  publishMarkersRef.current = publishAcceptedMarkers;
+
   // Украшения маркеров перестраиваются по записям снапшота; пока команды в
   // полёте, существующий набор мапится через изменения документа (в поле).
   useEffect(() => {
@@ -458,13 +494,13 @@ export function ReviewEditor({
         if (++attempts < 120) requestAnimationFrame(push);
         return;
       }
-      if (!queue.blocked && queue.inFlight === 0) dispatchRecordMarkers(view, recordsRef.current);
+      publishMarkersRef.current(view);
     };
     push();
     return () => {
       cancelled = true;
     };
-  }, [snapshot.records, queue]);
+  }, [snapshot, doc.text, queue]);
 
   // Смена схемы темы оформления (светлый/тёмный набор Pocket-палитры) требует
   // перестроения украшений: подписка перекидывает свежие записи в поле.
@@ -473,7 +509,7 @@ export function ReviewEditor({
       subscribeScheme(() => {
         const view = handleRef.current?.view ?? null;
         if (view === null || queue.blocked || queue.inFlight > 0) return;
-        dispatchRecordMarkers(view, recordsRef.current);
+        publishMarkersRef.current(view);
       }),
     [queue],
   );
@@ -487,6 +523,7 @@ export function ReviewEditor({
       )}
       <GalleyEditor
         ref={handleRef}
+        theme={theme}
         value={doc.text}
         docKey="galley-desk-review"
         ariaLabel="Текст главы"

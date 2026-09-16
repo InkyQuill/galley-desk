@@ -8,7 +8,7 @@ import type { WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
-import type { Command } from '../shared/api';
+import type { Command, WindowAction, WindowState } from '../shared/api';
 import { isHttpHttpsUrl } from './resources';
 
 /** Stable IPC error codes of the contract (never renamed). */
@@ -47,6 +47,7 @@ export function toIpcError(error: unknown): IpcError {
   if (name === 'WriteConflictError') {
     return new IpcError('SAVE_FAILED', 'Глава изменилась на диске; перечитайте её перед сохранением');
   }
+  if (name === 'BookManagementError') return new IpcError('SAVE_FAILED', message);
   if (name === 'ManifestError') {
     // Сообщение ManifestError безопасно: путь манифеста и причина декодирования.
     return new IpcError('BOOK_MISSING', message);
@@ -136,6 +137,7 @@ export function validateCommand(value: unknown): Command {
     }
     return command;
   }
+  if (type === 'metadata') return {type, yaml:asString(record.yaml, 'Command.yaml'),sourceText:asString(record.sourceText, 'Command.sourceText')};
   if (type === 'note') {
     return { type: 'note', text: asString(record.text, 'Command.text') };
   }
@@ -203,6 +205,8 @@ export type DeskIpcDeps = {
   broadcast: SnapshotBroadcaster;
   /** Внешнее открытие ссылок (main передаёт shell.openExternal); инъекция — для тестов. */
   openExternal: (url: string) => Promise<void>;
+  windowState?: (contents: WebContents) => WindowState;
+  windowAction?: (contents: WebContents, action: WindowAction) => WindowState;
 };
 
 /** Only a matching one-shot acknowledgement from the requested top frame counts. */
@@ -240,7 +244,7 @@ export function resumeRenderer(contents: WebContents): void {
  */
 export function registerDeskIpc(deps: DeskIpcDeps): void {
   const { service } = deps;
-  const handle = (channel: string, handler: (event: IpcMainInvokeEvent, args: unknown[]) => Promise<unknown>): void => {
+  const handle = (channel: string, handler: (event: IpcMainInvokeEvent, args: unknown[]) => unknown | Promise<unknown>): void => {
     ipcMain.handle(channel, async (event, ...args) => {
       if (!senderIsTrusted(event)) {
         console.error(`[desk] ${channel}: отклонено — недоверенный senderFrame`);
@@ -257,12 +261,33 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
     });
   };
 
+  handle('desk:window-state', (event) => {
+    if (deps.windowState === undefined) throw new IpcError('SAVE_FAILED', 'Окно недоступно');
+    return deps.windowState(event.sender);
+  });
+  handle('desk:window-action', (event, args) => {
+    if (deps.windowAction === undefined) throw new IpcError('SAVE_FAILED', 'Окно недоступно');
+    const action = args[0];
+    if (action !== 'minimize' && action !== 'toggle-maximize' && action !== 'close') {
+      throw new IpcError('SAVE_FAILED', 'Неизвестное действие окна');
+    }
+    return deps.windowAction(event.sender, action);
+  });
   handle('desk:appearance', () => service.appearance());
   // Валидация значения происходит в сервисе (validateAppearance принимает
   // неизвестные данные); на границе это лишь формальная типизация.
   handle('desk:set-appearance', (_event, args) => service.setAppearance(args[0] as import('../shared/api').AppearanceSettings));
   handle('desk:save-position', (_event, args) =>
     service.savePosition(asStringArg(args[0]), asStringArg(args[1]), asNumberArg(args[2]), asNumberArg(args[3])));
+  handle('desk:discover-chapters', (_event, args) => service.discoverChapters(asStringArg(args[0])));
+  handle('desk:manage-book', async (event, args) => {
+    const bookId = asStringArg(args[0]);
+    const change = validateBookChange(args[1]);
+    try {
+      await flushRenderer(event.sender);
+      return await service.manageBook(bookId, change);
+    } finally { resumeRenderer(event.sender); }
+  });
   handle('desk:choose-book', () => service.chooseBook());
   handle('desk:recent', () => service.recent());
   handle('desk:open-recent', (_event, args) => service.openRecent(asStringArg(args[0])));
@@ -339,3 +364,16 @@ export async function openExternalVia(
 // Forge Vite plugin defines these at build time (dev server URL in dev).
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
+
+export function validateBookChange(value: unknown): import('../shared/api').BookChange {
+  const record = asRecord(value, 'BookChange');
+  switch (record.type) {
+    case 'rename': return { type: 'rename', title: asNonEmptyString(record.title, 'title') };
+    case 'create': return { type: 'create', path: asNonEmptyString(record.path, 'path'), title: asNonEmptyString(record.title, 'title') };
+    case 'add':
+      if (!Array.isArray(record.paths) || !record.paths.length) throw new CommandError('paths must be nonempty');
+      return { type: 'add', paths: record.paths.map(p => asNonEmptyString(p, 'path')) };
+    case 'remove': case 'trash': return { type: record.type, chapterId: asNonEmptyString(record.chapterId, 'chapterId') };
+    default: throw new CommandError('Unknown book change');
+  }
+}

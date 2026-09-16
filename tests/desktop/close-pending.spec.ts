@@ -38,6 +38,9 @@ async function forceStop(app: ElectronApplication) {
 }
 
 async function burst(page: Page, char: string, closeBook = false): Promise<void> {
+  // Open the menu before the burst. The 50 transactions and close click
+  // below still execute synchronously, without any intervening IPC ack.
+  if (closeBook) await page.getByRole('button', { name: 'Меню книги' }).click();
   await page.evaluate(({ char, closeBook }) => {
     // The same view lookup used by EditorView.findFromDOM. Dispatch all 50
     // real editor transactions in one turn: IPC acks cannot drain between them.
@@ -80,6 +83,7 @@ test('failed profile write refuses book close, window close and repeated quit wh
     await expect(page.getByText('Ошибка сохранения', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Исходник', exact: true }).click();
     await expect(page.locator('.cm-content')).toHaveText('cat local');
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(page.getByRole('alert').filter({ hasText: 'окно остаётся открытым' }).first()).toBeVisible();
     await expect(page.locator('.cm-content')).toHaveText('cat local');
@@ -100,12 +104,16 @@ test('failed profile write refuses book close, window close and repeated quit wh
   } finally { await forceStop(app); }
 });
 
-test('native window close flushes pending text before destroying the window', async () => {
+test('custom window close flushes pending text before destroying the window', async () => {
   const { app, page, bookRoot } = await launch();
   try {
     await burst(page, 'y');
     const closed = page.waitForEvent('close');
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
+    if (process.platform === 'darwin') {
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
+    } else {
+      await page.getByRole('button', { name: 'Закрыть окно' }).click();
+    }
     await closed;
     const second = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, GALLEY_DESK_USER_DATA: await temp('desk-reopen-') } });
     try {
@@ -153,6 +161,7 @@ test('successful close stays inert until delayed response unmounts the book and 
         return result;
       });
     });
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect.poll(() => app.evaluate(() => (globalThis as unknown as { storageClosed: boolean }).storageClosed)).toBe(true);
     await expect(page.locator('.book')).toHaveJSProperty('inert', true);

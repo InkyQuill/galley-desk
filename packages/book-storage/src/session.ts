@@ -3,7 +3,7 @@ import { mkdir, readFile, readdir } from 'node:fs/promises';
 import * as path from 'node:path';
 import { decodeReview, encodeReview } from '@galley-desk/pocket-format';
 import type { Review } from '@galley-desk/pocket-format';
-import { applyEdit, changeText, InputHistory, openChapter } from '@galley-desk/review-engine';
+import { applyEdit, replaceSourceRange, changeText, InputHistory, openChapter } from '@galley-desk/review-engine';
 import type { ChapterModel, TextChange } from '@galley-desk/review-engine';
 import { UnknownChapterError, readPair, writePair } from './book';
 import type { BookHandle, Pair, Revision } from './book';
@@ -281,6 +281,49 @@ export class ChapterSession {
       try {
         const revision = await writePair(this.book, this.chapterId, this.revision, target, this.appData);
         this.applyHistory.push(before, target);
+        this.inputHistory.clear();
+        this.adopt(target, nextModel, revision);
+        this.state = 'saved';
+      } catch (error) {
+        await this.fail(error, target);
+        throw error;
+      }
+    });
+  }
+
+  /** Explicit metadata author action; history starts afresh only after a guarded save. */
+  replaceSourcePrefix(expectedSource: string, end: number, prefix: string): Promise<void> {
+    return this.queue.enqueue(async () => {
+      if (
+        this.state !== 'saved' ||
+        new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(this.model.source) !== expectedSource
+      )
+        throw new Error('Metadata source changed');
+      // Keep unchanged delimiter/support bytes outside the replacement. A body
+      // insertion may borrow the preceding newline as its Pocket anchor.
+      const replacement = new TextEncoder().encode(prefix);
+      let from = 0;
+      while (from < end && from < replacement.length && this.model.source[from] === replacement[from]) from++;
+      if (from === end && from === replacement.length) return;
+      while (from > 0 && (this.model.source[from]! & 0xc0) === 0x80) from--;
+      let suffix = 0;
+      while (
+        suffix < end - from &&
+        suffix < replacement.length - from &&
+        this.model.source[end - suffix - 1] === replacement[replacement.length - suffix - 1]
+      )
+        suffix++;
+      while (suffix > 0 && (this.model.source[end - suffix]! & 0xc0) === 0x80) suffix--;
+      const nextModel = replaceSourceRange(
+        this.model,
+        { from, to: end - suffix },
+        new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(replacement.subarray(from, replacement.length - suffix)),
+      );
+      const target = pairOf(nextModel);
+      this.state = 'saving';
+      try {
+        const revision = await writePair(this.book, this.chapterId, this.revision, target, this.appData);
+        this.applyHistory.clear();
         this.inputHistory.clear();
         this.adopt(target, nextModel, revision);
         this.state = 'saved';

@@ -18,9 +18,9 @@ const cardStyle: CSSProperties = {
   gap: '0.5rem',
   padding: '0.75rem',
   borderRadius: 8,
-  border: '1px solid color-mix(in srgb, currentColor 30%, transparent)',
-  background: 'Canvas',
-  color: 'CanvasText',
+  border: 'none',
+  background: 'var(--app-panel)',
+  color: 'var(--app-text)',
 };
 
 export function ChapterNote({ value, onCommand, readOnly = false }: Props) {

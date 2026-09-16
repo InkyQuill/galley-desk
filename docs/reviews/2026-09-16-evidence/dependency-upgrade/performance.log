@@ -1,0 +1,6 @@
+
+Running 1 test using 1 worker
+
+  ✓  1 tests/desktop/performance.spec.ts:140:1 › синтетическая книга: открытие главы, p95 ввода и RSS в бюджете (28.3s)
+
+  1 passed (28.8s)

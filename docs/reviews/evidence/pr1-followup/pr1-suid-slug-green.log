@@ -1,0 +1,30 @@
+
+Running 7 tests using 1 worker
+
+  ✓  1 tests/desktop/metadata.spec.ts:6:1 › metadata display, protected body start, validation, save and title refresh in Electron (1.6s)
+  ✘  2 tests/desktop/packaged-management.spec.ts:9:1 › actual packaged executable persists book management and uses native trash (1.8m)
+  ✓  3 tests/desktop/packaged-smoke.spec.ts:10:1 › packaged executable: save, restart, apply and byte-exact undo (1.8s)
+  ✓  4 tests/desktop/pocket-return.spec.ts:10:3 › Pocket returned folder: chapter.review.json, active/unavailable records and exact apply Undo (973ms)
+  ✓  5 tests/desktop/pocket-return.spec.ts:10:3 › Pocket returned folder: chapter.md.review.json, active/unavailable records and exact apply Undo (931ms)
+  ✓  6 tests/desktop/window-frame.spec.ts:22:1 › packaged Linux window has custom accessible chrome and native controls work (729ms)
+  ✓  7 tests/desktop/window-frame.spec.ts:43:1 › compact welcome keeps every recent book reachable below the fixed title bar (15.6s)
+
+
+  1) tests/desktop/packaged-management.spec.ts:9:1 › actual packaged executable persists book management and uses native trash
+
+    Error: ENOENT: no such file or directory, open '/home/inky/.cache/desk-packaged-management-test-unci68/b.md'
+
+      113 |         readFile(path.join(root, 'a.review.json')),
+      114 |       ).rejects.toThrow();
+    > 115 |       await page.screenshot({ path: '/tmp/galley-packaged-management.png' });
+          |       ^
+      116 |       await panel
+      117 |         .getByRole('button', { name: 'Закрыть управление книгой' })
+      118 |         .click();
+        at /home/inky/Development/galley-desk/tests/desktop/packaged-management.spec.ts:115:7
+
+    Error Context: test-results/packaged-management-actual-4e3f0-ement-and-uses-native-trash/error-context.md
+
+  1 failed
+    tests/desktop/packaged-management.spec.ts:9:1 › actual packaged executable persists book management and uses native trash
+  6 passed (2.1m)

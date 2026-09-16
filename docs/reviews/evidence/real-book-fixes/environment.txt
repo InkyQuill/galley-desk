@@ -1,0 +1,13 @@
+Captured: 2026-09-16T18:47:39.012298+03:00
+$ uname -a
+Linux cachy 7.2.4-3-cachyos #1 SMP PREEMPT_DYNAMIC Sat, 12 Sep 2026 01:51:25 +0000 x86_64 GNU/Linux
+$ node --version
+v26.2.0
+$ npm --version
+11.13.0
+$ pacman -Q openbox xorg-server-xvfb zip
+openbox 3.6.1-14.1
+xorg-server-xvfb 21.1.24-1.1
+zip 3.0-14.1
+$ git rev-parse --abbrev-ref HEAD
+codex/desk-real-book-fixes

@@ -1,0 +1,29 @@
+
+Running 21 tests using 1 worker
+
+  ✓   1 tests/desktop/edit-and-reopen.spec.ts:133:1 › смена главы во время пачки ввода не переносит правки между главами (8.1s)
+  ✓   2 tests/desktop/edit-and-reopen.spec.ts:272:1 › Chromium composition commit/cancel and multiline emoji CRLF insertion survive reopen (1.2s)
+  ✓   3 tests/desktop/metadata.spec.ts:6:1 › metadata display, protected body start, validation, save and title refresh in Electron (1.7s)
+[main] [desk] desk:command: code=SAVE_FAILED
+  ✓   4 tests/desktop/review-actions.spec.ts:266:1 › заметка главы сохраняется в sidecar; при ошибке черновик остаётся (1.1s)
+  ✓   5 tests/desktop/review-actions.spec.ts:506:1 › изменение существующего сигнала заменяет тип и комментарий, не дублируя запись (1.4s)
+  ✓   6 tests/desktop/review-actions.spec.ts:626:1 › конфликтующие правки исключены из текста; удаление участника возвращает другую (976ms)
+  ✓   7 tests/desktop/review-actions.spec.ts:769:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (915ms)
+  ✓   8 tests/desktop/edit-and-reopen.spec.ts:133:1 › смена главы во время пачки ввода не переносит правки между главами (8.4s)
+  ✓   9 tests/desktop/edit-and-reopen.spec.ts:272:1 › Chromium composition commit/cancel and multiline emoji CRLF insertion survive reopen (1.1s)
+  ✓  10 tests/desktop/metadata.spec.ts:6:1 › metadata display, protected body start, validation, save and title refresh in Electron (1.5s)
+[main] [desk] desk:command: code=SAVE_FAILED
+  ✓  11 tests/desktop/review-actions.spec.ts:266:1 › заметка главы сохраняется в sidecar; при ошибке черновик остаётся (1.2s)
+  ✓  12 tests/desktop/review-actions.spec.ts:506:1 › изменение существующего сигнала заменяет тип и комментарий, не дублируя запись (1.3s)
+  ✓  13 tests/desktop/review-actions.spec.ts:626:1 › конфликтующие правки исключены из текста; удаление участника возвращает другую (976ms)
+  ✓  14 tests/desktop/review-actions.spec.ts:769:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (874ms)
+  ✓  15 tests/desktop/edit-and-reopen.spec.ts:133:1 › смена главы во время пачки ввода не переносит правки между главами (8.8s)
+  ✓  16 tests/desktop/edit-and-reopen.spec.ts:272:1 › Chromium composition commit/cancel and multiline emoji CRLF insertion survive reopen (1.1s)
+  ✓  17 tests/desktop/metadata.spec.ts:6:1 › metadata display, protected body start, validation, save and title refresh in Electron (1.7s)
+[main] [desk] desk:command: code=SAVE_FAILED
+  ✓  18 tests/desktop/review-actions.spec.ts:266:1 › заметка главы сохраняется в sidecar; при ошибке черновик остаётся (1.0s)
+  ✓  19 tests/desktop/review-actions.spec.ts:506:1 › изменение существующего сигнала заменяет тип и комментарий, не дублируя запись (1.3s)
+  ✓  20 tests/desktop/review-actions.spec.ts:626:1 › конфликтующие правки исключены из текста; удаление участника возвращает другую (992ms)
+  ✓  21 tests/desktop/review-actions.spec.ts:769:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (845ms)
+
+  21 passed (48.8s)

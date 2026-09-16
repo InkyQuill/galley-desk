@@ -1,0 +1,11 @@
+
+Running 6 tests using 1 worker
+
+  ✓  1 tests/desktop/review-actions.spec.ts:506:1 › изменение существующего сигнала заменяет тип и комментарий, не дублируя запись (3.0s)
+  ✓  2 tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (845ms)
+  ✓  3 tests/desktop/review-actions.spec.ts:506:1 › изменение существующего сигнала заменяет тип и комментарий, не дублируя запись (3.0s)
+  ✓  4 tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (879ms)
+  ✓  5 tests/desktop/review-actions.spec.ts:506:1 › изменение существующего сигнала заменяет тип и комментарий, не дублируя запись (2.9s)
+  ✓  6 tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (882ms)
+
+  6 passed (13.4s)

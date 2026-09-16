@@ -1,0 +1,35 @@
+
+Running 1 test using 1 worker
+
+  ✘  1 tests/desktop/book-management.spec.ts:6:1 › book management: rename, create, discover, cancel trash, remove/readd review and trash pair (10.8s)
+
+
+  1) tests/desktop/book-management.spec.ts:6:1 › book management: rename, create, discover, cancel trash, remove/readd review and trash pair
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator:  locator('.titlebar__title')
+    Expected: "Renamed book"
+    Received: "desk-manage-book-test-NZKOk5"
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toHaveText" locator('.titlebar__title') with timeout 10000ms
+      - waiting for locator('.titlebar__title')
+        24 × locator resolved to <span class="titlebar__title">desk-manage-book-test-NZKOk5</span>
+           - unexpected value "desk-manage-book-test-NZKOk5"
+
+
+      79 |       .toBe('Renamed book');
+      80 |     await expect(page.locator('.book__title')).toHaveText('Renamed book');
+    > 81 |     await expect(page.locator('.titlebar__title')).toHaveText('Renamed book');
+         |                                                    ^
+      82 |     const review = await readFile(path.join(root, 'a.review.json'), 'utf8');
+      83 |     const originalId = JSON.parse(review).chapter_id;
+      84 |     expect(JSON.parse(review).signals).toHaveLength(1);
+        at /home/inky/Development/galley-desk/tests/desktop/book-management.spec.ts:81:52
+
+    Error Context: test-results/book-management-book-manag-ed976-readd-review-and-trash-pair/error-context.md
+
+  1 failed
+    tests/desktop/book-management.spec.ts:6:1 › book management: rename, create, discover, cancel trash, remove/readd review and trash pair

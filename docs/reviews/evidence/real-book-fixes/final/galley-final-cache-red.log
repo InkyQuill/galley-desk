@@ -1,0 +1,29 @@
+
+> test
+> vitest run apps/desktop/src/shared/metadata.test.ts apps/desktop/src/renderer/editor/frontmatter.test.ts
+
+
+ RUN  v5.0.1 /home/inky/Development/galley-desk
+
+ ❯ apps/desktop/src/shared/metadata.test.ts (7 tests | 1 failed) 18ms
+   × immutable source metadata cache reuses parsing but refreshes replaced source and manifest fallback 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/desktop/src/shared/metadata.test.ts > immutable source metadata cache reuses parsing but refreshes replaced source and manifest fallback
+TypeError: sourceMetadata is not a function
+ ❯ apps/desktop/src/shared/metadata.test.ts:60:10
+     58|   const { sourceMetadata } = await import('./metadata');
+     59|   const bytes = new TextEncoder().encode('\uFEFF---\r\ntitle: Old\r\n-…
+     60|   expect(sourceMetadata(bytes, 'Manifest', '01.md')).toEqual({ sourceT…
+       |          ^
+     61|   expect(sourceMetadata(bytes, 'Changed manifest', '02.md').title).toB…
+     62|   const replacement = new TextEncoder().encode('---\ntitle: New\n---\n…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 9 passed (10)
+   Start at  19:24:40
+   Duration  168ms (transform 41%, import 39%, tests 16%, worker 3%)

@@ -6,7 +6,16 @@ Galley Desk хранит правки в формате sidecar-файлов Poc
 `BookDiscovery`) обрабатывает его в юнит-тесте `DesktopExchangeTest`, и результат
 сверяется обратно TypeScript-тестами. Запуск: `npm run test:contracts`.
 
-## Проверенные редакции
+## Текущие зависимости Desk
+
+Desk использует опубликованные npm-пакеты `@inkyquill/galley-editor` и
+`@inkyquill/galley-themes` версии `0.15.0`, закреплённые точными версиями
+и integrity в lockfile. Проверка 2026-09-16: полный TypeScript build,
+362 unit-теста, Forge package и 68 Electron-тестов на Linux прошли.
+Отдельный performance-тест пропущен в обычном Electron-прогоне;
+performance-бюджет при этом обновлении не проверялся.
+
+## Проверенные редакции A6/A7 (исторический срез)
 
 Проверки A6 и A7 выполнены 2026-09-16 в изолированных feature-worktrees.
 Затем изменения слиты в локальные main и повторно проверены; таблица ниже

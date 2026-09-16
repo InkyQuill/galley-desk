@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile, rm, readdir } from 'node:fs/promises';
+import { mkdtemp, realpath, readFile, writeFile, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
@@ -11,7 +11,8 @@ for (const sidecar of ['chapter.review.json', 'chapter.md.review.json']) {
     const executable = process.env.GALLEY_PACKAGED_EXECUTABLE;
     test.skip(!executable, 'Set GALLEY_PACKAGED_EXECUTABLE to the packaged executable');
     const fixture = path.resolve('docs/reviews/2026-09-16-evidence/a7-roundtrip-returned');
-    const root = await mkdtemp(path.join(tmpdir(), 'galley-pocket-return-'));
+    // Recent entries store the canonical root returned by openBook.
+    const root = await realpath(await mkdtemp(path.join(tmpdir(), 'galley-pocket-return-')));
     const profile = await mkdtemp(path.join(tmpdir(), 'galley-pocket-profile-'));
     const source = await readFile(path.join(fixture, 'chapter.md'));
     const review = await readFile(path.join(fixture, 'chapter.review.json'));
@@ -49,6 +50,7 @@ for (const sidecar of ['chapter.review.json', 'chapter.md.review.json']) {
       expect(await readFile(path.join(root, sidecar))).toEqual(review);
       expect(await readFile(path.join(root, '.pocket-editor.json'))).toEqual(manifest);
       expect((await readdir(root)).filter(name => name.endsWith('.review.json'))).toEqual([sidecar]);
+      await page.getByRole('button', { name: 'Меню книги' }).click();
       await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     } finally {
       try {

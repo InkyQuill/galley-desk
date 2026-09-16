@@ -1,0 +1,8 @@
+
+ RUN  v5.0.1 /home/inky/Development/galley-desk
+
+
+ Test Files  1 passed (1)
+      Tests  52 passed (52)
+   Start at  20:38:40
+   Duration  1.03s (tests 57%, transform 23%, import 19%, worker 1%)

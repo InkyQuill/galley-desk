@@ -1,0 +1,13 @@
+
+Running 8 tests using 1 worker
+
+  ✓  1 tests/desktop/book-management.spec.ts:6:1 › book management: rename, create, discover, cancel trash, remove/readd review and trash pair (2.5s)
+  ✓  2 tests/desktop/book-management.spec.ts:232:3 › failed management trash keeps typing and undo on the mounted editor (1.3s)
+  ✓  3 tests/desktop/book-management.spec.ts:232:3 › failed management manifest-conflict keeps typing and undo on the mounted editor (1.2s)
+  ✓  4 tests/desktop/external-change.spec.ts:232:1 › recovery conflict blocks input and preserves local pair before explicit acceptance (788ms)
+  ✓  5 tests/desktop/metadata.spec.ts:6:1 › metadata display, protected body start, validation, save and title refresh in Electron (1.7s)
+  ✓  6 tests/desktop/packaged-smoke.spec.ts:10:1 › packaged executable: save, restart, apply and byte-exact undo (1.9s)
+  ✓  7 tests/desktop/pocket-return.spec.ts:10:3 › Pocket returned folder: chapter.review.json, active/unavailable records and exact apply Undo (988ms)
+  ✓  8 tests/desktop/pocket-return.spec.ts:10:3 › Pocket returned folder: chapter.md.review.json, active/unavailable records and exact apply Undo (942ms)
+
+  8 passed (12.3s)

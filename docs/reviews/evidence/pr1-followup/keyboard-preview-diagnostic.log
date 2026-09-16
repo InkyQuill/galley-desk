@@ -1,0 +1,778 @@
+
+Running 3 tests using 1 worker
+
+TRACE [
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'markers' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  { out: 'cm-line' },
+  { out: 'tok-strong' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 1071,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 1071,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focusEvent: 'focusin',
+    tab: false,
+    active: 'cm-content cm-lineWrapping'
+  },
+  {
+    focused: true,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 1071,
+    empty: true,
+    effects: [ 'focus' ]
+  },
+  {
+    focused: true,
+    blocked: false,
+    dismissed: false,
+    target: undefined,
+    head: 1070,
+    empty: true,
+    effects: []
+  },
+  { focusEvent: 'focusout', tab: false, active: '' },
+  { focusEvent: 'focusin', tab: false, active: 'gd-record-marker' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'd0b72e72-74dd-4d09-8a9a-5335073deed5',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'd0b72e72-74dd-4d09-8a9a-5335073deed5',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  { focusEvent: 'focusout', tab: true, active: '' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  { focusEvent: 'focusin', tab: true, active: 'gd-record-marker' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: '4d5cfe73-5600-46e0-a55f-8ccf9cbef40e',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'intent', 'target' ]
+  },
+  { focusEvent: 'focusout', tab: true, active: '' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  { focusEvent: 'focusin', tab: true, active: 'gd-record-marker' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'd0b72e72-74dd-4d09-8a9a-5335073deed5',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'intent', 'target' ]
+  },
+  'scroll',
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'target' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 1070,
+    empty: true,
+    effects: [ 'other' ]
+  }
+]
+  ✘  1 tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (10.9s)
+TRACE [
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'markers' ]
+  },
+  { out: 'cm-line' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  { out: 'tok-strong' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 1071,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 1071,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focusEvent: 'focusin',
+    tab: false,
+    active: 'cm-content cm-lineWrapping'
+  },
+  {
+    focused: true,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 1071,
+    empty: true,
+    effects: [ 'focus' ]
+  },
+  {
+    focused: true,
+    blocked: false,
+    dismissed: false,
+    target: undefined,
+    head: 1070,
+    empty: true,
+    effects: []
+  },
+  { focusEvent: 'focusout', tab: false, active: '' },
+  { focusEvent: 'focusin', tab: false, active: 'gd-record-marker' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'ee60514b-807e-4411-9cef-05ef9092f4de',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'ee60514b-807e-4411-9cef-05ef9092f4de',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  { focusEvent: 'focusout', tab: true, active: '' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  { focusEvent: 'focusin', tab: true, active: 'gd-record-marker' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'ef531e1d-c515-44fb-873d-932a7ce4d3ad',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'intent', 'target' ]
+  },
+  { focusEvent: 'focusout', tab: true, active: '' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  { focusEvent: 'focusin', tab: true, active: 'gd-record-marker' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'ee60514b-807e-4411-9cef-05ef9092f4de',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'intent', 'target' ]
+  },
+  'scroll',
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'target' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 1070,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: true,
+    dismissed: true,
+    target: undefined,
+    head: 1070,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: true,
+    dismissed: true,
+    target: undefined,
+    head: 1070,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 1070,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  { focusEvent: 'focusout', tab: false, active: '' },
+  {
+    focusEvent: 'focusin',
+    tab: false,
+    active: 'gd-deletion-placeholder'
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: 'ee60514b-807e-4411-9cef-05ef9092f4de',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: 'ee60514b-807e-4411-9cef-05ef9092f4de',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  { focusEvent: 'focusout', tab: true, active: '' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  {
+    focusEvent: 'focusin',
+    tab: true,
+    active: 'gd-deletion-placeholder'
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'ee60514b-807e-4411-9cef-05ef9092f4de',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'intent', 'target' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'target' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'ef531e1d-c515-44fb-873d-932a7ce4d3ad',
+    head: 1070,
+    empty: true,
+    effects: [ 'intent', 'target' ]
+  },
+  { out: 'gd-edit-range' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'target' ]
+  },
+  'scroll'
+]
+  ✓  2 tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (941ms)
+TRACE [
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'markers' ]
+  },
+  { out: 'cm-line' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 0,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  { out: 'tok-strong' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 1071,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 1071,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focusEvent: 'focusin',
+    tab: false,
+    active: 'cm-content cm-lineWrapping'
+  },
+  {
+    focused: true,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 1071,
+    empty: true,
+    effects: [ 'focus' ]
+  },
+  {
+    focused: true,
+    blocked: false,
+    dismissed: false,
+    target: undefined,
+    head: 1070,
+    empty: true,
+    effects: []
+  },
+  { focusEvent: 'focusout', tab: false, active: '' },
+  { focusEvent: 'focusin', tab: false, active: 'gd-record-marker' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'eb80ade2-2d25-45f3-80a7-3b371bc05210',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'eb80ade2-2d25-45f3-80a7-3b371bc05210',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  { focusEvent: 'focusout', tab: true, active: '' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  { focusEvent: 'focusin', tab: true, active: 'gd-record-marker' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'b0912010-7551-4f12-afe8-4d3149f71c85',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'intent', 'target' ]
+  },
+  'scroll',
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'target' ]
+  },
+  { focusEvent: 'focusout', tab: true, active: '' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  { focusEvent: 'focusin', tab: true, active: 'gd-record-marker' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'eb80ade2-2d25-45f3-80a7-3b371bc05210',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'intent', 'target' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: undefined,
+    head: 1070,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: true,
+    dismissed: true,
+    target: undefined,
+    head: 1070,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: true,
+    dismissed: true,
+    target: undefined,
+    head: 1070,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: undefined,
+    head: 1070,
+    empty: true,
+    effects: [ 'other' ]
+  },
+  { focusEvent: 'focusout', tab: false, active: '' },
+  {
+    focusEvent: 'focusin',
+    tab: false,
+    active: 'gd-deletion-placeholder'
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: 'eb80ade2-2d25-45f3-80a7-3b371bc05210',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: 'eb80ade2-2d25-45f3-80a7-3b371bc05210',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  { focusEvent: 'focusout', tab: true, active: '' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: true,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'target' ]
+  },
+  {
+    focusEvent: 'focusin',
+    tab: true,
+    active: 'gd-deletion-placeholder'
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'eb80ade2-2d25-45f3-80a7-3b371bc05210',
+    head: 1070,
+    empty: true,
+    effects: [ 'focus', 'intent', 'target' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'target' ]
+  },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: 'b0912010-7551-4f12-afe8-4d3149f71c85',
+    head: 1070,
+    empty: true,
+    effects: [ 'intent', 'target' ]
+  },
+  { out: 'gd-edit-range' },
+  {
+    focused: false,
+    blocked: false,
+    dismissed: false,
+    target: null,
+    head: 1070,
+    empty: true,
+    effects: [ 'target' ]
+  },
+  'scroll'
+]
+  ✓  3 tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (927ms)
+
+
+  1) tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByRole('tooltip', { name: 'До правки' })
+    Expected substring: "DELETE"
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toContainText" getByRole('tooltip', { name: 'До правки' }) with timeout 10000ms
+      - waiting for getByRole('tooltip', { name: 'До правки' })
+
+
+      809 |     await page.keyboard.press('Shift+Tab');
+      810 |     await expect(deletion).toBeFocused();
+    > 811 |     await expect(page.getByRole('tooltip', { name: 'До правки' })).toContainText('DELETE');
+          |                                                                    ^
+      812 |     await page.keyboard.press('Enter');
+      813 |     await expect(page.getByRole('dialog', { name: 'Правка' })).toContainText('DELETE');
+      814 |     await page.keyboard.press('Escape');
+        at /home/inky/Development/galley-desk/tests/desktop/review-actions.spec.ts:811:68
+
+    Error Context: test-results/review-actions-gutter-foll-c2770-wn-focusable-before-preview/error-context.md
+
+  1 failed
+    tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview 
+  2 passed (14.8s)

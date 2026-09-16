@@ -1,0 +1,40 @@
+
+Running 4 tests using 1 worker
+
+  ✓  1 tests/desktop/review-actions.spec.ts:508:1 › изменение существующего сигнала заменяет тип и комментарий, не дублируя запись (2.9s)
+  ✓  2 tests/desktop/review-actions.spec.ts:771:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (2.8s)
+  ✘  3 tests/desktop/review-actions.spec.ts:508:1 › изменение существующего сигнала заменяет тип и комментарий, не дублируя запись (12.0s)
+  ✓  4 tests/desktop/review-actions.spec.ts:771:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (2.8s)
+
+
+  1) tests/desktop/review-actions.spec.ts:508:1 › изменение существующего сигнала заменяет тип и комментарий, не дублируя запись
+
+    Error: expect(locator).toBeFocused() failed
+
+    Locator:  locator('[data-review-flyout]').getByRole('button', { name: 'Заметка', exact: true })
+    Expected: focused
+    Received: inactive
+    Timeout:  10000ms
+
+    Call log:
+      - Expect "toBeFocused" locator('[data-review-flyout]').getByRole('button', { name: 'Заметка', exact: true }) with timeout 10000ms
+      - waiting for locator('[data-review-flyout]').getByRole('button', { name: 'Заметка', exact: true })
+        23 × locator resolved to <button type="button" title="Заметка" aria-label="Заметка">…</button>
+           - unexpected value "inactive"
+
+
+      250 |   await page.keyboard.press('Tab');
+      251 |   const firstType = flyout.getByRole('button', { name: 'Заметка', exact: true });
+    > 252 |   await expect(firstType).toBeFocused();
+          |                           ^
+      253 |   let focused = 'note';
+      254 |   while (focused !== type) {
+      255 |     await page.keyboard.press('Tab');
+        at createSignalByKeyboard (/home/inky/Development/galley-desk/tests/desktop/review-actions.spec.ts:252:27)
+        at /home/inky/Development/galley-desk/tests/desktop/review-actions.spec.ts:517:20
+
+    Error Context: test-results/review-actions-изменение-с-12f4d-ментарий-не-дублируя-запись-repeat1/error-context.md
+
+  1 failed
+    tests/desktop/review-actions.spec.ts:508:1 › изменение существующего сигнала заменяет тип и комментарий, не дублируя запись
+  3 passed (22.5s)

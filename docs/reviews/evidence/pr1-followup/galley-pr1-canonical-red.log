@@ -1,0 +1,419 @@
+
+ RUN  v5.0.1 /home/inky/Development/galley-desk
+
+ ❯ apps/desktop/src/main/resources.test.ts (8 tests | 4 failed) 24ms
+   × serves images only from inside the open root 8ms
+   × rejects symlinks pointing outside the open root 2ms
+   × rejects directory symlinks leading outside the open root 4ms
+   × enforces the size cap 2ms
+ ❯ apps/desktop/src/main/recent-books.test.ts (7 tests | 1 failed) 24ms
+   × forget removes only the requested entry and never touches files 12ms
+ ❯ packages/book-storage/src/management.test.ts (12 tests | 6 failed) 103ms
+   × trash moves both validated files before removing spine; rejects sidecar symlink and identity mismatch 12ms
+   × refuses sidecar extra.review.json changed during addition preparation (existing=false) 5ms
+   × refuses sidecar extra.md.review.json changed during addition preparation (existing=false) 4ms
+   × refuses sidecar extra.review.json changed during addition preparation (existing=true) 4ms
+   × refuses sidecar extra.md.review.json changed during addition preparation (existing=true) 9ms
+   × refuses a sidecar appearing during exclusive chapter creation and leaves the new source discoverable 6ms
+ ❯ packages/book-storage/src/book.test.ts (37 tests | 2 failed) 181ms
+   × a manifest with an unknown schema version opens as a read-only identity error and is never upgraded 6ms
+   × exported recovery is a usable single-chapter copy with exact source/review and preserved identity 3ms
+stderr | apps/desktop/src/main/book-service.test.ts > recovery cancel keeps pending journal and blocks mutations
+[desk] open-book: восстановление отложено, код=SAVE_FAILED (внешнее изменение)
+
+stderr | apps/desktop/src/main/book-service.test.ts > recovery export-failed keeps pending journal and blocks mutations
+[desk] open-book: восстановление отложено, код=SAVE_FAILED (внешнее изменение)
+
+stderr | apps/desktop/src/main/book-service.test.ts > recovery backup-failed keeps pending journal and blocks mutations
+[desk] open-book: восстановление отложено, код=SAVE_FAILED (внешнее изменение)
+
+ ❯ apps/desktop/src/main/book-service.test.ts (52 tests | 6 failed) 2415ms
+   × повторный выбор переносившейся папки обновляет запись по book_id 9ms
+   × наблюдатель корня после debounce запускает проверку внешнего изменения 2006ms
+   × audit: failed close retains session and recoverable draft 9ms
+   × recovery cancel keeps pending journal and blocks mutations 5ms
+   × recovery export-failed keeps pending journal and blocks mutations 3ms
+   × recovery backup-failed keeps pending journal and blocks mutations 4ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 19 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  packages/book-storage/src/book.test.ts > a manifest with an unknown schema version opens as a read-only identity error and is never upgraded
+AssertionError: expected '/tmp/galley-canonical-real/galley-boo…' to be '/tmp/galley-canonical-alias/galley-bo…' // Object.is equality
+
+Expected: "/tmp/galley-canonical-alias/galley-book-sgOsww/.pocket-editor.json"
+Received: "/tmp/galley-canonical-real/galley-book-sgOsww/.pocket-editor.json"
+
+ ❯ packages/book-storage/src/book.test.ts:124:40
+    122|     expect(error).toBeInstanceOf(ManifestError);
+    123|     const manifestError = error as ManifestError;
+    124|     expect(manifestError.manifestPath).toBe(manifestAbs);
+       |                                        ^
+    125|     expect(manifestError.cause).toBeInstanceOf(Error);
+    126|     expect(manifestError.message).toMatch(/read-only/);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/19]⎯
+
+ FAIL  packages/book-storage/src/book.test.ts > exported recovery is a usable single-chapter copy with exact source/review and preserved identity
+TypeError: Cannot read properties of undefined (reading 'source_path')
+ ❯ preserveRecovery packages/book-storage/src/book.ts:427:32
+    425| /** Preserve a recovery target in a fresh directory; never overwrite u…
+    426| export async function preserveRecovery(record: JournalRecord, parent: …
+    427|   assertDirectChildName(record.source_path);
+       |                                ^
+    428|   assertReviewIdentity(book, record.source_path, record.review_path);
+    429|   const chapter = book.manifest.chapters.find(candidate => candidate.i…
+ ❯ packages/book-storage/src/book.test.ts:630:29
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/19]⎯
+
+ FAIL  packages/book-storage/src/management.test.ts > trash moves both validated files before removing spine; rejects sidecar symlink and identity mismatch
+AssertionError: expected [ …(2) ] to deeply equal [ …(2) ]
+
+- Expected
++ Received
+
+  [
+-   "/tmp/galley-canonical-alias/desk-management-tHb3VX/a.md",
+-   "/tmp/galley-canonical-alias/desk-management-tHb3VX/a.review.json",
++   "/tmp/galley-canonical-real/desk-management-tHb3VX/a.md",
++   "/tmp/galley-canonical-real/desk-management-tHb3VX/a.review.json",
+  ]
+
+ ❯ packages/book-storage/src/management.test.ts:209:17
+    207|   );
+    208|   await manageBook(book, { type: 'trash', chapterId: chapter.id }, tra…
+    209|   expect(moved).toEqual([path.join(root, 'a.md'), reviewPath]);
+       |                 ^
+    210|   expect((await openBook(root)).manifest.chapters).toEqual([]);
+    211| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/19]⎯
+
+ FAIL  packages/book-storage/src/management.test.ts > refuses sidecar extra.review.json changed during addition preparation (existing=false)
+ FAIL  packages/book-storage/src/management.test.ts > refuses sidecar extra.md.review.json changed during addition preparation (existing=false)
+ FAIL  packages/book-storage/src/management.test.ts > refuses sidecar extra.review.json changed during addition preparation (existing=true)
+ FAIL  packages/book-storage/src/management.test.ts > refuses sidecar extra.md.review.json changed during addition preparation (existing=true)
+AssertionError: promise resolved "undefined" instead of rejecting
+
+- Expected:
+Error {
+  "message": "rejected promise",
+}
+
++ Received:
+undefined
+
+ ❯ packages/book-storage/src/management.test.ts:234:82
+    232|     return originalRead(target);
+    233|   });
+    234|   await expect(manageBook(book, { type: 'add', paths: ['extra.md', 'la…
+       |                                                                                  ^
+    235|     .rejects.toThrow(/рецензии.*изменился/);
+    236|   expect(await readFile(path.join(root, '.pocket-editor.json'))).toEqu…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/19]⎯
+
+ FAIL  packages/book-storage/src/management.test.ts > refuses a sidecar appearing during exclusive chapter creation and leaves the new source discoverable
+AssertionError: promise resolved "undefined" instead of rejecting
+
+- Expected:
+Error {
+  "message": "rejected promise",
+}
+
++ Received:
+undefined
+
+ ❯ packages/book-storage/src/management.test.ts:251:82
+    249|     if (target === path.join(root, 'new.md')) await writeFile(path.joi…
+    250|   });
+    251|   await expect(manageBook(book, { type: 'create', path: 'new.md', titl…
+       |                                                                                  ^
+    252|     .rejects.toThrow(/рецензии.*изменился/);
+    253|   expect(await readFile(path.join(root, '.pocket-editor.json'))).toEqu…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/19]⎯
+
+ FAIL  apps/desktop/src/main/book-service.test.ts > повторный выбор переносившейся папки обновляет запись по book_id
+AssertionError: expected '/tmp/galley-canonical-real/galley-boo…' to be '/tmp/galley-canonical-alias/galley-bo…' // Object.is equality
+
+Expected: "/tmp/galley-canonical-alias/galley-book-5JQSqA-новое-место"
+Received: "/tmp/galley-canonical-real/galley-book-5JQSqA-новое-место"
+
+ ❯ apps/desktop/src/main/book-service.test.ts:313:28
+    311|   const recents = await harness.recent();
+    312|   expect(recents).toHaveLength(1);
+    313|   expect(recents[0]!.path).toBe(movedRoot);
+       |                            ^
+    314| });
+    315|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/19]⎯
+
+ FAIL  apps/desktop/src/main/book-service.test.ts > наблюдатель корня после debounce запускает проверку внешнего изменения
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ vi.waitFor.timeout apps/desktop/src/main/book-service.test.ts:714:23
+    712|   // Debounce 200 мс: уведомление приходит только после окна тишины.
+    713|   await vi.waitFor(() => {
+    714|     expect(snapshots).toHaveLength(1);
+       |                       ^
+    715|   }, { timeout: 2_000 });
+    716|   expect(snapshots[0]!.text).toBe('внешняя правка');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/19]⎯
+
+ FAIL  apps/desktop/src/main/book-service.test.ts > audit: failed close retains session and recoverable draft
+AssertionError: expected '/tmp/galley-canonical-real/galley-boo…' to be '/tmp/galley-canonical-alias/galley-bo…' // Object.is equality
+
+Expected: "/tmp/galley-canonical-alias/galley-book-7hTP4K"
+Received: "/tmp/galley-canonical-real/galley-book-7hTP4K"
+
+ ❯ apps/desktop/src/main/book-service.test.ts:817:35
+    815|   })).rejects.toThrow();
+    816|   await expect(h.closeBook(v.bookId)).rejects.toThrow();
+    817|   expect(h.getBookRoot(v.bookId)).toBe(h.bookRoot);
+       |                                   ^
+    818|   expect((await h.openChapter(v.bookId, c)).saveState).toBe('error');
+    819|   expect((await h.openChapter(v.bookId, other)).canUndoInput).toBe(tru…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/19]⎯
+
+ FAIL  apps/desktop/src/main/book-service.test.ts > recovery cancel keeps pending journal and blocks mutations
+AssertionError: expected [] to deeply equal [ { version: 1, …(7) } ]
+
+- Expected
++ Received
+
+- [
+-   {
+-     "after": {
+-       "review": {
+-         "base64": "ewogICJzY2hlbWFfdmVyc2lvbiI6IDEsCiAgImNoYXB0ZXJfaWQiOiAiYzZkYmZhMjctNjg4Yi00MThiLTgxOWItMDllNTE2ZDlkY2Y1IiwKICAic291cmNlX3BhdGgiOiAiMDEubWQiLAogICJjaGFwdGVyX25vdGUiOiAibG9jYWwgbm90ZSIsCiAgInNpZ25hbHMiOiBbXSwKICAiZWRpdHMiOiBbXQp9Cg==",
+-         "sha256": "06958f3e89dc190c35fa5eb43243cf8ae9c944902302a219426f8ce52fd97ef3",
+-       },
+-       "source": {
+-         "base64": "ZG9n",
+-         "sha256": "cd6357efdd966de8c0cb2f876cc89ec74ce35f0968e11743987084bd42fb8944",
+-       },
+-     },
+-     "before": {
+-       "review": null,
+-       "source": {
+-         "base64": "Y2F0",
+-         "sha256": "77af778b51abd4a3c51c5ddd97204a9c3ae614ebccb75a606c3b6865aed6744e",
+-       },
+-     },
+-     "chapter_id": "c6dbfa27-688b-418b-819b-09e516d9dcf5",
+-     "complete": false,
+-     "review_path": "01.review.json",
+-     "root": "/tmp/galley-canonical-real/galley-book-1kMeUL",
+-     "source_path": "01.md",
+-     "version": 1,
+-   },
+- ]
++ []
+
+ ❯ apps/desktop/src/main/book-service.test.ts:919:60
+    917|     await expect(h.resolveExternal(v.bookId, c, failure === 'export-fa…
+    918|   }
+    919|   expect(await readJournalsForRoot(h.appData, h.bookRoot)).toEqual([re…
+       |                                                            ^
+    920|   expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe(…
+    921|   const snapshot = await h.openChapter(v.bookId, c);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/19]⎯
+
+ FAIL  apps/desktop/src/main/book-service.test.ts > recovery export-failed keeps pending journal and blocks mutations
+AssertionError: expected [] to deeply equal [ { version: 1, …(7) } ]
+
+- Expected
++ Received
+
+- [
+-   {
+-     "after": {
+-       "review": {
+-         "base64": "ewogICJzY2hlbWFfdmVyc2lvbiI6IDEsCiAgImNoYXB0ZXJfaWQiOiAiZjM4ODRlMTQtN2M5NS00NmFiLWFjYzUtZWIyMTA5YThiOTBiIiwKICAic291cmNlX3BhdGgiOiAiMDEubWQiLAogICJjaGFwdGVyX25vdGUiOiAibG9jYWwgbm90ZSIsCiAgInNpZ25hbHMiOiBbXSwKICAiZWRpdHMiOiBbXQp9Cg==",
+-         "sha256": "693befd8f837bf71790e70d869f738c60a38e4bdcc270adf0b347f3f6c969445",
+-       },
+-       "source": {
+-         "base64": "ZG9n",
+-         "sha256": "cd6357efdd966de8c0cb2f876cc89ec74ce35f0968e11743987084bd42fb8944",
+-       },
+-     },
+-     "before": {
+-       "review": null,
+-       "source": {
+-         "base64": "Y2F0",
+-         "sha256": "77af778b51abd4a3c51c5ddd97204a9c3ae614ebccb75a606c3b6865aed6744e",
+-       },
+-     },
+-     "chapter_id": "f3884e14-7c95-46ab-acc5-eb2109a8b90b",
+-     "complete": false,
+-     "review_path": "01.review.json",
+-     "root": "/tmp/galley-canonical-real/galley-book-Sco2cq",
+-     "source_path": "01.md",
+-     "version": 1,
+-   },
+- ]
++ []
+
+ ❯ apps/desktop/src/main/book-service.test.ts:919:60
+    917|     await expect(h.resolveExternal(v.bookId, c, failure === 'export-fa…
+    918|   }
+    919|   expect(await readJournalsForRoot(h.appData, h.bookRoot)).toEqual([re…
+       |                                                            ^
+    920|   expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe(…
+    921|   const snapshot = await h.openChapter(v.bookId, c);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/19]⎯
+
+ FAIL  apps/desktop/src/main/book-service.test.ts > recovery backup-failed keeps pending journal and blocks mutations
+AssertionError: expected [] to deeply equal [ { version: 1, …(7) } ]
+
+- Expected
++ Received
+
+- [
+-   {
+-     "after": {
+-       "review": {
+-         "base64": "ewogICJzY2hlbWFfdmVyc2lvbiI6IDEsCiAgImNoYXB0ZXJfaWQiOiAiYTBiMDgxNWQtMmM3MC00YjM4LThkNjAtM2RhMzQ4ODMzNGUwIiwKICAic291cmNlX3BhdGgiOiAiMDEubWQiLAogICJjaGFwdGVyX25vdGUiOiAibG9jYWwgbm90ZSIsCiAgInNpZ25hbHMiOiBbXSwKICAiZWRpdHMiOiBbXQp9Cg==",
+-         "sha256": "a7ba49e909ffc1c62dd0df7f2c94c7206c48d80e117de1d59e2394742684b38a",
+-       },
+-       "source": {
+-         "base64": "ZG9n",
+-         "sha256": "cd6357efdd966de8c0cb2f876cc89ec74ce35f0968e11743987084bd42fb8944",
+-       },
+-     },
+-     "before": {
+-       "review": null,
+-       "source": {
+-         "base64": "Y2F0",
+-         "sha256": "77af778b51abd4a3c51c5ddd97204a9c3ae614ebccb75a606c3b6865aed6744e",
+-       },
+-     },
+-     "chapter_id": "a0b0815d-2c70-4b38-8d60-3da3488334e0",
+-     "complete": false,
+-     "review_path": "01.review.json",
+-     "root": "/tmp/galley-canonical-real/galley-book-S2Ioto",
+-     "source_path": "01.md",
+-     "version": 1,
+-   },
+- ]
++ []
+
+ ❯ apps/desktop/src/main/book-service.test.ts:919:60
+    917|     await expect(h.resolveExternal(v.bookId, c, failure === 'export-fa…
+    918|   }
+    919|   expect(await readJournalsForRoot(h.appData, h.bookRoot)).toEqual([re…
+       |                                                            ^
+    920|   expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe(…
+    921|   const snapshot = await h.openChapter(v.bookId, c);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/19]⎯
+
+ FAIL  apps/desktop/src/main/recent-books.test.ts > forget removes only the requested entry and never touches files
+AssertionError: expected [ { …(7) }, { title: 'Другая', …(6) } ] to have a length of 1 but got 2
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ apps/desktop/src/main/recent-books.test.ts:106:16
+    104|   );
+    105|   const kept = forgetRecent(books, bookDir);
+    106|   expect(kept).toHaveLength(1);
+       |                ^
+    107|   expect(kept[0]?.bookId).toBe('id-2');
+    108|   expect(existsSync(chapter)).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/19]⎯
+
+ FAIL  apps/desktop/src/main/resources.test.ts > serves images only from inside the open root
+AssertionError: expected null to deeply equal { mime: 'image/png', …(1) }
+
+- Expected:
+{
+  "bytes": Uint8Array [
+    137,
+    80,
+    78,
+    71,
+    1,
+    2,
+    3,
+  ],
+  "mime": "image/png",
+}
+
++ Received:
+null
+
+ ❯ apps/desktop/src/main/resources.test.ts:76:63
+     74|   await writeFile(path.join(root, 'note.txt'), 'не картинка');
+     75|
+     76|   expect(await resolveBookImage(root, 'иллюстрации/рис.png')).toEqual(…
+       |                                                               ^
+     77|   expect(await resolveBookImage(root, '../outside.png')).toBeNull();
+     78|   expect(await resolveBookImage(root, '/etc/passwd')).toBeNull();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/19]⎯
+
+ FAIL  apps/desktop/src/main/resources.test.ts > rejects symlinks pointing outside the open root
+AssertionError: expected null not to be null
+ ❯ apps/desktop/src/main/resources.test.ts:95:54
+     93|   expect(await resolveBookImage(root, 'out.png')).toBeNull();
+     94|   // Ссылка на файл внутри корня остаётся разрешённой.
+     95|   expect(await resolveBookImage(root, 'in.png')).not.toBeNull();
+       |                                                      ^
+     96| });
+     97|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/19]⎯
+
+ FAIL  apps/desktop/src/main/resources.test.ts > rejects directory symlinks leading outside the open root
+AssertionError: expected undefined to be 'image/png' // Object.is equality
+
+- Expected:
+"image/png"
+
++ Received:
+undefined
+
+ ❯ apps/desktop/src/main/resources.test.ts:113:69
+    111|   await writeFile(path.join(root, 'реальные', 'ok.png'), 'внутри');
+    112|   await symlink(path.join(root, 'реальные'), path.join(root, 'внутренн…
+    113|   expect((await resolveBookImage(root, 'внутренние/ok.png'))?.mime).to…
+       |                                                                     ^
+    114| });
+    115|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/19]⎯
+
+ FAIL  apps/desktop/src/main/resources.test.ts > enforces the size cap
+AssertionError: expected null not to be null
+ ❯ apps/desktop/src/main/resources.test.ts:120:75
+    118|   await writeFile(path.join(root, 'big.png'), Buffer.alloc(100, 1));
+    119|   expect(await resolveBookImage(root, 'big.png', { maxBytes: 10 })).to…
+    120|   expect(await resolveBookImage(root, 'big.png', { maxBytes: 1000 })).…
+       |                                                                           ^
+    121| });
+    122|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/19]⎯
+
+
+ Test Files  5 failed (5)
+      Tests  19 failed | 97 passed (116)
+   Start at  20:41:11
+   Duration  2.92s (tests 67%, transform 19%, import 13%)

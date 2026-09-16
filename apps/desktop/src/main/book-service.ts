@@ -1,3 +1,4 @@
+import { frontmatter, metadataReplacement, resolveTitle, sourceMetadata } from '../shared/metadata';
 // Book service: the main-process owner of open books and chapter sessions.
 // The renderer only ever sees BookView/Snapshot over typed IPC — no file
 //system handles cross the boundary. Main owns the book-id registry, the
@@ -9,6 +10,9 @@ import type { FSWatcher } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  BookManagementError,
+  manageBook as changeStoredBook,
+  discoverChapters as discoverStoredChapters,
   ChapterSession,
   SaveQueue,
   acceptRecoveryExternal,
@@ -23,11 +27,13 @@ import {
 import type { BookHandle, ChapterSessionState, JournalRecord } from '@galley-desk/book-storage';
 import { classifyReview, decodeReview } from '@galley-desk/pocket-format';
 import type { Resolution } from '@galley-desk/pocket-format';
-import { addSignal, openChapter as openChapterModel, removeRecord, setChapterNote } from '@galley-desk/review-engine';
+import { addSignal, openChapter as openChapterModel, removeRecord, setChapterNote, sourceRange } from '@galley-desk/review-engine';
 import type { ChapterModel, Piece } from '@galley-desk/review-engine';
 import type {
   AppearanceSettings,
   BookView,
+  BookChange,
+  ChapterDiscovery,
   Command,
   Entry,
   RecordView,
@@ -50,6 +56,7 @@ export type SnapshotListener = (snapshot: Snapshot) => void;
 
 export type BookServiceDeps = {
   appData: string;
+  trashItem?: (absolutePath: string) => Promise<void>;
   /** Directory picker; null means the user cancelled. */
   chooseDirectory: () => Promise<string | null>;
   /** Save dialog for exporting a pending review draft; null means cancel. */
@@ -104,6 +111,8 @@ type ChapterEntry = LiveChapter | ReadonlyChapter | MissingChapter | RecoveryCha
 type BookEntry = { handle: BookHandle; chapters: Map<string, ChapterEntry> };
 
 export type BookService = {
+  manageBook(bookId: string, change: BookChange): Promise<BookView>;
+  discoverChapters(bookId: string): Promise<ChapterDiscovery>;
   appearance(): Promise<AppearanceSettings>;
   setAppearance(value: AppearanceSettings): Promise<void>;
   savePosition(bookId: string, chapterId: string, anchor: number, scrollTop: number): Promise<void>;
@@ -133,6 +142,8 @@ export type BookService = {
 };
 
 const strictUtf8 = new TextDecoder('utf-8', { fatal: true });
+// Raw source transport must retain BOM; engine-derived text keeps its own convention.
+const sourceUtf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 /**
  * Состояние сессии читается через функцию: смена состояния происходит внутри
@@ -202,7 +213,9 @@ function boundaryDerivedPosition(spans: PieceSpan[], source: Uint8Array, byte: n
     }
     if (byte < piece.source.to) {
       const slice = strictUtf8.decode(source.subarray(piece.source.from, piece.source.to));
-      return start + derivedUnitsForSliceByteOffset(slice, byte - piece.source.from);
+      const from = piece.source.from;
+      const bomBytes = source[from] === 0xef && source[from + 1] === 0xbb && source[from + 2] === 0xbf ? 3 : 0;
+      return start + derivedUnitsForSliceByteOffset(slice, Math.max(0, byte - from - bomBytes));
     }
   }
   const last = spans[spans.length - 1];
@@ -284,6 +297,7 @@ function buildRecordViews(model: ChapterModel): RecordView[] {
 // --- service -----------------------------------------------------------------
 
 export function createBookService(deps: BookServiceDeps): BookService {
+  const managing = new Set<string>();
   const { appData } = deps;
   const watchRoot = deps.watchRoot ?? defaultWatchRoot;
   const books = new Map<string, BookEntry>();
@@ -334,6 +348,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
 
   /** Перечитывает пары живых глав книги; уведомляет только об изменениях. */
   async function recheckBook(bookId: string): Promise<void> {
+    if (managing.has(bookId)) return;
     const book = books.get(bookId);
     if (book === undefined) return;
     for (const [chapterId, entry] of book.chapters) {
@@ -354,6 +369,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
 
   /** Drains every session of the book and drops it from the registry. */
   async function closeBookById(bookId: string): Promise<void> {
+    if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
     const book = books.get(bookId);
     if (book === undefined) return;
     await Promise.all([...book.chapters.values()].map(async (entry) => {
@@ -378,7 +394,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
       handle.manifest.chapters.map(async (chapter) => ({
         id: chapter.id,
         path: chapter.path,
-        title: chapter.title,
+        title: await readPair(handle, chapter.id).then(({pair}) => resolveTitle(strictUtf8.decode(pair.source), chapter.title, chapter.path), () => chapter.title),
         missing: !(await isFile(path.join(handle.root, chapter.path))),
       })),
     );
@@ -469,15 +485,18 @@ export function createBookService(deps: BookServiceDeps): BookService {
       };
     }
     const model = entry.kind === 'live' ? entry.session.model : entry.model;
+    const chapter = requireBook(bookId).handle.manifest.chapters.find(candidate => candidate.id === chapterId);
     return {
       ...head,
       text: model.text,
-      sourceText: strictUtf8.decode(model.source),
+      ...sourceMetadata(model.source, chapter?.title ?? '', chapter?.path ?? ''),
       records: buildRecordViews(model),
       chapterNote: model.review.chapter_note,
       saveState: entry.kind === 'recovery' ? 'external' : entry.kind === 'live' ? entry.session.state : 'error',
     };
   }
+
+  const metadataEnds = new WeakMap<Uint8Array, number>();
 
   /**
    * Applies one validated command through the session. Undo/redo availability
@@ -488,9 +507,42 @@ export function createBookService(deps: BookServiceDeps): BookService {
   async function applyCommand(entry: LiveChapter, command: Command): Promise<void> {
     const session = entry.session;
     switch (command.type) {
-      case 'text':
+      case 'metadata': {
+        if (sourceUtf8.decode(session.model.source) !== command.sourceText) throw new IpcError('STALE_REVISION', 'Исходник изменился; откройте метаданные заново');
+        let prefix: string;
+        try { prefix = metadataReplacement(command.sourceText, command.yaml); }
+        catch (error) { throw new IpcError('SAVE_FAILED', error instanceof Error ? error.message : 'Ошибка YAML'); }
+        try { await session.replaceSourcePrefix(command.sourceText, frontmatter(command.sourceText)?.byteEnd ?? (command.sourceText.startsWith('\uFEFF') ? 3 : 0), prefix); }
+        catch (error) { if (error instanceof Error && error.message.includes('overlap')) throw new IpcError('UNAVAILABLE_RECORD','Сначала разрешите записи рецензии внутри метаданных'); throw error; }
+        return;
+      }
+      case 'text': {
+        // Imported suggestions may hide the delimiter in derived text. Protect
+        // the original source bytes, mapping UTF-16 positions through pieces.
+        let metadataEnd = metadataEnds.get(session.model.source);
+        if (metadataEnd === undefined) {
+          metadataEnd = frontmatter(sourceUtf8.decode(session.model.source))?.byteEnd ?? 0;
+          metadataEnds.set(session.model.source, metadataEnd);
+        }
+        if (metadataEnd > 0 && command.changes.some(change => {
+          if (sourceRange(session.model, change.from, change.to).from >= metadataEnd) return false;
+          // A body-start insertion borrows the closing newline for its v1
+          // anchor. Only permit its body portion when that entire metadata
+          // prefix is still byte-derived and unchanged in the replacement.
+          let position = 0;
+          for (const piece of session.model.pieces) {
+            const end = position + piece.text.length;
+            if (piece.editId && piece.source.from < metadataEnd && piece.source.to >= metadataEnd && change.from >= position && change.from <= end) {
+              const prefix = sourceUtf8.decode(session.model.source.subarray(piece.source.from, metadataEnd)).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+              if (piece.text.startsWith(prefix) && change.from >= position + prefix.length) return false;
+            }
+            position = end;
+          }
+          return true;
+        })) throw new IpcError('UNAVAILABLE_RECORD','Используйте изменение метаданных');
         await session.edit(command.changes, command.selection, command.group);
         return;
+      }
       case 'signal': {
         if (command.id !== undefined) {
           const isCurrentSignal = session.model.review.signals.some((signal) => signal.id === command.id);
@@ -530,6 +582,57 @@ export function createBookService(deps: BookServiceDeps): BookService {
   }
 
   return {
+    async discoverChapters(bookId: string): Promise<ChapterDiscovery> {
+      const book = requireBook(bookId);
+      try { return { book: await bookView(book.handle), files: await discoverStoredChapters(book.handle) }; }
+      catch (error) { throw toIpcError(error); }
+    },
+    async manageBook(bookId: string, change: BookChange): Promise<BookView> {
+      const book = requireBook(bookId);
+      if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
+      managing.add(bookId);
+      try {
+        if ((await readJournalsForRoot(appData, book.handle.root)).some(record => !record.complete)) throw new IpcError('SAVE_FAILED', 'Сначала разрешите восстановление книги');
+        for (const entry of book.chapters.values()) {
+          if (entry.kind === 'live') {
+            await entry.session.flushPending();
+            if (entry.session.state === 'external' || entry.session.state === 'error') throw new IpcError('SAVE_FAILED', 'Сначала разрешите внешнее изменение или ошибку сохранения');
+          }
+        }
+        // Keep the mounted session and undo history until the operation succeeds.
+        // Validation and first-trash failures leave both files untouched.
+        try {
+          await changeStoredBook(book.handle, change, deps.trashItem);
+        } catch (error) {
+          if (change.type === 'trash' && error instanceof BookManagementError && error.filesMoved) {
+            const previous = book.chapters.get(change.chapterId);
+            const chapter = book.handle.manifest.chapters.find(chapter => chapter.id === change.chapterId)!;
+            const next = await createChapterEntry(book.handle, change.chapterId, chapter.path);
+            next.revision = (previous?.revision ?? 0) + 1;
+            if (previous?.kind === 'live') await previous.session.close();
+            book.chapters.set(change.chapterId, next);
+            notify(snapshotOf(bookId, change.chapterId, next));
+          }
+          throw error;
+        }
+        if (change.type === 'remove' || change.type === 'trash') {
+          const entry = book.chapters.get(change.chapterId);
+          if (entry?.kind === 'live') await entry.session.close();
+          book.chapters.delete(change.chapterId);
+        }
+        const view = await bookView(book.handle);
+        // The book operation is already committed; failure to update this local
+        // convenience list must not invite repeating a successful file action.
+        try {
+          const stored = await loadRecentBooks(appData);
+          await saveRecentBooks(appData, upsertRecent(stored, { path: book.handle.root, bookId, title: book.handle.manifest.title }));
+        } catch {
+          console.error('[desk] manage-book: recent update failed');
+        }
+        return view;
+      } catch (error) { throw toIpcError(error); }
+      finally { managing.delete(bookId); }
+    },
     async appearance(): Promise<AppearanceSettings> {
       return (await settings.loadSettings(appData)).appearance;
     },
@@ -597,6 +700,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
     },
 
     async openChapter(bookId: string, chapterId: string): Promise<Snapshot> {
+      if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
       const book = requireBook(bookId);
       const chapter = book.handle.manifest.chapters.find((candidate) => candidate.id === chapterId);
       if (chapter === undefined) {
@@ -617,6 +721,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
       command: unknown,
     ): Promise<Snapshot> {
       const book = requireBook(bookId);
+      if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
       const entry = book.chapters.get(chapterId);
       if (entry === undefined) {
         throw new IpcError('BOOK_MISSING', 'Глава ещё не открыта');

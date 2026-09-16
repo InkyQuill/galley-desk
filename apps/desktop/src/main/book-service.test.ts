@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -15,7 +15,8 @@ const tempDirs: string[] = [];
 async function tempDir(prefix: string): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), prefix));
   tempDirs.push(dir);
-  return dir;
+  // Match openBook roots even when tmpdir has a symlinked ancestor (macOS).
+  return realpath(dir);
 }
 
 afterEach(async () => {
@@ -31,7 +32,7 @@ type Harness = ReturnType<typeof createBookService> & {
   fireWatcher: () => void;
 };
 
-async function makeService(bookFiles: Record<string, string> = {}): Promise<Harness> {
+async function makeService(bookFiles: Record<string, string> = {}, trashItem?: (target: string) => Promise<void>): Promise<Harness> {
   const bookRoot = await tempDir('galley-book-');
   for (const [name, content] of Object.entries(bookFiles)) {
     const target = path.join(bookRoot, name);
@@ -47,6 +48,7 @@ async function makeService(bookFiles: Record<string, string> = {}): Promise<Harn
   const watcherEvents = new Map<string, () => void>();
   const service = createBookService({
     appData,
+    ...(trashItem ? { trashItem } : {}),
     chooseDirectory: () => pickerHandler(),
     chooseExportDestination: async () => exportPicked,
     watchRoot: (root, onEvent) => {
@@ -552,19 +554,21 @@ test('внешний вид хранит значения по умолчани�
   const harness = await makeService({});
   expect(await harness.appearance()).toEqual({
     themeId: 'auto',
-    fontFamily: 'system-ui',
-    fontSize: 16,
-    lineWidth: 720,
+    fontFamily: 'Literata',
+    fontSize: 18,
+    uiFontFamily: 'Geist',
+    uiFontSize: 13,
+    lineWidth: 700,
   });
-  await harness.setAppearance({ themeId: 'galley-dark', fontFamily: 'Lora', fontSize: 19, lineWidth: 640 });
+  await harness.setAppearance({ uiFontFamily: 'Geist', uiFontSize: 13, themeId: 'galley-dark', fontFamily: 'Lora', fontSize: 19, lineWidth: 640 });
   expect((await harness.appearance()).fontSize).toBe(19);
   // Неизвестная тема отклоняется main (известен «auto» и каталог galley-themes).
   const rejectedTheme = await harness
-    .setAppearance({ themeId: 'night', fontFamily: 'Lora', fontSize: 19, lineWidth: 640 })
+    .setAppearance({ uiFontFamily: 'Geist', uiFontSize: 13, themeId: 'night', fontFamily: 'Lora', fontSize: 19, lineWidth: 640 })
     .catch((caught) => caught);
   expect(rejectedTheme).toBeInstanceOf(Error);
   const rejected = await harness
-    .setAppearance({ themeId: 'galley-dark', fontFamily: 'Lora', fontSize: 999, lineWidth: 640 })
+    .setAppearance({ uiFontFamily: 'Geist', uiFontSize: 13, themeId: 'galley-dark', fontFamily: 'Lora', fontSize: 999, lineWidth: 640 })
     .catch((caught) => caught);
   expect(rejected).toBeInstanceOf(Error);
   expect((await harness.appearance()).fontSize).toBe(19);
@@ -1029,4 +1033,223 @@ test('command preflight rejects an external adoption queued by the watcher ahead
   expect(snapshots[0]!.revision).toBe(initial.revision + 1);
   expect(await readFile(path.join(harness.bookRoot, 'Глава.md'), 'utf8')).toBe('external');
   await harness.closeBook(view.bookId);
+});
+
+test('metadata titles derive from existing source and save without changing manifest or body records',async()=>{
+ const source='---\ntitle: Original\n---\nBody';
+ const h=await makeService({'01.md':source});
+ const book=(await h.chooseBook())!;
+ expect(book.entries[0]!.title).toBe('Original');
+ const id=book.entries[0]!.id;
+ const manifestPath=path.join(h.bookRoot,'.pocket-editor.json');
+ const manifest=await readFile(manifestPath,'utf8');
+ const initial=await h.openChapter(book.bookId,id);
+ const body=initial.text.indexOf('Body');
+ const edited=await h.command(book.bookId,id,initial.revision,{type:'text',changes:[{from:body,to:body+4,insert:'Better'}],selection:{anchor:body+6,head:body+6}});
+ const saved=await h.command(book.bookId,id,edited.revision,{type:'metadata',sourceText:source,yaml:'title: New name\nnested: {x: [1, 2]}\n'});
+ expect(saved.title).toBe('New name');
+ expect(saved.text).toContain('Better');
+ expect(saved.sourceText).toBe('---\ntitle: New name\nnested: {x: [1, 2]}\n---\nBody');
+ expect(saved.records).toHaveLength(1);
+ expect(saved.records[0]!.status).toBe('active');
+ expect(await readFile(manifestPath,'utf8')).toBe(manifest);
+ await expect(h.command(book.bookId,id,saved.revision,{type:'metadata',sourceText:source,yaml:'title: stale'})).rejects.toMatchObject({code:'STALE_REVISION'});
+ await expect(h.command(book.bookId,id,saved.revision,{type:'text',changes:[{from:0,to:1,insert:''}],selection:{anchor:0,head:0}})).rejects.toMatchObject({code:'UNAVAILABLE_RECORD'});
+ await writeFile(path.join(h.bookRoot,'01.md'),'external');
+ await expect(h.command(book.bookId,id,saved.revision,{type:'metadata',sourceText:saved.sourceText,yaml:'title: external conflict'})).rejects.toMatchObject({code:'STALE_REVISION'});
+ expect(await readFile(path.join(h.bookRoot,'01.md'),'utf8')).toBe('external');
+ await h.closeAll();
+});
+
+test.each(['\n', '\r\n'])('metadata save preserves BOM and exact source bytes with %j line endings', async eol => {
+  const source = '\uFEFF' + ['---', 'title: Old', '---', 'Body 🐈', ''].join(eol);
+  const h = await makeService({'01.md': source});
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  expect(initial.sourceText).toBe(source);
+  const body = initial.text.indexOf('Body');
+  const signalled = await h.command(book.bookId, id, initial.revision, {type:'signal',from:body,to:body+4,signalType:'note',comment:'keep'});
+  expect(signalled.records[0]).toMatchObject({from:body,to:body+4,before:'Body'});
+  const saved = await h.command(book.bookId, id, signalled.revision, {type:'metadata', sourceText:initial.sourceText, yaml:'title: New'});
+  expect(saved.records[0]).toMatchObject({from:body,to:body+4,before:'Body',status:'active'});
+  const expected = source.replace('title: Old', 'title: New');
+  expect(saved.sourceText).toBe(expected);
+  expect(await readFile(path.join(h.bookRoot, '01.md'))).toEqual(Buffer.from(expected));
+  expect(saved.text).toBe(expected.slice(1).replace(/\r\n/g, '\n'));
+  await h.closeAll();
+});
+
+test('adding metadata to BOM source retains exactly one BOM', async () => {
+  const source = '\uFEFFBody 🐈\r\n';
+  const h = await makeService({'01.md': source});
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  const saved = await h.command(book.bookId, id, initial.revision, {type:'metadata', sourceText:initial.sourceText, yaml:'title: New'});
+  const expected = '\uFEFF---\r\ntitle: New\r\n---\r\nBody 🐈\r\n';
+  expect(saved.sourceText).toBe(expected);
+  expect(await readFile(path.join(h.bookRoot,'01.md'))).toEqual(Buffer.from(expected));
+  await h.closeAll();
+});
+
+test('management drains pending edits, updates recent title, removes and re-adds intact review', async () => {
+  const service = await makeService({'a.md':'Alpha body\n'});
+  const book = (await service.chooseBook())!; const chapter=book.entries[0]!;
+  const snap=await service.openChapter(book.bookId,chapter.id);
+  const pending=service.command(book.bookId,chapter.id,snap.revision,{type:'text',changes:[{from:0,to:0,insert:'New '}],selection:{anchor:4,head:4}});
+  await pending;
+  const renamed=await service.manageBook(book.bookId,{type:'rename',title:'Renamed'});
+  expect(renamed.title).toBe('Renamed'); expect((await service.recent())[0]!.title).toBe('Renamed');
+  const saved=await readFile(path.join(service.bookRoot,'a.review.json'),'utf8');
+  await service.manageBook(book.bookId,{type:'remove',chapterId:chapter.id});
+  expect((await service.discoverChapters(book.bookId)).files.map(x=>x.path)).toEqual(['a.md']);
+  const added=await service.manageBook(book.bookId,{type:'add',paths:['a.md']});
+  expect(added.entries[0]!.id).toBe(chapter.id);
+  expect((await service.openChapter(book.bookId,chapter.id)).text).toBe('New Alpha body\n');
+  expect(await readFile(path.join(service.bookRoot,'a.review.json'),'utf8')).toBe(saved);
+  await service.closeAll();
+});
+
+test('management rejects external manifest changes', async () => {
+  const service=await makeService({'a.md':'Alpha body\n'}); const book=(await service.chooseBook())!;
+  const manifest=path.join(service.bookRoot,'.pocket-editor.json');
+  await writeFile(manifest,JSON.stringify({...JSON.parse(await readFile(manifest,'utf8')),title:'External'}));
+  await expect(service.manageBook(book.bookId,{type:'rename',title:'Wrong'})).rejects.toMatchObject({code:'SAVE_FAILED'});
+  expect(JSON.parse(await readFile(manifest,'utf8')).title).toBe('External');
+  await service.closeAll();
+});
+
+test('management refuses a failed pending save and retains source and manifest', async () => {
+ const service=await makeService({'a.md':'Alpha body\n'}); const book=(await service.chooseBook())!;
+ const chapter=book.entries[0]!; const snap=await service.openChapter(book.bookId,chapter.id);
+ const storage=await vi.importActual<typeof import('@galley-desk/book-storage')>('../../../../packages/book-storage/src/book');
+ const spy=vi.spyOn(storage,'writePair').mockRejectedValueOnce(new Error('injected save failure'));
+ try {
+  await expect(service.command(book.bookId,chapter.id,snap.revision,{type:'text',changes:[{from:0,to:0,insert:'New '}],selection:{anchor:4,head:4}})).rejects.toThrow();
+  await expect(service.manageBook(book.bookId,{type:'remove',chapterId:chapter.id})).rejects.toMatchObject({code:'SAVE_FAILED'});
+  expect(JSON.parse(await readFile(path.join(service.bookRoot,'.pocket-editor.json'),'utf8')).chapters[0].id).toBe(chapter.id);
+  expect(await readFile(path.join(service.bookRoot,'a.md'),'utf8')).toBe('Alpha body\n');
+ } finally {spy.mockRestore(); await service.closeAll().catch(()=>undefined);}
+});
+
+test.each(['trash', 'manifest-conflict'] as const)('failed %s preserves a live chapter revision and undo history', async failure => {
+  const h = await makeService({'a.md': 'Alpha body\n'});
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  let current = await h.openChapter(book.bookId, id);
+  for (let i = 0; i < 4; i++) {
+    current = await h.command(book.bookId, id, current.revision, {type:'text',changes:[{from:0,to:0,insert:'x'}],selection:{anchor:1,head:1}});
+  }
+  if (failure === 'manifest-conflict') {
+    const manifest = path.join(h.bookRoot, '.pocket-editor.json');
+    await writeFile(manifest, JSON.stringify({...JSON.parse(await readFile(manifest,'utf8')),title:'External'}));
+  }
+  await expect(h.manageBook(book.bookId, {type: failure === 'trash' ? 'trash' : 'remove',chapterId:id})).rejects.toMatchObject({code:'SAVE_FAILED'});
+  // Do not reopen first: a rejected mutation must leave the mounted session usable.
+  const typed = await h.command(book.bookId, id, current.revision, {type:'text',changes:[{from:0,to:0,insert:'y'}],selection:{anchor:1,head:1}});
+  expect(typed.revision).toBeGreaterThan(current.revision);
+  expect(typed.text).toBe('yxxxxAlpha body\n');
+  const undo = await h.command(book.bookId, id, typed.revision, {type:'undo-input'});
+  expect(undo.text).toBe(current.text);
+  const earlierUndo = await h.command(book.bookId, id, undo.revision, {type:'undo-input'});
+  expect(earlierUndo.text).toBe('xxxAlpha body\n');
+  await h.closeAll();
+});
+
+
+test('partial trash replaces the missing chapter snapshot with a strictly newer revision', async () => {
+  let calls=0;
+  const h=await makeService({'a.md':'Alpha body\n'},async target=>{
+    calls++;
+    if(calls===2) throw Error('second trash failed');
+    await rename(target,`${target}.trashed`);
+  });
+  const book=(await h.chooseBook())!; const id=book.entries[0]!.id;
+  let current=await h.openChapter(book.bookId,id);
+  for(let i=0;i<4;i++) current=await h.command(book.bookId,id,current.revision,{type:'text',changes:[{from:0,to:0,insert:'x'}],selection:{anchor:1,head:1}});
+  const pushed:Snapshot[]=[]; h.subscribe(snapshot=>pushed.push(snapshot));
+  await expect(h.manageBook(book.bookId,{type:'trash',chapterId:id})).rejects.toMatchObject({code:'SAVE_FAILED'});
+  const missing=await h.openChapter(book.bookId,id);
+  expect(missing.revision).toBeGreaterThan(current.revision);
+  expect(missing.readOnlyReason).toContain('отсутствует');
+  expect(missing.canUndoInput).toBe(false);
+  expect(pushed.at(-1)).toEqual(missing);
+  expect(JSON.parse(await readFile(path.join(h.bookRoot,'.pocket-editor.json'),'utf8')).chapters[0].id).toBe(id);
+  await h.closeAll();
+});
+
+test('snapshot source title refreshes on apply and undo while suggestions retain the source title', async () => {
+  const h = await makeService({ '01.md': '# Original\nBody' });
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  expect(initial.title).toBe('Original');
+  const edited = await h.command(book.bookId, id, initial.revision, {
+    type: 'text', changes: [{ from: 2, to: 10, insert: 'Changed' }], selection: { anchor: 9, head: 9 },
+  });
+  expect(edited.title).toBe('Original');
+  const applied = await h.command(book.bookId, id, edited.revision, { type: 'apply', id: edited.records[0]!.id });
+  expect(applied.title).toBe('Changed');
+  expect(applied.sourceText).toBe('# Changed\nBody');
+  const undone = await h.command(book.bookId, id, applied.revision, { type: 'undo-apply' });
+  expect(undone.title).toBe('Original');
+  expect(undone.sourceText).toBe('# Original\nBody');
+  await h.closeAll();
+});
+
+test.each(['\n', '\r\n'])('source metadata remains protected when a Pocket edit hides its opening delimiter (%j)', async eol => {
+  const source = '\uFEFF' + ['---', 'title: Книга 🐈', '---', 'Body'].join(eol);
+  const h = await makeService({'01.md': source});
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  await writeSidecar(h, '01.md', {chapter_note: '', signals: [], edits: [{
+    id: ID_EDIT_ACTIVE, before: '---', after: 'Hidden',
+    anchor: makeAnchor(utf8.encode(source), {from: 3, to: 6}),
+  }]});
+  await h.closeBook(book.bookId);
+  const reopened = await h.openRecent(h.bookRoot);
+  const initial = await h.openChapter(reopened.bookId, id);
+  expect(initial.text).toMatch(/^Hidden/);
+  const metadata = initial.text.indexOf('title');
+  await expect(h.command(book.bookId, id, initial.revision, {type: 'text', changes: [{from: metadata, to: metadata + 1, insert: 'X'}], selection: {anchor: metadata, head: metadata}})).rejects.toMatchObject({code: 'UNAVAILABLE_RECORD'});
+  const body = initial.text.indexOf('Body');
+  const edited = await h.command(book.bookId, id, initial.revision, {type: 'text', changes: [{from: body, to: body + 4, insert: 'Better'}], selection: {anchor: body + 6, head: body + 6}});
+  expect(edited.text).toContain('Better');
+  expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe(source);
+  await h.closeAll();
+});
+
+test('committed book management succeeds even when recent-list persistence fails', async () => {
+  const h = await makeService({'01.md': 'Body'});
+  const book = (await h.chooseBook())!;
+  const recentPath = path.join(h.appData, 'recent-books.json');
+  await rm(recentPath);
+  await mkdir(recentPath); // Atomic recent-file rename fails, while book storage remains writable.
+  const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  try {
+    const renamed = await h.manageBook(book.bookId, {type: 'rename', title: 'Committed title'});
+    expect(renamed.title).toBe('Committed title');
+    expect(JSON.parse(await readFile(path.join(h.bookRoot, '.pocket-editor.json'), 'utf8')).title).toBe('Committed title');
+    expect(log).toHaveBeenCalledWith('[desk] manage-book: recent update failed');
+  } finally {
+    log.mockRestore();
+    await rm(recentPath, {recursive: true});
+    await h.closeAll();
+  }
+});
+
+test.each(['\n', '\r\n'])('editing a body-start insertion preserves its metadata support prefix (%j)', async eol => {
+  const source = '\uFEFF' + ['---', 'title: A', '---', 'Body'].join(eol);
+  const h = await makeService({'01.md': source});
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  const body = initial.text.indexOf('Body');
+  const inserted = await h.command(book.bookId, id, initial.revision, {type: 'text', changes: [{from: body, to: body, insert: 'XY'}], selection: {anchor: body + 2, head: body + 2}});
+  const edited = await h.command(book.bookId, id, inserted.revision, {type: 'text', changes: [{from: body, to: body + 1, insert: 'Z'}], selection: {anchor: body + 1, head: body + 1}});
+  expect(edited.text).toBe(initial.text.slice(0, body) + 'ZYBody');
+  await expect(h.command(book.bookId, id, edited.revision, {type: 'text', changes: [{from: body - 1, to: body, insert: ''}], selection: {anchor: body - 1, head: body - 1}})).rejects.toMatchObject({code: 'UNAVAILABLE_RECORD'});
+  expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe(source);
+  await h.closeAll();
 });

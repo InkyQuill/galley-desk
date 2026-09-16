@@ -1,0 +1,5 @@
+LaunchProcess: failed to execvp:
+/home/inky/.cache/galley-pr1-suid/with
+[4045722:0916/205800.159584:FATAL:content/browser/zygote_host/zygote_host_impl_linux.cc:213] Zygote process exited prematurely with exit code 127
+timeout: the monitored command dumped core
+/tmp/galley-with-openbox.sh: line 5: 4045721 Trace/breakpoint trap      "$@"

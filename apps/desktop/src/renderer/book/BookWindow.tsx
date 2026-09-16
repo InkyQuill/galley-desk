@@ -1,3 +1,6 @@
+import { BookManagement } from './BookManagement';
+import { Metadata } from './Metadata';
+import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconBook, IconX } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { AppearanceSettings, BookView, Command, RecordView, Snapshot } from '../../shared/api';
@@ -22,6 +25,7 @@ type Props = {
   /** Сохранённая позиция из записи недавних (восстановление после перезапуска). */
   restore?: ReadingRestore | null;
   onClose: () => void;
+  onBookChange?: (book: BookView) => void;
   /** Настройки оформления: источник — App (один тематический контейнер). */
   appearance: AppearanceSettings;
   /** Резолв темы в App («Системная» уже развёрнута по схеме ОС). */
@@ -108,14 +112,17 @@ type PopupState =
  * в книгах не пишут).
  */
 export function BookWindow({
-  book,
+  book: initialBook,
   restore = null,
   onClose,
+  onBookChange,
   appearance,
   appearanceTheme,
   appearanceError,
   onAppearanceChange,
 }: Props) {
+  const [book, setBook] = useState(initialBook);
+  const [managementOpen, setManagementOpen] = useState(false);
   const cached = positionCache.get(book.bookId);
   // Сохранённая позиция из записи недавних сильнее внутрисессионного кэша;
   // глава могла исчезнуть из манифеста — тогда восстановление игнорируется.
@@ -127,6 +134,8 @@ export function BookWindow({
   // Актуальная глава вне React-потока: поздние ack и снимки сравниваются с
   // ней, а не с устаревшим замыканием (гон смены главы, см. applySnapshot).
   const chapterIdRef = useRef<string | null>(chapterId);
+  const [titles, setTitles] = useState<Record<string, string>>({});
+  const [metadataEditing, setMetadataEditing] = useState(false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   // Зеркало показанного снимка для решений вне React-потока (чип сбоя
   // сохранения при внешнем изменении — см. handleCommand).
@@ -156,6 +165,23 @@ export function BookWindow({
   // изменение доезжает до тематического контейнера мгновенно и сохраняется
   // там же через DeskApi.
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuRef.current?.querySelector<HTMLButtonElement>('.book__menu-items button')?.focus();
+    const dismiss = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [menuOpen]);
+  useEffect(() => {
+    if (searchOpen) document.querySelector<HTMLInputElement>('.book__search-input')?.focus();
+  }, [searchOpen]);
   // Zen: панели и topbar скрыты; выход — постоянная кнопка или Escape
   // (сначала закрываются popup/flyout/карточка, затем сам Zen).
   const [zen, setZen] = useState(false);
@@ -169,6 +195,7 @@ export function BookWindow({
 
   const applySnapshot = useCallback((next: Snapshot) => {
     revisionsRef.current.set(next.chapterId, next.revision);
+    if (next.title) setTitles(current => ({ ...current, [next.chapterId]: next.title! }));
     // Поздний снимок чужой главы (пользователь уже переключился) не трогает
     // показанный документ: иначе редактор новой главы был бы пересоздан по
     // тексту прежней, а ввод новой главы ушёл бы в её сессию по смещённым
@@ -198,8 +225,24 @@ export function BookWindow({
     chapterIdRef.current = next;
     snapshotRef.current = null;
     setSnapshot(null);
+    setMetadataEditing(false);
     setChapterId(next);
   }, [editorApi]);
+
+  const refreshBook = useCallback(async (next: BookView) => {
+    setBook(next);
+    onBookChange?.(next);
+    if (!next.entries.some(entry => entry.id === chapterIdRef.current)) {
+      const nextId = firstOpenEntryId(next);
+      chapterIdRef.current = nextId;
+      snapshotRef.current = null;
+      setSnapshot(null);
+      setChapterId(nextId);
+      setMetadataEditing(false);
+    } else if (chapterIdRef.current !== null) {
+      applySnapshot(await window.desk.openChapter(next.bookId, chapterIdRef.current));
+    }
+  }, [applySnapshot, onBookChange]);
 
   // --- оформление ------------------------------------------------------------
 
@@ -212,10 +255,17 @@ export function BookWindow({
 
   // --- Zen и порядок Escape ---------------------------------------------------
 
-  const overlayRef = useRef({ popup, flyout, cardId, appearanceOpen, zen });
-  overlayRef.current = { popup, flyout, cardId, appearanceOpen, zen };
+  const overlayRef = useRef({ popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi });
+  overlayRef.current = { popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        event.stopPropagation();
+        setSearchOpen(true);
+        document.querySelector<HTMLInputElement>('.book__search-input')?.focus();
+        return;
+      }
       if (event.key !== 'Escape') return;
       const overlay = overlayRef.current;
       // Порядок: сначала всплывающие слои (попап обрабатывает и свой
@@ -232,8 +282,24 @@ export function BookWindow({
         setCardId(null);
         return;
       }
+      if (overlay.menuOpen) {
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+        return;
+      }
       if (overlay.appearanceOpen) {
         setAppearanceOpen(false);
+        return;
+      }
+      if (overlay.searchOpen) {
+        // The focused search field clears its query before collapsing.
+        if ((event.target as HTMLElement)?.closest('.book__search')) return;
+        setSearchOpen(false);
+        return;
+      }
+      if (overlay.editorApi?.dismissPreview()) {
+        event.preventDefault();
+        event.stopPropagation();
         return;
       }
       if (overlay.zen) setZen(false);
@@ -390,6 +456,15 @@ export function BookWindow({
         setSaveError(null);
         return next;
       } catch (cause) {
+        if (command.type === 'metadata') {
+          // Validation/stale-form rejection did not write. Ask main for the
+          // actual session state; only a failed persistence blocks closing.
+          const current = await window.desk.openChapter(book.bookId, chapterId).catch(() => null);
+          if (current !== null && current.saveState === 'saved') {
+            applySnapshot(current);
+            throw cause;
+          }
+        }
         // Отказ ввода при показанном внешнем изменении — не сбой сохранения:
         // на main сессия в состоянии external отвергает любой ввод как
         // устаревший (STALE_REVISION), поэтому чип остаётся аффордансом
@@ -507,6 +582,9 @@ export function BookWindow({
   const enterZen = useCallback((): void => {
     setFlyout(null);
     setCardId(null);
+    setAppearanceOpen(false);
+    setMenuOpen(false);
+    setSearchOpen(false);
     setZen(true);
   }, []);
 
@@ -560,7 +638,8 @@ export function BookWindow({
     [mode, editorApi],
   );
 
-  const activeChapter = book.entries.find((entry) => entry.id === chapterId) ?? null;
+  const entries = book.entries.map(entry => ({ ...entry, title: titles[entry.id] ?? entry.title }));
+  const activeChapter = entries.find((entry) => entry.id === chapterId) ?? null;
   // Локальный флаг ошибки сильнее снимка: main не уведомляет о сбое записи.
   const readOnly = snapshot === null || snapshot.readOnlyReason !== null;
   const saveState = saveError !== null ? 'error' : snapshot?.saveState ?? null;
@@ -570,8 +649,8 @@ export function BookWindow({
   const normalizedFilter = chapterFilter.trim().toLowerCase();
   const visibleEntries =
     normalizedFilter === ''
-      ? book.entries
-      : book.entries.filter((entry) =>
+      ? entries
+      : entries.filter((entry) =>
           (entry.title !== '' ? entry.title : entry.path).toLowerCase().includes(normalizedFilter),
         );
   // Переменные темы, шрифт и подложка живут на контейнере App (.app-root);
@@ -584,7 +663,7 @@ export function BookWindow({
         <header className="book__header">
           <h1 className="book__title">{book.title}</h1>
           {saveState !== null && (
-            <span className={`book__save-state book__save-state--${saveState}`}>{snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}</span>
+            <span role="status" title={snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]} className={`book__save-state book__save-state--${snapshot?.readOnlyReason ? 'readonly' : saveState}`}>{snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}</span>
           )}
           {saveError !== null && (
             <button type="button" className="book__reread" onClick={rereadChapter}>
@@ -603,23 +682,29 @@ export function BookWindow({
               </button>
             </span>
           )}
-          <button
-            type="button"
-            aria-expanded={appearanceOpen}
-            onClick={() => setAppearanceOpen((open) => !open)}
-          >
-            Оформление
-          </button>
-          <button type="button" onClick={enterZen}>
-            Режим Zen
-          </button>
-          <button type="button" className="book__close" onClick={() => void closeBook()}>
-            Закрыть книгу
-          </button>
+          <button type="button" ref={searchButtonRef} title="Поиск по главе (Ctrl+F)" aria-label="Поиск по главе" aria-expanded={searchOpen} onClick={() => setSearchOpen((open) => !open)}><IconSearch /></button>
+          <div className="book__view-toggle" aria-label="Режим просмотра">
+            <button type="button" title="Текст" aria-label="Текст" aria-pressed={mode === 'text'} onClick={() => switchMode('text')}><IconFileText /></button>
+            <button type="button" title="Сравнение" aria-label="Сравнение" aria-pressed={mode === 'comparison'} onClick={() => switchMode('comparison')}><IconColumns2 /></button>
+            <button type="button" title="Исходник" aria-label="Исходник" aria-pressed={mode === 'source'} onClick={() => switchMode('source')}><IconCode /></button>
+          </div>
+          <button type="button" title="Режим Zen" aria-label="Режим Zen" onClick={enterZen}><IconTarget /></button>
+          <div className="book__menu" ref={menuRef}>
+            <button type="button" ref={menuButtonRef} title="Меню книги" aria-label="Меню книги" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><IconDots /></button>
+            {menuOpen && <div className="book__menu-items" aria-label="Действия книги" onBlur={(event) => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) setMenuOpen(false); }}>
+              <button type="button" disabled={metadataEditing} onClick={() => { setManagementOpen(true); setMenuOpen(false); }}><IconBook />Управление книгой</button>
+              <button type="button" onClick={() => { setAppearanceOpen((open) => !open); setMenuOpen(false); }}><IconAdjustments />Оформление</button>
+              <button type="button" className="book__close" onClick={() => void closeBook()}><IconBookOff />Закрыть книгу</button>
+            </div>}
+          </div>
         </header>
       )}
+      {managementOpen && <BookManagement book={book} chapterId={chapterId}
+        onChange={async change => { await editorApi?.flushPending(); await refreshBook(await window.desk.manageBook(book.bookId, change)); }}
+        onRefresh={refreshBook} onClose={() => { setManagementOpen(false); menuButtonRef.current?.focus(); }} />}
       {appearanceOpen && (
         <div className="book__appearance-panel">
+          <button className="book__appearance-close" type="button" aria-label="Закрыть оформление" onClick={() => setAppearanceOpen(false)}><IconX /></button>
           <Appearance value={appearance} onChange={onAppearanceChange} />
           {appearanceError !== null && (
             <p className="app__error" role="alert">
@@ -637,7 +722,7 @@ export function BookWindow({
           onClick={() => setZen(false)}
           title="Выйти из Zen (Esc)"
         >
-          Выйти из Zen
+          <IconTargetOff /><span>Выйти из Zen</span>
         </button>
       )}
       {error !== null && (
@@ -647,10 +732,10 @@ export function BookWindow({
       )}
       <div
         className="book__body"
-        style={{ gridTemplateColumns: zen ? '1fr' : '16rem 1fr 18rem' }}
       >
         {!zen && (
           <nav className="book__chapters" aria-label="Оглавление">
+            <h2 className="book__panel-title">Оглавление</h2>
             <input
               type="text"
               className="book__chapter-filter"
@@ -669,8 +754,8 @@ export function BookWindow({
                 title={entry.missing ? 'Файл главы отсутствует' : entry.path}
                 onClick={() => switchChapter(entry.id)}
               >
-                {entry.title !== '' ? entry.title : entry.path}
-                {entry.missing ? ' (файл отсутствует)' : ''}
+                <span className="book__chapter-name">{entry.title !== '' ? entry.title : entry.path}</span>
+                <small>{entry.path.split('/').pop()}{entry.missing ? ' (файл отсутствует)' : ''}</small>
               </button>
             ))}
             {visibleEntries.length === 0 && <p className="book__chapters-empty">Главы не найдены</p>}
@@ -678,36 +763,16 @@ export function BookWindow({
         )}
         <section className="book__content">
           {activeChapter !== null && <h2 className="book__chapter-title">{activeChapter.title || activeChapter.path}</h2>}
-          <div className="book__view-toggle" aria-label="Режим просмотра">
-            <button
-              type="button"
-              aria-pressed={mode === 'text'}
-              className={mode === 'text' ? 'book__view book__view--active' : 'book__view'}
-              onClick={() => switchMode('text')}
-            >
-              Текст
-            </button>
-            <button
-              type="button"
-              aria-pressed={mode === 'comparison'}
-              className={mode === 'comparison' ? 'book__view book__view--active' : 'book__view'}
-              onClick={() => switchMode('comparison')}
-            >
-              Сравнение
-            </button>
-            <button
-              type="button"
-              aria-pressed={mode === 'source'}
-              className={mode === 'source' ? 'book__view book__view--active' : 'book__view'}
-              onClick={() => switchMode('source')}
-            >
-              Исходник
-            </button>
-          </div>
-          {snapshot !== null && (
+          {snapshot !== null && <Metadata key={chapterId} source={snapshot.sourceText} readOnly={readOnly || saveError!==null || snapshot.saveState!=='saved'} onEditing={setMetadataEditing} onSave={async(yaml,sourceText)=>{
+            await editorApi?.flushPending();
+            await handleCommand({type:'metadata',yaml,sourceText});
+            setEditorEpoch(epoch=>epoch+1);
+          }}/>}
+          {snapshot !== null && searchOpen && (
             // Поиск по главе: область подписана и зависит от вида (Текст/
             // Сравнение — snapshot.text, Исходник — snapshot.sourceText).
             <ChapterSearch
+              onClose={() => { setSearchOpen(false); searchButtonRef.current?.focus(); }}
               area={mode}
               searchText={mode === 'source' ? snapshot.sourceText : snapshot.text}
               onReveal={revealSearchResult}
@@ -745,8 +810,10 @@ export function BookWindow({
             <div className="book__text" ref={textRef} style={widthStyle}>
               {snapshot?.recoveryConflict ? <pre aria-label="Локальная версия восстановления">{snapshot.text}</pre> : snapshot !== null && (
                 <ReviewEditor
+                  previewBlocked={popup !== null || cardId !== null}
                   key={`${chapterId}:${editorEpoch}`}
-                  snapshot={snapshot}
+                  snapshot={metadataEditing ? {...snapshot,readOnlyReason:'Изменение метаданных'} : snapshot}
+                  theme={appearanceTheme.scheme}
                   onCommand={handleCommand}
                   onSelectionChange={rememberAnchor}
                   onScrollChange={rememberScroll}
@@ -764,15 +831,8 @@ export function BookWindow({
           <aside
             className="book__review"
             aria-label="Рецензия"
-            style={{
-              borderLeft: '1px solid color-mix(in srgb, currentColor 20%, transparent)',
-              padding: '0.75rem',
-              overflowY: 'auto',
-              display: 'grid',
-              gap: '0.75rem',
-              alignContent: 'start',
-            }}
           >
+            <h2 className="book__panel-title">Рецензия</h2>
             {/* Ключ по главе: заметка, черновик и попап принадлежат главе —
                 смена главы не переносит черновик в другую главу. */}
             <ChapterNote readOnly={readOnly} key={chapterId ?? 'none'} value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />

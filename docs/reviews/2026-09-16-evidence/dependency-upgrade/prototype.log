@@ -1,0 +1,14 @@
+
+> @galley-desk/desk-prototype@0.1.0 build
+> tsc -b && vite build
+
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 6226 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.41 kB │ gzip:  0.29 kB
+dist/assets/index-CVogr9MA.css   11.61 kB │ gzip:  3.13 kB
+dist/assets/index-BJ-vMl6w.js   262.38 kB │ gzip: 80.96 kB
+
+✓ built in 194ms

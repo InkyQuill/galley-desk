@@ -5,6 +5,7 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import path from 'node:path';
 
 // Изготовители дистрибутивов: ZIP для macOS (без подписи — только для CI
 // артефактов) и Linux (архив), deb/rpm как дистрибутивы Linux. Squirrel
@@ -15,6 +16,14 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // Chromium's SUID wrapper splits an unquoted helper path on spaces.
+    // Keep Linux artifact paths shell-safe; productName remains Galley Desk.
+    ...(process.platform === 'linux' ? {name: 'galley-desk', executableName: 'galley-desk'} : {}),
+    icon: path.resolve(
+      'assets/branding/generated',
+      process.platform === 'darwin' ? 'galley-desk-icon.icns' : 'galley-desk-icon.png',
+    ),
+    extraResource: [path.resolve('assets/branding')],
   },
   rebuildConfig: {},
   makers: [

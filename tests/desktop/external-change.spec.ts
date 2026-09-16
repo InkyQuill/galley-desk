@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, realpath, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { encodeReview, makeAnchor } from '@galley-desk/pocket-format';
@@ -9,7 +9,8 @@ const tempDirs: string[] = [];
 async function makeTempDir(prefix: string): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), prefix));
   tempDirs.push(dir);
-  return dir;
+  // Journals are keyed by the canonical root used by openBook.
+  return realpath(dir);
 }
 
 type Session = { app: ElectronApplication; page: Page; userData: string; bookRoot: string };
@@ -88,7 +89,10 @@ test('внешнее изменение принимается: чужая ве�
     // …и снимается Undo-ом, чтобы sidecar остался без правок: внешний текст
     // после принятия не искажается переносами старых правок.
     await session.page.keyboard.press('ControlOrMeta+z');
-    await expect(content).toContainText('кот');
+    // Substring 'кот' also matches the pre-undo 'кот!'; await the actual
+    // committed undo before racing a foreign source write against the session.
+    await expect(content).toHaveText('кот');
+    await expect.poll(async () => JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')).edits).toEqual([]);
     await expect(session.page.getByText('Сохранено')).toBeVisible();
 
     // Внешняя правка выполняется мимо приложения.
@@ -254,7 +258,7 @@ test('recovery conflict blocks input and preserves local pair before explicit ac
     await expect(session.page.getByRole('textbox', { name: 'Комментарий сигнала' })).toHaveAttribute('readonly', '');
     await expect(session.page.getByRole('button', { name: 'Сохранить', exact: true })).toBeDisabled();
     await expect(session.page.getByRole('button', { name: 'Удалить', exact: true })).toBeDisabled();
-    await expect(session.page.getByRole('button', { name: 'warning', exact: true })).toBeDisabled();
+    await expect(session.page.getByRole('button', { name: 'Предупреждение', exact: true })).toBeDisabled();
     expect(JSON.parse(await readFile(path.join(session.userData, name), 'utf8'))).toEqual(record);
     expect(await readFile(path.join(bookRoot, '01.md'), 'utf8')).toBe('external fox');
     await session.page.getByRole('button', { name: 'Открыть внешнюю версию' }).click();

@@ -1,0 +1,95 @@
+
+Running 3 tests using 1 worker
+
+  ✘  1 tests/desktop/edit-and-reopen.spec.ts:231:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы (10.9s)
+  ✘  2 tests/desktop/edit-and-reopen.spec.ts:231:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы (11.1s)
+  ✘  3 tests/desktop/edit-and-reopen.spec.ts:231:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы (10.9s)
+
+
+  1) tests/desktop/edit-and-reopen.spec.ts:231:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('.cm-content')
+    Expected substring: "qwertyuiopasdfghjklzxcvbnmqwertyuiopasdfghjklzxc"
+    Received string:    "Текстqwertuydfghyxcvbnmqriopatghjkt"
+    Timeout: 10000ms
+
+    Call log:
+      - Expect "toContainText" locator('.cm-content') with timeout 10000ms
+      - waiting for locator('.cm-content')
+        24 × locator resolved to <div translate="no" role="textbox" autocorrect="off" spellcheck="false" autocapitalize="off" aria-multiline="true" contenteditable="true" aria-label="Текст главы" data-language="markdown" writingsuggestions="false" class="cm-content cm-lineWrapping">…</div>
+           - unexpected value "Текстqwertuydfghyxcvbnmqriopatghjkt"
+
+
+      242 |     await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
+      243 |     await session.page.keyboard.type(burst, { delay: 5 });
+    > 244 |     await expect(content).toContainText(burst);
+          |                           ^
+      245 |
+      246 |     const sidecar = await waitSaveDrained(session.page, path.join(bookRoot, 'Глава.review.json'));
+      247 |     expect(sidecar.length).toBeGreaterThan(0);
+        at /home/inky/Development/galley-desk/tests/desktop/edit-and-reopen.spec.ts:244:27
+
+    Error Context: test-results/edit-and-reopen-быстрый-вв-40cf6-ряет-и-не-дублирует-символы/error-context.md
+
+  2) tests/desktop/edit-and-reopen.spec.ts:231:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('.cm-content')
+    Expected substring: "qwertyuiopasdfghjklzxcvbnmqwertyuiopasdfghjklzxc"
+    Received string:    "Текстqyuwpasdfghjklzxcvmqwerptydfuuluu"
+    Timeout: 10000ms
+
+    Call log:
+      - Expect "toContainText" locator('.cm-content') with timeout 10000ms
+      - waiting for locator('.cm-content')
+        - locator resolved to <div translate="no" role="textbox" autocorrect="off" spellcheck="false" autocapitalize="off" aria-multiline="true" contenteditable="true" aria-label="Текст главы" data-language="markdown" writingsuggestions="false" class="cm-content cm-lineWrapping">…</div>
+        - unexpected value "Текстqyuwpasdfghjklzxcvmqwerptydfuulu"
+        23 × locator resolved to <div translate="no" role="textbox" autocorrect="off" spellcheck="false" autocapitalize="off" aria-multiline="true" contenteditable="true" aria-label="Текст главы" data-language="markdown" writingsuggestions="false" class="cm-content cm-lineWrapping">…</div>
+           - unexpected value "Текстqyuwpasdfghjklzxcvmqwerptydfuuluu"
+
+
+      242 |     await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
+      243 |     await session.page.keyboard.type(burst, { delay: 5 });
+    > 244 |     await expect(content).toContainText(burst);
+          |                           ^
+      245 |
+      246 |     const sidecar = await waitSaveDrained(session.page, path.join(bookRoot, 'Глава.review.json'));
+      247 |     expect(sidecar.length).toBeGreaterThan(0);
+        at /home/inky/Development/galley-desk/tests/desktop/edit-and-reopen.spec.ts:244:27
+
+    Error Context: test-results/edit-and-reopen-быстрый-вв-40cf6-ряет-и-не-дублирует-символы-repeat1/error-context.md
+
+  3) tests/desktop/edit-and-reopen.spec.ts:231:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('.cm-content')
+    Expected substring: "qwertyuiopasdfghjklzxcvbnmqwertyuiopasdfghjklzxc"
+    Received string:    "Текстqwertyuiopfaklacmqweviophjdzxc"
+    Timeout: 10000ms
+
+    Call log:
+      - Expect "toContainText" locator('.cm-content') with timeout 10000ms
+      - waiting for locator('.cm-content')
+        24 × locator resolved to <div translate="no" role="textbox" autocorrect="off" spellcheck="false" autocapitalize="off" aria-multiline="true" contenteditable="true" aria-label="Текст главы" data-language="markdown" writingsuggestions="false" class="cm-content cm-lineWrapping">…</div>
+           - unexpected value "Текстqwertyuiopfaklacmqweviophjdzxc"
+
+
+      242 |     await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
+      243 |     await session.page.keyboard.type(burst, { delay: 5 });
+    > 244 |     await expect(content).toContainText(burst);
+          |                           ^
+      245 |
+      246 |     const sidecar = await waitSaveDrained(session.page, path.join(bookRoot, 'Глава.review.json'));
+      247 |     expect(sidecar.length).toBeGreaterThan(0);
+        at /home/inky/Development/galley-desk/tests/desktop/edit-and-reopen.spec.ts:244:27
+
+    Error Context: test-results/edit-and-reopen-быстрый-вв-40cf6-ряет-и-не-дублирует-символы-repeat2/error-context.md
+
+  3 failed
+    tests/desktop/edit-and-reopen.spec.ts:231:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы
+    tests/desktop/edit-and-reopen.spec.ts:231:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы
+    tests/desktop/edit-and-reopen.spec.ts:231:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы

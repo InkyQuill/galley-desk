@@ -25,7 +25,43 @@ export function applyEdit(model: ChapterModel, id: string): ChapterModel {
   if (range === undefined) throw new Error(`Edit is not active: ${id}`);
   const edit = model.review.edits.find((candidate) => candidate.id === id) as Edit;
 
-  const afterBytes = textEncoder.encode(edit.after);
+  return replaceRange(model, range, edit.after, id);
+}
+
+/** Explicit author replacement. Active overlapping records require resolution first. */
+export function replaceSourceRange(
+  model: ChapterModel,
+  range: { from: number; to: number },
+  text: string,
+): ChapterModel {
+  if (
+    !Number.isSafeInteger(range.from) ||
+    !Number.isSafeInteger(range.to) ||
+    range.from < 0 ||
+    range.to < range.from ||
+    range.to > model.source.length
+  )
+    throw new Error('Invalid source range');
+  decodeStrict(model.source.subarray(0, range.from));
+  decodeStrict(model.source.subarray(range.to));
+  const active = classifyReview(model.source, model.review);
+  for (const old of [...active.edits.values(), ...active.signals.values()]) {
+    if (
+      (old.from < range.to && old.to > range.from) ||
+      (old.from === old.to && old.from >= range.from && old.from < range.to)
+    )
+      throw new Error('Active records overlap metadata');
+  }
+  return replaceRange(model, range, text);
+}
+
+function replaceRange(
+  model: ChapterModel,
+  range: { from: number; to: number },
+  text: string,
+  id?: string,
+): ChapterModel {  const availability = classifyReview(model.source, model.review);
+  const afterBytes = textEncoder.encode(text);
   const source = concatBytes(model.source.subarray(0, range.from), afterBytes, model.source.subarray(range.to));
   const shift = afterBytes.length - (range.to - range.from);
 

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -10,7 +10,8 @@ import { launchPackaged } from './packaged-app';
 test('packaged executable: save, restart, apply and byte-exact undo', async () => {
   const executable = process.env.GALLEY_PACKAGED_EXECUTABLE;
   test.skip(!executable, 'Set GALLEY_PACKAGED_EXECUTABLE to the real packaged executable');
-  const root = await mkdtemp(path.join(tmpdir(), 'galley-artifact-'));
+  // Recent entries store the canonical root returned by openBook.
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'galley-artifact-')));
   const profile = await mkdtemp(path.join(tmpdir(), 'galley-artifact-profile-'));
   const bookId = randomUUID();
   const chapterId = randomUUID();
@@ -35,6 +36,7 @@ test('packaged executable: save, restart, apply and byte-exact undo', async () =
     await page.keyboard.insertText('кит\nНовая строка 🦊');
     await expect(page.locator('.book__save-state')).toHaveText('Сохранено');
     await expect.poll(async () => (await readFile(reviewPath, 'utf8').catch(() => '')).includes('кит')).toBe(true);
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     const review = await readFile(reviewPath);
     expect(await readFile(sourcePath)).toEqual(source);
@@ -50,6 +52,7 @@ test('packaged executable: save, restart, apply and byte-exact undo', async () =
     await expect(page.getByRole('button', { name: 'Повторить применение' })).toBeEnabled();
     expect(await readFile(sourcePath)).toEqual(source);
     expect(await readFile(reviewPath)).toEqual(review);
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
   } finally {
     try {

@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -29,6 +29,15 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm test
+      - name: Electron static security analysis
+        run: npm run check:security
+      - name: Save security reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: electron-security
+          path: test-results/security/
+          if-no-files-found: warn
       - name: Forge package
         run: npm run package
       # Electron-тесты запускаются против собранного приложения (Forge .vite
@@ -36,10 +45,32 @@ jobs:
       # performance.spec исключён (бюджеты честны только для выделенного
       # железа; запускается вручную: GALLEY_PERF=1 … --workers=1,
       # результаты — в docs/verification.md).
-      - name: Electron tests (Xvfb)
-        run: xvfb-run --auto-servernum npm run test:desktop
+      - name: Install Linux window test tools
+        run: sudo apt-get update && sudo apt-get install -y xvfb openbox xdotool x11-utils
+      - name: Configure packaged Chromium sandbox
+        run: |
+          sandbox="$PWD/apps/desktop/out/galley-desk-linux-x64/chrome-sandbox"
+          sudo chown root:root "$sandbox"
+          sudo chmod 4755 "$sandbox"
+      - name: Electron tests (Xvfb and Openbox)
+        run: |
+          xvfb-run --auto-servernum sh -c '
+            openbox > /tmp/galley-openbox.log 2>&1 &
+            wm_pid=$!
+            trap "kill $wm_pid 2>/dev/null || true" EXIT
+            npm run test:desktop
+          '
         env:
           CI: true
+          GALLEY_PACKAGED_EXECUTABLE: ${{ github.workspace }}/apps/desktop/out/galley-desk-linux-x64/galley-desk
+          GALLEY_TEST_FORCE_SUID_SANDBOX: "1"
+      - name: Save failed desktop test evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-linux-failures
+          path: test-results/
+          if-no-files-found: ignore
 
   macos:
     runs-on: macos-latest
@@ -49,7 +80,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -61,7 +92,19 @@ jobs:
         run: npm test
       - name: Forge package
         run: npm run package
+      - name: Locate packaged macOS executable
+        run: |
+          executable="$PWD/apps/desktop/out/Galley Desk-darwin-$(node -p 'process.arch')/Galley Desk.app/Contents/MacOS/Galley Desk"
+          test -x "$executable"
+          echo "GALLEY_PACKAGED_EXECUTABLE=$executable" >> "$GITHUB_ENV"
       - name: Electron tests
         run: npm run test:desktop
         env:
           CI: true
+      - name: Save failed desktop test evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-macos-failures
+          path: test-results/
+          if-no-files-found: ignore

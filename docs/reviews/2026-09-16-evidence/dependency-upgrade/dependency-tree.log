@@ -1,0 +1,22 @@
+galley-desk@ /home/inky/Development/galley-desk
+├─┬ @galley-desk/desk-prototype@0.1.0 -> ./packages/desk-prototype
+│ ├─┬ @tabler/icons-react@3.46.0
+│ │ └── react@19.3.0 deduped
+│ ├─┬ @tailwindcss/vite@4.3.3
+│ │ └── vite@8.3.0 deduped
+│ ├─┬ @vitejs/plugin-react@6.1.1
+│ │ └── vite@8.3.0 deduped
+│ ├─┬ react-dom@19.3.0
+│ │ └── react@19.3.0 deduped
+│ ├── react@19.3.0
+│ └── vite@8.3.0
+├─┬ @galley-desk/desktop@0.1.0 -> ./apps/desktop
+│ ├─┬ @inkyquill/galley-editor@0.14.0
+│ │ ├── react-dom@19.3.0 deduped
+│ │ └── react@19.3.0 deduped
+│ ├── react-dom@19.3.0 deduped
+│ ├── react@19.3.0 deduped
+│ └── vite@8.3.0 deduped
+├── extract-zip@npm:@electron-internal/extract-zip@1.0.5
+└─┬ vitest@5.0.1
+  └── vite@8.3.0 deduped

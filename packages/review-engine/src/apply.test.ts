@@ -156,3 +156,17 @@ test('the applied record is removed so the derived text matches the new source',
   expect(next.text).toBe(new TextDecoder().decode(next.source));
   expect(next.source).toEqual(new TextEncoder().encode('Xcd'));
 });
+
+test('explicit source replacement rebases body records and rejects overlapping active edits', async () => {
+ const { replaceSourceRange } = await import('./apply');
+ const source = new TextEncoder().encode('---\ntitle: 🐈\n---\nbody');
+ const end = source.length - 4;
+ const edit = { id: E1, before: 'body', after: 'text', anchor: makeAnchor(source, {from:end,to:source.length}) };
+ const model = openChapter(source, reviewWith(source, [edit], [signalOn(source, 's', end, source.length)]));
+ const prefix = '---\ntitle: Longer\n---\n';
+ const next = replaceSourceRange(model, {from:0,to:end}, prefix);
+ expect(next.text).toBe(prefix+'text');
+ expect(next.review.edits[0]!.anchor.start_byte).toBe(new TextEncoder().encode(prefix).length);
+ expect(next.review.signals[0]!.selected_text).toBe('body');
+ expect(() => replaceSourceRange(model, {from:0,to:source.length}, prefix)).toThrow(/overlap/);
+});

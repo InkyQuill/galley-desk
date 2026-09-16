@@ -1,7 +1,8 @@
 // Flyout выбора типа сигнала у выделенного текста. Появляется без переноса
 // фокуса: копирование и клавиатурная навигация в редакторе остаются доступны;
 // в flyout можно попасть Tab-ом из редактора, пока выделение непусто.
-import { useEffect } from 'react';
+import { signalLabels, signalIcons } from './signal-types';
+import { useLayoutEffect } from 'react';
 import { SIGNAL_TYPES, useMarkerTheme, signalColor } from '../editor/markers';
 import type { SignalTypeName } from '../editor/markers';
 
@@ -17,7 +18,8 @@ type Props = {
 
 export function SignalFlyout({ x, bottom, onPick, registerFocus }: Props) {
   const theme = useMarkerTheme();
-  useEffect(() => {
+  // Tab must work as soon as the visible toolbar is committed.
+  useLayoutEffect(() => {
     registerFocus(() => {
       document.querySelector<HTMLElement>('[data-review-flyout] button')?.focus();
     });
@@ -37,15 +39,17 @@ export function SignalFlyout({ x, bottom, onPick, registerFocus }: Props) {
         gap: 4,
         padding: 4,
         borderRadius: 8,
-        background: 'Canvas',
-        color: 'CanvasText',
-        border: '1px solid color-mix(in srgb, CanvasText 30%, transparent)',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+        background: 'var(--app-panel)',
+        color: 'var(--app-text)',
+        border: 'none',
+        boxShadow: 'var(--app-dialog-shadow)',
       }}
     >
       {SIGNAL_TYPES.map((type) => (
         <button
           key={type}
+          aria-label={signalLabels[type]}
+          title={signalLabels[type]}
           type="button"
           // preventDefault на mousedown сохраняет выделение и фокус редактора.
           onMouseDown={(event) => event.preventDefault()}
@@ -59,7 +63,7 @@ export function SignalFlyout({ x, bottom, onPick, registerFocus }: Props) {
           }}
           onClick={() => onPick(type)}
         >
-          {type}
+          {(() => { const Icon = signalIcons[type]; return <Icon size={20} aria-hidden="true" />; })()}
         </button>
       ))}
     </div>

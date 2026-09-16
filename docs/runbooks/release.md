@@ -28,7 +28,7 @@ GALLEY_PERF=1 npx playwright test tests/desktop/performance.spec.ts --workers=1
 ```
 
 Дополнительно запустить собранный исполняемый файл вручную
-(`apps/desktop/out/Galley Desk-linux-x64/Galley Desk`) и проверить открытие
+(`apps/desktop/out/galley-desk-linux-x64/galley-desk`) и проверить открытие
 книги, поиск, оформление, Zen и закрытие с сохранением. Результаты
 зафиксировать в `docs/verification.md`.
 
@@ -87,7 +87,7 @@ macOS-джоба в `.github/workflows/desktop.yml` выполняет `npm ci �
 
 ```bash
 # Linux
-export GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/Galley Desk-linux-x64/Galley Desk"
+export GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/galley-desk-linux-x64/galley-desk"
 # macOS: заменить arm64 на x64 для Intel
 export GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/Galley Desk-darwin-arm64/Galley Desk.app/Contents/MacOS/Galley Desk"
 npx playwright test tests/desktop/packaged-smoke.spec.ts --workers=1
@@ -126,6 +126,12 @@ CachyOS/KDE в A7 требовалось унаследовать
 4. Вставить из настоящего clipboard multiline, emoji и CRLF; проверить
    нормализованный ввод, неизменные исходные MD bytes до Apply и точный Undo.
 5. Выполнить Apply/Undo и сравнить SHA256 обеих файлов до/после Undo.
+6. Проверить новую рамку: traffic lights не перекрывают содержимое;
+   перетаскивание, полноэкранный режим и выход из него, системное меню
+   и Cmd+Z/Cmd+Shift+Z работают. Иконка видна в Dock и пакете приложения.
+7. Проверить метаданные и управление главами на временной книге: изменение
+   title, создание, добавление существующего файла, удаление из оглавления
+   и повторное добавление с сохранёнными сигналами, перенос файлов в корзину.
 
 `ControlOrMeta` в desktop-тестах использует Cmd на Mac; начало/конец
 документа используют Meta+ArrowUp/Down. Chromium CDP composition test
@@ -133,10 +139,73 @@ CachyOS/KDE в A7 требовалось унаследовать
 Linux native IME также остаётся not-run: ibus/fcitx5 на проверенной машине нет.
 Без фактического Mac и Android roundtrip PASS весь platform gate открыт.
 
-### ZIP без системного zip
+### Linux ZIP
 
-В этой среде Forge ZIP maker завершился `spawn zip ENOENT`; deb/rpm tools
-тоже отсутствуют. Допустим локальный portable ZIP каталога `out`, созданный
-Python `zipfile` с UNIX permission bits и сохранением symlink entry. Это
-**ручной portable ZIP**, а не успешный Forge make. Проверить `ZipFile.testzip`,
-исполняемый бит бинарника и SHA256; подписанный релиз так не заявляется.
+Для штатного ZIP maker нужен системный `zip` (на Arch/CachyOS: `sudo pacman -S zip`).
+После успешного `npm run package`:
+
+```bash
+npm run make --workspace @galley-desk/desktop -- --skip-package --targets=@electron-forge/maker-zip
+```
+
+Артефакт появляется в `apps/desktop/out/make/zip/linux/x64/`.
+Ранее отсутствие `zip` приводило к `spawn zip ENOENT`; теперь пакет установлен,
+и используется штатный Forge maker. deb/rpm требуют собственных системных
+инструментов и не входят в эту команду.
+
+
+### Headless Linux: проверка собственной рамки
+
+Для X11-сценариев нужны `Xvfb`, Openbox, `xdotool` и `xprop` (в Arch:
+`xorg-server-xvfb openbox xdotool xorg-xprop`). Запускайте WM только внутри
+изолированного дисплея; рабочую KDE-сессию менять не требуется:
+
+```bash
+export GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/galley-desk-linux-x64/galley-desk"
+xvfb-run -a sh -c '
+  openbox >/tmp/galley-test-openbox.log 2>&1 &
+  galley_wm_pid=$!
+  trap "kill $galley_wm_pid 2>/dev/null || true" EXIT
+  npm run test:desktop -- --workers=1
+'
+```
+
+На проверенной CachyOS перед `xvfb-run` добавлялось:
+`env -u XAUTHORITY -u WAYLAND_DISPLAY -u NO_COLOR -u FORCE_COLOR GTK_MODULES=colorreload-gtk-module:appmenu-gtk-module`.
+Не запускайте Openbox с DISPLAY вашей рабочей сессии.
+
+Тесты настоящей корзины используют одноразовые каталоги в `~/.cache`:
+перенос из `/tmp` на внутреннем tmpfs может быть запрещён системным gio.
+Передача `GALLEY_PACKAGED_EXECUTABLE` включает проверки настоящего
+упакованного приложения; Linux X11-проверки не заменяют ручные Mac-пункты.
+
+### Linux: SUID sandbox и пробелы в пути установки
+
+Linux-пакет называется `galley-desk-linux-x64`, executable — `galley-desk`.
+Название приложения в интерфейсе остаётся **Galley Desk**; macOS-пакет не переименован.
+Если система использует SUID fallback Chromium вместо user namespaces, путь
+установки приложения (включая родительские каталоги) должен быть без пробелов.
+Это ограничение не относится к каталогам книг.
+
+Причина в Chromium: [SetuidSandboxHost::PrependWrapper](https://chromium.googlesource.com/chromium/src/+/main/sandbox/linux/suid/client/setuid_sandbox_host.cc)
+передаёт путь helper без кавычек, а [CommandLine::PrependWrapper](https://chromium.googlesource.com/chromium/src/+/main/base/command_line.cc)
+разбивает его по пробелам. На Electron 44.4.0 воспроизведено с временной копией
+приложения и корректным root:root/4755 helper: каталог `with space` даёт
+`execvp: .../with` и exit 133; переименование только каталога в `no-spaces`
+позволяет запустить sandbox и получить CDP endpoint.
+
+В CI packaged-тесты явно выбирают SUID fallback, не отключая sandbox:
+
+```sh
+sandbox="$PWD/apps/desktop/out/galley-desk-linux-x64/chrome-sandbox"
+sudo chown root:root "$sandbox"
+sudo chmod 4755 "$sandbox"
+export GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/galley-desk-linux-x64/galley-desk"
+export GALLEY_TEST_FORCE_SUID_SANDBOX=1
+# Затем обычный headless-прогон с Xvfb/Openbox, описанный выше.
+```
+
+`GALLEY_TEST_FORCE_SUID_SANDBOX` читается только тестовым launcher и передаёт
+`--disable-namespace-sandbox`, заставляя Chromium использовать SUID sandbox.
+Ни `--no-sandbox`, ни отключение renderer sandbox не используются. Для локальной
+проверки лучше делать отдельную временную копию пакета и удалять её после теста.

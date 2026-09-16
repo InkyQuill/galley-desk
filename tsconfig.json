@@ -11,9 +11,6 @@
       "path": "packages/book-storage"
     },
     {
-      "path": "packages/desk-prototype"
-    },
-    {
       "path": "apps/desktop"
     }
   ]

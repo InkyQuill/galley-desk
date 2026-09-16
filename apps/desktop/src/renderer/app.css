@@ -1,379 +1,190 @@
-:root {
-  color-scheme: light dark;
-  font-family: system-ui, -apple-system, sans-serif;
-  /* Локальный токен предупреждения: в galley-themes нет warning-переменной.
-     Светлое значение по умолчанию; тёмный вариант — по data-scheme
-     тематического контейнера App (.app-root). */
-  --desk-warning: #a06000;
+@import './fonts.css';
+
+:root { color-scheme: light dark; font-family: Geist, system-ui, sans-serif; --desk-warning: #a06000; }
+[data-scheme='dark'] { --desk-warning: #d9a34a; }
+* { box-sizing: border-box; }
+body { margin: 0; background: Canvas; }
+.app-root { height: 100vh; display: flex; flex-direction: column; overflow: hidden; --desk-accent: var(--app-focus); }
+.app-root__content { flex: 1; min-height: 0; }
+.app-root__content--welcome { overflow: auto; }
+.titlebar { -webkit-app-region: drag; flex: none; height: 38px; display: flex; align-items: center; gap: 9px; padding-left: 12px; background: var(--app-panel); color: var(--app-text); user-select: none; }
+.titlebar--mac { padding-left: 82px; }
+.titlebar__icon { width: 23px; height: 23px; object-fit: contain; }
+.titlebar__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88em; font-weight: 500; }
+.titlebar__controls { -webkit-app-region: no-drag; align-self: stretch; display: flex; }
+.app-root .titlebar__controls button { width: 46px; height: 100%; border-radius: 0; padding: 0; }
+.app-root .titlebar__controls button:hover { background: var(--app-hover); }
+.app-root .titlebar__controls .titlebar__close:hover { color: white; background: #c42b1c; }
+.titlebar__controls svg { width: 16px; height: 16px; }
+.app-root button, .app-root input, .app-root select, .app-root textarea { font: inherit; color: inherit; }
+.app-root button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 6px; padding: 7px 9px; background: transparent; cursor: pointer; }
+.app-root button:hover { background: var(--app-hover); }
+.app-root button[aria-pressed='true'] { background: var(--app-hover); }
+.app-root button:disabled { opacity: .4; cursor: default; }
+.app-root :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--desk-accent); outline-offset: 2px; }
+.app-root :is(input, select, textarea) { min-width: 0; border: 0; border-radius: 6px; padding: 8px 10px; background: var(--app-panel-muted); }
+.app-root textarea { width: 100%; resize: vertical; }
+.app-root svg { width: 18px; height: 18px; flex: none; stroke-width: 2; }
+.app { display: grid; place-content: safe center; justify-items: center; min-height: 100%; padding: 24px; text-align: center; gap: 12px; }
+.app__hint, .recent-list__path { color: var(--app-text-muted); margin: 0; }
+.app .app__primary { background: var(--app-hover); padding: 10px 22px; }
+.app__error, .recent-list__missing { color: var(--app-error-text); overflow-wrap: anywhere; }
+.app__error { margin: 0; padding: 8px 16px; }
+.recent-list { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; width: min(700px, 90vw); }
+.recent-list__item { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-radius: 8px; padding: 12px; background: var(--app-panel); }
+.recent-list__info { display: grid; text-align: left; gap: 4px; min-width: 0; }
+.recent-list__title { font-weight: 600; }
+.recent-list__path { font-size: .9em; overflow-wrap: anywhere; }
+.recent-list__actions { display: flex; gap: 8px; }
+.book { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.book__header { display: flex; flex: none; align-items: center; gap: 6px; padding: 8px 14px; background: var(--app-panel); flex-wrap: wrap; }
+.book__title { font-size: 1em; font-weight: 500; margin: 0; flex: 1; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book__save-state { font-size: .9em; color: var(--app-text-muted); }
+.book__save-state--saved { font-size: 0; }
+.book__save-state--saved::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--app-text-muted); margin: 0 10px; }
+.book__save-state--error { color: var(--app-error-text); }
+.book__save-state--external { color: var(--desk-warning); }
+.book__external-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.book__body { display: grid; grid-template-columns: 210px minmax(0, 1fr) 224px; flex: 1; min-height: 0; }
+.book--zen .book__body { grid-template-columns: minmax(0, 1fr); }
+.book__chapters, .book__review { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 14px 12px; overflow-y: auto; overflow-x: hidden; background: var(--app-panel); }
+.book__panel-title { margin: 0 8px 10px; color: var(--app-text-muted); font-size: .9em; font-weight: 500; }
+.book__chapters .book__chapter { display: block; flex: none; width: 100%; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 9px 10px; }
+.book__chapter--active { background: var(--app-hover) !important; }
+.book__chapter-filter { width: 100%; margin-bottom: 10px; }
+.book__chapters-empty { color: var(--app-text-muted); }
+.book__content { min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 24px 28px 0; overflow: hidden; background: var(--app-bg); }
+.book__chapter-title { font-size: .9em; font-weight: 400; color: var(--app-text-muted); margin: 0; flex: none; }
+.book__text, .book__source, .book__comparison { flex: 1; min-height: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; margin: 0; padding: 0; font-family: var(--desk-book-font); font-size: var(--desk-book-size); line-height: 1.8; }
+.book__text { overflow: hidden; }
+.book__source, .book__comparison { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding-bottom: 48px; }
+.review-editor { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.review-editor > div { height: 100%; min-height: 0; background: transparent; }
+.book__text .review-editor .cm-editor, .book__text .review-editor .cm-scroller, .book__text .review-editor .cm-content { background: transparent; font-family: var(--desk-book-font); font-size: var(--desk-book-size); line-height: 1.8; }
+.book__text .review-editor .cm-content { padding-bottom: 80px; }
+.review-editor .cm-editor.cm-focused { outline: none; }
+.book__view-toggle { display: flex; gap: 2px; background: var(--app-panel-muted); border-radius: 8px; padding: 2px; }
+.book__menu { position: relative; }
+.book__menu-items { position: absolute; right: 0; top: calc(100% + 6px); z-index: 45; width: 210px; padding: 5px; border-radius: 9px; background: var(--app-panel); box-shadow: var(--app-dialog-shadow); }
+.book__menu-items button { width: 100%; justify-content: flex-start; padding: 10px; }
+.book__menu-items .book__close { color: var(--app-error-text); }
+.book__search { display: flex; flex: none; width: 100%; align-items: center; gap: 4px; flex-wrap: wrap; }
+.book__search-area { font-size: .9em; color: var(--app-text-muted); }
+.book__search-input { flex: 1; width: 80px; }
+.book__search-counter { font-size: .85em; color: var(--app-text-muted); }
+.book__appearance-panel { position: absolute; right: 14px; top: 58px; z-index: 44; padding: 40px 20px 20px; max-height: calc(100vh - 80px); overflow-y: auto; width: min(440px, calc(100vw - 28px)); background: var(--app-panel); box-shadow: var(--app-dialog-shadow); border-radius: 10px; }
+.book__appearance-close { position: absolute; top: 6px; right: 6px; }
+.book__appearance { display: grid; gap: 12px; }
+.book__appearance-row { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 12px; }
+.book__appearance-row input, .book__appearance-row select { width: 100%; }
+.book__records { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 2px; }
+.book__records > li { min-width: 0; }
+.book__record { width: 100%; min-width: 0; justify-content: flex-start !important; text-align: left; }
+.book__record-summary { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.book__record--unavailable { opacity: .65; }
+.book__review [role='dialog'] { min-width: 0; max-width: 100%; overflow-wrap: anywhere; background: var(--app-panel-muted) !important; }
+.chapter-note > button { background: var(--app-panel-muted); justify-content: flex-start; text-align: left; }
+.book__zen-exit { position: fixed; top: 46px; right: 12px; z-index: 50; background: var(--app-panel) !important; color: var(--app-text-muted) !important; }
+.book__image { max-width: 100%; max-height: 128px; border-radius: 6px; }
+.book__image-unavailable { color: var(--app-text-muted); font-style: italic; }
+@media (max-width: 1000px) {
+  .book__body { grid-template-columns: 164px minmax(0, 1fr) 190px; }
+  .book__content { padding: 20px 16px 0; }
+  .book__chapters, .book__review { padding: 12px 8px; }
 }
 
-[data-scheme='dark'] {
-  --desk-warning: #d9a34a;
+.book__text .ge-editor-shell { border: 0; border-radius: 0; box-shadow: none; backdrop-filter: none; background: transparent; }
+
+/* Galley sets defaults on its data-theme wrapper. In Desk the resolved
+   application theme owns the entire editor palette, including Markdown. */
+.review-editor > [data-theme] {
+  --ge-color-text: inherit;
+  --ge-color-text-muted: inherit;
+  --ge-color-bg: inherit;
+  --ge-color-surface: inherit;
+  --ge-color-surface-elevated: inherit;
+  --ge-color-border: inherit;
+  --ge-color-link: inherit;
+  --ge-color-link-hover: inherit;
+  --ge-color-selection: inherit;
+  --ge-color-caret: inherit;
+  --ge-color-focus-ring: inherit;
+  --ge-color-scrollbar-thumb: inherit;
+  --ge-color-scrollbar-thumb-hover: inherit;
+  --ge-color-code-fg: inherit;
+  --ge-color-code-bg: inherit;
+  --ge-color-code-fence-bg: inherit;
+  --ge-color-code-header-bg: inherit;
+  --ge-color-blockquote-border: inherit;
+  --ge-color-blockquote-fg: inherit;
+  --ge-color-divider: inherit;
+  --ge-color-table-border: inherit;
+  --ge-color-checkbox-accent: inherit;
+  --ge-color-token-keyword: inherit;
+  --ge-color-token-string: inherit;
+  --ge-color-token-number: inherit;
+  --ge-color-token-comment: inherit;
+  --ge-color-token-variable: inherit;
+  --ge-color-token-type: inherit;
+  --ge-color-token-function: inherit;
+  --ge-color-token-operator: inherit;
+  --ge-color-token-punctuation: inherit;
+  --ge-shadow-editor: inherit;
+  --ge-content-padding: inherit;
 }
 
-body {
-  margin: 0;
-  /* Пока настройки оформления не загружены (первый кадр App) — нейтральная
-     системная подложка вместо вспышки чужой темы. */
-  background: Canvas;
-}
+/* Review gutter shares the reading surface; only individual records are targets. */
+.review-editor .cm-gutters { background: transparent; border: 0; }
+.review-editor .gd-review-gutter { min-width: 32px; color: var(--app-text-muted); }
+.review-editor .gd-review-gutter .cm-gutterElement { position: relative; padding: 0; }
+.gd-gutter-records { position: relative; }
+.app-root .gd-gutter-records .gd-record-marker { position: absolute; width: 24px; height: 24px; padding: 3px; border-radius: 4px; }
+.review-editor .cm-tooltip.gd-before-preview { font: var(--desk-ui-size)/1.5 var(--desk-ui-font); color: var(--app-text); background: var(--app-panel); border: 0; border-radius: 8px; padding: 12px 16px; box-shadow: var(--app-dialog-shadow); max-width: min(420px, 80vw); max-height: 200px; overflow: hidden; pointer-events: none; }
+.gd-before-preview strong { display: block; color: var(--app-text-muted); font-size: .85em; font-weight: 500; margin-bottom: 5px; }
+.gd-before-preview p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* Тематический контейнер приложения: переменные темы из windowContainerStyle
-   красят и экран недавних, и окно книги. */
-.app-root {
-  min-height: 100vh;
-}
-
-.app {
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  min-height: 100vh;
-  text-align: center;
-  gap: 0.75rem;
-}
-
-.app__hint {
-  opacity: 0.6;
-  margin: 0;
-}
-
-.app__primary {
-  padding: 0.5rem 1.25rem;
-}
-
-.app__error {
-  color: var(--app-error-text);
-  margin: 0;
-  max-width: 42rem;
-  overflow-wrap: anywhere;
-}
-
-.recent-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.5rem;
-  min-width: min(46rem, 90vw);
-}
-
-.recent-list__item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  border-radius: 8px;
-  padding: 0.5rem 0.75rem;
-}
-
-.recent-list__info {
-  display: grid;
-  text-align: left;
-  gap: 0.15rem;
-}
-
-.recent-list__title {
-  font-weight: 600;
-}
-
-.recent-list__path {
-  opacity: 0.6;
-  font-size: 0.85rem;
-  overflow-wrap: anywhere;
-}
-
-.recent-list__missing {
-  color: var(--app-error-text);
-  font-size: 0.85rem;
-}
-
-.recent-list__actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.book {
-  display: grid;
-  /* header, панель оформления (может отсутствовать), рабочая область. */
-  grid-template-rows: auto auto 1fr;
-  height: 100vh;
-}
-
-.book__body {
-  grid-row: 3;
-}
-
-.book__header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.6rem 1rem;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-}
-
-.book__title {
-  font-size: 1.1rem;
-  margin: 0;
-  flex: 1;
-  text-align: left;
-}
-
-.book__save-state {
-  opacity: 0.7;
-}
-
-.book__save-state--error {
-  color: var(--app-error-text);
-  opacity: 1;
-}
-
-.book__save-state--external {
-  color: var(--desk-warning);
-  opacity: 1;
-}
-
-.book__body {
-  display: grid;
-  grid-template-columns: 16rem 1fr;
-  min-height: 0;
-}
-
-.book__chapters {
-  display: grid;
-  align-content: start;
-  gap: 0.25rem;
-  padding: 0.75rem;
-  border-right: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-  overflow-y: auto;
-}
-
-.book__chapter {
-  text-align: left;
-  padding: 0.4rem 0.6rem;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.book__chapter--active {
-  background: color-mix(in srgb, currentColor 12%, transparent);
-}
-
-.book__chapter:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.book__content {
-  overflow-y: auto;
-  padding: 1rem 2rem;
-  display: grid;
-  justify-items: start;
-  align-content: start;
-  gap: 1rem;
-}
-
-.book__chapter-title {
-  font-size: 1rem;
-  opacity: 0.7;
-  margin: 0;
-}
-
-.book__text {
-  width: min(100%, 44rem);
-  height: 60vh;
-  /* Прокрутку ведёт скроллер редактора (CM виртуализирует строки). */
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-  border-radius: 8px;
-  padding: 0.25rem;
-  margin: 0;
-}
-
-.review-editor {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-/* Оболочка Galley (прямая честь .review-editor) тянется на всю высоту,
-   иначе cm-scroller растёт по контенту и перестаёт прокручиваться. */
-.review-editor > div {
-  height: 100%;
-  min-height: 0;
-}
-
-.review-editor .cm-editor {
-  background: transparent;
-}
-
-.review-editor .cm-editor.cm-focused {
-  outline: none;
-}
-
-.book__view-toggle {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.book__view {
-  padding: 0.25rem 0.75rem;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.book__view--active {
-  background: color-mix(in srgb, currentColor 12%, transparent);
-}
-
-.book__source {
-  width: min(100%, 44rem);
-  min-height: 40vh;
-  max-height: 60vh;
-  overflow-y: auto;
+.gd-signal-comment {
+  font: calc(var(--desk-ui-size) * .85)/1.5 var(--desk-ui-font);
+  padding: 0.3rem 0 0.55rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-  border-radius: 8px;
-  padding: 1rem;
-  margin: 0;
-  text-align: left;
+  max-height: min(12rem, 30vh);
+  overflow: auto;
+  user-select: none;
 }
-
-.book__reread {
-  padding: 0.25rem 0.75rem;
-  border-radius: 6px;
+.app-root .gd-deletion-placeholder {
+  width: 18px;
+  height: 14px;
+  line-height: 0;
+  display: inline-flex;
+  vertical-align: baseline;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
   cursor: pointer;
+  user-select: none;
 }
+.gd-record-popup textarea { width: 100%; min-height: 8rem; box-sizing: border-box; }
+.review-editor .cm-tooltip.gd-before-preview { pointer-events: auto; max-height: min(24rem, 60vh); overflow: auto; overflow-wrap: anywhere; }
 
-.book__external-actions {
-  display: flex;
-  gap: 0.5rem;
-}
+.book__chapter-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book__chapter small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .6; font-size: .8em; }
+.book__metadata { font: calc(var(--desk-ui-size) * .85)/1.5 var(--desk-ui-font); margin: 0 1.5rem .5rem; flex: 0 1 auto; max-height: 40vh; overflow: auto; }
+.book__metadata-heading { display: flex; align-items: center; gap: .75rem; }
+.book__metadata button { display: inline-flex; align-items: center; gap: .25rem; margin-right: .5rem; }
+.book__metadata pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 8rem; overflow: auto; }
+.book__metadata textarea { display: block; width: 100%; min-height: 7rem; resize: vertical; font: inherit; }
+.book__metadata p { margin: .4rem 0; }
 
-.book__image-unavailable {
-  opacity: 0.55;
-  font-style: italic;
-}
-
-.book__records {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.25rem;
-  text-align: left;
-}
-
-.book__record--unavailable {
-  opacity: 0.65;
-}
-
-.book__record--conflicting {
-  color: var(--app-error-text);
-}
-
-.book__image {
-  max-width: 12rem;
-  max-height: 8rem;
-  border-radius: 6px;
-}
-
-/* Поиск по главе: подпись области, поле, счётчик, переходы. */
-.book__search {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.book__search-area {
-  font-size: 0.85rem;
-  opacity: 0.7;
-  white-space: nowrap;
-}
-
-.book__search-input {
-  flex: 1;
-  min-width: 8rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-}
-
-.book__search-counter {
-  font-size: 0.85rem;
-  opacity: 0.8;
-  min-width: 5.5rem;
-  text-align: right;
-}
-
-/* Фильтр оглавления: меняет только отображение списка, не манифест. */
-.book__chapter-filter {
-  padding: 0.3rem 0.5rem;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-}
-
-.book__chapters-empty {
-  opacity: 0.6;
-  margin: 0;
-  font-size: 0.85rem;
-}
-
-/* Панель оформления: тема/шрифт на контейнере окна, в файлы книги не пишут. */
-.book__appearance-panel {
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-}
-
-.book__appearance {
-  display: grid;
-  gap: 0.5rem;
-  max-width: 28rem;
-}
-
-.book__appearance-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.book__appearance-row input,
-.book__appearance-row select {
-  padding: 0.2rem 0.4rem;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-}
-
-/* Zen: постоянная доступная кнопка выхода поверх контента (topbar скрыт). */
-.book__zen-exit {
-  position: fixed;
-  top: 0.6rem;
-  right: 0.75rem;
-  z-index: 50;
-  padding: 0.3rem 0.75rem;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, CanvasText 35%, transparent);
-  background: Canvas;
-  color: CanvasText;
-  cursor: pointer;
-  box-shadow: var(--app-dialog-shadow);
-}
+.book__management { width: min(540px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; padding: 20px; border: 0; border-radius: 12px; background: var(--app-panel); color: var(--app-text); box-shadow: var(--app-dialog-shadow); }
+.book__management::backdrop { background: rgb(0 0 0 / .35); }
+.book__management header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.book__management h2 { margin: 0; font-size: 1.2em; }
+.book__management h3 { font-size: 1em; margin: 0 0 8px; }
+.book__management fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.book__management form, .book__management section { display: grid; gap: 10px; margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--app-hover); }
+.book__management label { display: grid; gap: 5px; }
+.book__management input:not([type=checkbox]) { width: 100%; box-sizing: border-box; }
+.book__management .book__management-file { display: flex; align-items: center; overflow-wrap: anywhere; }
+.book__management p { margin: 8px 0; font-size: .9em; }
+.book__management [role=alert] { color: var(--app-error-text); overflow-wrap: anywhere; }

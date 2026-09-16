@@ -1,0 +1,8 @@
+
+Running 3 tests using 1 worker
+
+  ✓  1 tests/desktop/external-change.spec.ts:74:1 › внешнее изменение принимается: чужая версия в редакторе, локальные правки не затёрты (969ms)
+  ✓  2 tests/desktop/external-change.spec.ts:74:1 › внешнее изменение принимается: чужая версия в редакторе, локальные правки не затёрты (817ms)
+  ✓  3 tests/desktop/external-change.spec.ts:74:1 › внешнее изменение принимается: чужая версия в редакторе, локальные правки не затёрты (794ms)
+
+  3 passed (3.9s)
