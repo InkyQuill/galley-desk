@@ -98,3 +98,50 @@ test('open-external: http(s) доходит до opener, прочие схемы
   }
   expect(opened).toHaveLength(2);
 });
+
+// Exercise the registered IPC handler, including its actual flush handshake.
+import { vi } from 'vitest';
+import { EventEmitter } from 'node:events';
+import { ipcMain } from 'electron';
+import { registerDeskIpc } from './ipc';
+import type { BookService } from './book-service';
+vi.mock('electron', async () => {
+  const { EventEmitter } = await import('node:events');
+  return { ipcMain: Object.assign(new EventEmitter(), { handle: vi.fn() }) };
+});
+
+function closeHarness(closeBook = vi.fn(async (): Promise<void> => undefined)) {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
+  const event = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
+  sender.send.mockImplementation((channel, id) => {
+    if (channel === 'desk:flush-request' && id !== null) {
+      queueMicrotask(() => ipcMain.emit('desk:flush-ack', event, id, true));
+    }
+  });
+  vi.mocked(ipcMain.handle).mockClear();
+  registerDeskIpc({ service: { closeBook, subscribe: vi.fn() } as unknown as BookService,
+    broadcast: vi.fn(), openExternal: vi.fn() });
+  const handler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === 'desk:close-book')![1];
+  return { closeBook, sender, invoke: () => handler(event as never, 'book') };
+}
+
+test('successful book close keeps the input barrier through response handoff', async () => {
+  const h = closeHarness();
+  expect(await h.invoke()).toEqual({ ok: true, value: undefined });
+  expect(h.closeBook).toHaveBeenCalledOnce();
+  expect(h.sender.send).not.toHaveBeenCalledWith('desk:flush-request', null);
+});
+
+test('overlapping book closes share preparation and only a failed close resumes input', async () => {
+  let reject!: (cause: Error) => void;
+  const closeBook = vi.fn(() => new Promise<void>((_resolve, fail) => { reject = fail; }));
+  const h = closeHarness(closeBook);
+  const first = h.invoke();
+  const second = h.invoke();
+  await vi.waitFor(() => expect(closeBook).toHaveBeenCalledOnce());
+  reject(new Error('disk unavailable'));
+  expect(await first).toMatchObject({ ok: false });
+  expect(await second).toMatchObject({ ok: false });
+  expect(h.sender.send.mock.calls.filter(([, id]) => id === null)).toHaveLength(1);
+});

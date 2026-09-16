@@ -1,3 +1,4 @@
+import type { IpcMainInvokeEvent } from 'electron';
 import type { EditorView } from '@codemirror/view';
 import { mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { once } from 'node:events';
@@ -120,5 +121,53 @@ test('native window close flushes pending text before destroying the window', as
       expect(snapshot.canUndoInput).toBe(false);
       expect(snapshot.canUndoApply).toBe(false);
     } finally { await forceStop(second); }
+  } finally { await forceStop(app); }
+});
+
+test('successful close stays inert until delayed response unmounts the book and clears populated apply history', async () => {
+  const { app, page, bookRoot } = await launch();
+  try {
+    const applied = await page.evaluate(async root => {
+      const book = await window.desk.openRecent(root);
+      const chapter = book.entries[0]!.id;
+      const initial = await window.desk.openChapter(book.bookId, chapter);
+      const edited = await window.desk.command(book.bookId, chapter, initial.revision, {
+        type: 'text', changes: [{ from: 0, to: 3, insert: 'dog' }], selection: { anchor: 3, head: 3 },
+      });
+      return window.desk.command(book.bookId, chapter, edited.revision, { type: 'apply', id: edited.records[0]!.id });
+    }, bookRoot);
+    expect(applied.canUndoApply).toBe(true);
+    await expect(page.locator('.cm-content')).toHaveText('dog');
+    await app.evaluate(({ ipcMain }) => {
+      // Test-only hold AFTER the real handler closed storage, BEFORE invoke delivery.
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>> })._invokeHandlers;
+      const original = handlers.get('desk:close-book')!;
+      const state = globalThis as unknown as { storageClosed: boolean; releaseClose: () => void };
+      state.storageClosed = false;
+      const gate = new Promise<void>(resolve => { state.releaseClose = resolve; });
+      ipcMain.removeHandler('desk:close-book');
+      ipcMain.handle('desk:close-book', async (...args) => {
+        const result = await original(...args);
+        state.storageClosed = true;
+        await gate;
+        return result;
+      });
+    });
+    await page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect.poll(() => app.evaluate(() => (globalThis as unknown as { storageClosed: boolean }).storageClosed)).toBe(true);
+    await expect(page.locator('.book')).toHaveJSProperty('inert', true);
+    // Browser input cannot enter the now-closed editor during the held handoff.
+    await page.keyboard.insertText('lost');
+    await expect(page.locator('.cm-content')).toHaveText('dog');
+    await app.evaluate(() => (globalThis as unknown as { releaseClose: () => void }).releaseClose());
+    await expect(page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+    await page.getByRole('button', { name: 'Открыть', exact: true }).click();
+    await expect(page.locator('.cm-content')).toHaveText('dog');
+    const reopened = await page.evaluate(async root => {
+      const book = await window.desk.openRecent(root);
+      return window.desk.openChapter(book.bookId, book.entries[0]!.id);
+    }, bookRoot);
+    expect(reopened.canUndoApply).toBe(false);
+    expect(reopened.canUndoInput).toBe(false);
   } finally { await forceStop(app); }
 });

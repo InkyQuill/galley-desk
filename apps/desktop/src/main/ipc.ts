@@ -270,13 +270,28 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
   handle('desk:open-chapter', (_event, args) => service.openChapter(asStringArg(args[0]), asStringArg(args[1])));
   handle('desk:command', (_event, args) =>
     service.command(asStringArg(args[0]), asStringArg(args[1]), asNumberArg(args[2]), args[3]));
-  handle('desk:close-book', async (event, args) => {
-    try {
-      await flushRenderer(event.sender);
-      await service.closeBook(asStringArg(args[0]));
-    } finally {
-      resumeRenderer(event.sender);
+  const bookCloses = new WeakMap<WebContents, { bookId: string; pending: Promise<void> }>();
+  handle('desk:close-book', (event, args) => {
+    const bookId = asStringArg(args[0]);
+    const existing = bookCloses.get(event.sender);
+    if (existing !== undefined) {
+      if (existing.bookId !== bookId) throw new IpcError('SAVE_FAILED', 'Закрытие книги уже выполняется');
+      return existing.pending;
     }
+    const pending = (async () => {
+      try {
+        await flushRenderer(event.sender);
+        await service.closeBook(bookId);
+        // Keep input inert until the successful invoke response unmounts the book.
+      } catch (error) {
+        resumeRenderer(event.sender);
+        throw error;
+      } finally {
+        bookCloses.delete(event.sender);
+      }
+    })();
+    bookCloses.set(event.sender, { bookId, pending });
+    return pending;
   });
   handle('desk:open-external', (_event, args) => openExternalVia(deps.openExternal, args[0]));
   handle('desk:resolve-external', (_event, args) => {
