@@ -31,7 +31,7 @@ type Harness = ReturnType<typeof createBookService> & {
   fireWatcher: () => void;
 };
 
-async function makeService(bookFiles: Record<string, string> = {}): Promise<Harness> {
+async function makeService(bookFiles: Record<string, string> = {}, trashItem?: (target: string) => Promise<void>): Promise<Harness> {
   const bookRoot = await tempDir('galley-book-');
   for (const [name, content] of Object.entries(bookFiles)) {
     const target = path.join(bookRoot, name);
@@ -47,6 +47,7 @@ async function makeService(bookFiles: Record<string, string> = {}): Promise<Harn
   const watcherEvents = new Map<string, () => void>();
   const service = createBookService({
     appData,
+    ...(trashItem ? { trashItem } : {}),
     chooseDirectory: () => pickerHandler(),
     chooseExportDestination: async () => exportPicked,
     watchRoot: (root, onEvent) => {
@@ -1129,4 +1130,50 @@ test('management refuses a failed pending save and retains source and manifest',
   expect(JSON.parse(await readFile(path.join(service.bookRoot,'.pocket-editor.json'),'utf8')).chapters[0].id).toBe(chapter.id);
   expect(await readFile(path.join(service.bookRoot,'a.md'),'utf8')).toBe('Alpha body\n');
  } finally {spy.mockRestore(); await service.closeAll().catch(()=>undefined);}
+});
+
+test.each(['trash', 'manifest-conflict'] as const)('failed %s preserves a live chapter revision and undo history', async failure => {
+  const h = await makeService({'a.md': 'Alpha body\n'});
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  let current = await h.openChapter(book.bookId, id);
+  for (let i = 0; i < 4; i++) {
+    current = await h.command(book.bookId, id, current.revision, {type:'text',changes:[{from:0,to:0,insert:'x'}],selection:{anchor:1,head:1}});
+  }
+  if (failure === 'manifest-conflict') {
+    const manifest = path.join(h.bookRoot, '.pocket-editor.json');
+    await writeFile(manifest, JSON.stringify({...JSON.parse(await readFile(manifest,'utf8')),title:'External'}));
+  }
+  await expect(h.manageBook(book.bookId, {type: failure === 'trash' ? 'trash' : 'remove',chapterId:id})).rejects.toMatchObject({code:'SAVE_FAILED'});
+  // Do not reopen first: a rejected mutation must leave the mounted session usable.
+  const typed = await h.command(book.bookId, id, current.revision, {type:'text',changes:[{from:0,to:0,insert:'y'}],selection:{anchor:1,head:1}});
+  expect(typed.revision).toBeGreaterThan(current.revision);
+  expect(typed.text).toBe('yxxxxAlpha body\n');
+  const undo = await h.command(book.bookId, id, typed.revision, {type:'undo-input'});
+  expect(undo.text).toBe(current.text);
+  const earlierUndo = await h.command(book.bookId, id, undo.revision, {type:'undo-input'});
+  expect(earlierUndo.text).toBe('xxxAlpha body\n');
+  await h.closeAll();
+});
+
+
+test('partial trash replaces the missing chapter snapshot with a strictly newer revision', async () => {
+  let calls=0;
+  const h=await makeService({'a.md':'Alpha body\n'},async target=>{
+    calls++;
+    if(calls===2) throw Error('second trash failed');
+    await rename(target,`${target}.trashed`);
+  });
+  const book=(await h.chooseBook())!; const id=book.entries[0]!.id;
+  let current=await h.openChapter(book.bookId,id);
+  for(let i=0;i<4;i++) current=await h.command(book.bookId,id,current.revision,{type:'text',changes:[{from:0,to:0,insert:'x'}],selection:{anchor:1,head:1}});
+  const pushed:Snapshot[]=[]; h.subscribe(snapshot=>pushed.push(snapshot));
+  await expect(h.manageBook(book.bookId,{type:'trash',chapterId:id})).rejects.toMatchObject({code:'SAVE_FAILED'});
+  const missing=await h.openChapter(book.bookId,id);
+  expect(missing.revision).toBeGreaterThan(current.revision);
+  expect(missing.readOnlyReason).toContain('отсутствует');
+  expect(missing.canUndoInput).toBe(false);
+  expect(pushed.at(-1)).toEqual(missing);
+  expect(JSON.parse(await readFile(path.join(h.bookRoot,'.pocket-editor.json'),'utf8')).chapters[0].id).toBe(id);
+  await h.closeAll();
 });

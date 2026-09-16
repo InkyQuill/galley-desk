@@ -225,3 +225,125 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
     await rm(userData, { recursive: true, force: true });
   }
 });
+
+for (const failure of ['trash', 'manifest-conflict'] as const) {
+  test(`failed management ${failure} keeps typing and undo on the mounted editor`, async () => {
+    const root = await mkdtemp(
+      path.join(tmpdir(), 'desk-management-rejected-'),
+    );
+    const profile = await mkdtemp(
+      path.join(tmpdir(), 'desk-management-rejected-profile-'),
+    );
+    await writeFile(path.join(root, 'a.md'), 'Alpha body\n');
+    const app = await electron.launch({
+      args: ['apps/desktop'],
+      env: { ...process.env, GALLEY_DESK_USER_DATA: profile },
+    });
+    try {
+      await app.evaluate(({ dialog, shell }, root) => {
+        dialog.showOpenDialog = async () => ({
+          canceled: false,
+          filePaths: [root],
+        });
+        shell.trashItem = async () => {
+          throw Error('injected failure');
+        };
+      }, root);
+      const page = await app.firstWindow();
+      await page.getByRole('button', { name: 'Открыть папку…' }).click();
+      await expect(page.locator('.cm-content')).toBeVisible();
+      const manifestPath = path.join(root, '.pocket-editor.json');
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+      const ids = {
+        bookId: manifest.book_id,
+        chapterId: manifest.chapters[0].id,
+      };
+      await page.evaluate(async ({ bookId, chapterId }) => {
+        let snapshot = await window.desk.openChapter(bookId, chapterId);
+        for (let index = 0; index < 4; index++)
+          snapshot = await window.desk.command(
+            bookId,
+            chapterId,
+            snapshot.revision,
+            {
+              type: 'text',
+              changes: [{ from: 0, to: 0, insert: 'x' }],
+              selection: { anchor: 1, head: 1 },
+            },
+          );
+      }, ids);
+      await expect(page.locator('.cm-content')).toContainText('xxxxAlpha body');
+      await page
+        .getByRole('button', { name: 'Меню книги', exact: true })
+        .click();
+      await page
+        .getByRole('button', { name: 'Управление книгой', exact: true })
+        .click();
+      const panel = page.getByRole('dialog', {
+        name: 'Управление книгой',
+        exact: true,
+      });
+      if (failure === 'trash') {
+        await panel
+          .getByRole('button', { name: 'Удалить файлы главы…' })
+          .click();
+        await panel
+          .getByRole('button', { name: 'Переместить в корзину', exact: true })
+          .click();
+        await expect(panel.getByRole('alert')).toContainText('Остались:');
+      } else {
+        await writeFile(
+          manifestPath,
+          JSON.stringify({ ...manifest, title: 'External' }),
+        );
+        await panel
+          .getByRole('button', { name: 'Убрать главу из книги', exact: true })
+          .click();
+        await expect(panel.getByRole('alert')).toContainText('Манифест');
+      }
+      await panel
+        .getByRole('button', { name: 'Закрыть управление книгой' })
+        .click();
+      await page.locator('.cm-content').click();
+      await page.keyboard.press('Control+Home');
+      await page.keyboard.type('y');
+      await expect
+        .poll(() =>
+          page.evaluate(
+            async (ids) =>
+              (await window.desk.openChapter(ids.bookId, ids.chapterId)).text,
+            ids,
+          ),
+        )
+        .toBe('yxxxxAlpha body\n');
+      await page.keyboard.press('Control+z');
+      await expect
+        .poll(() =>
+          page.evaluate(
+            async (ids) =>
+              (await window.desk.openChapter(ids.bookId, ids.chapterId)).text,
+            ids,
+          ),
+        )
+        .toBe('xxxxAlpha body\n');
+      await expect(page.locator('.cm-content')).toHaveText('xxxxAlpha body');
+      await page.keyboard.press('Control+z');
+      await expect
+        .poll(() =>
+          page.evaluate(
+            async (ids) =>
+              (await window.desk.openChapter(ids.bookId, ids.chapterId)).text,
+            ids,
+          ),
+        )
+        .toBe('xxxAlpha body\n');
+      await expect(page.locator('.cm-content')).toHaveText('xxxAlpha body');
+    } finally {
+      // These failure regressions may leave old builds unable to flush/close.
+      await app.evaluate(({ app }) => app.exit(0)).catch(() => undefined);
+      await app.close().catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+      await rm(profile, { recursive: true, force: true });
+    }
+  });
+}

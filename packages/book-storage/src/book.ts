@@ -461,8 +461,9 @@ export type BookChange =
   | { type: 'add'; paths: string[] }
   | { type: 'remove' | 'trash'; chapterId: string };
 
+/** filesMoved distinguishes partial trash from a refusal that changed no files. */
 export class BookManagementError extends Error {
-  constructor(message: string) { super(message); this.name = 'BookManagementError'; }
+  constructor(message: string, readonly filesMoved = false) { super(message); this.name = 'BookManagementError'; }
 }
 
 async function checkedManifest(book: BookHandle): Promise<Uint8Array> {
@@ -514,70 +515,79 @@ export function manageBook(book: BookHandle, change: BookChange, trashItem?: (ab
   let queue = managementQueues.get(book.root);
   if (!queue) { queue = new SaveQueue(); managementQueues.set(book.root, queue); }
   return queue.enqueue(async () => {
-    const bytes = await checkedManifest(book);
-    const wire = JSON.parse(utf8Text(bytes)) as { schema_version: number; title: string; chapters?: Array<Record<string, unknown>> };
-    const chapters = [...(wire.chapters ?? [])];
-    if (change.type === 'rename' || change.type === 'create') {
-      if (!change.title.trim() || change.title.includes('\n') || change.title.includes('\r')) throw new BookManagementError('Введите непустое название в одну строку.');
-    }
-    let created: { name: string; bytes: Uint8Array } | undefined;
-    if (change.type === 'rename') wire.title = change.title.trim();
-    else if (change.type === 'create' || change.type === 'add') {
-      const names = change.type === 'create' ? [change.path] : change.paths;
-      if (!names.length || new Set(names).size !== names.length) throw new BookManagementError('Выберите разные файлы глав.');
-      for (const name of names) {
-        if (change.type === 'create') {
-          reviewPathFor(name);
-          if (name.startsWith('.') || book.manifest.ignored_files.includes(name) || book.manifest.chapters.some(c => c.path === name)) throw new BookManagementError('Это имя уже используется или исключено.');
-          for (const target of [name, reviewPathFor(name), `${name}.review.json`]) {
-            await assertWritableFileTarget(path.join(book.root, target));
-            if (await readOptionalFileBytes(path.join(book.root, target)) !== null) throw new BookManagementError('Файл с этим именем уже существует.');
+    let filesMoved = false;
+    try {
+      const bytes = await checkedManifest(book);
+      const wire = JSON.parse(utf8Text(bytes)) as { schema_version: number; title: string; chapters?: Array<Record<string, unknown>> };
+      const chapters = [...(wire.chapters ?? [])];
+      if (change.type === 'rename' || change.type === 'create') {
+        if (!change.title.trim() || change.title.includes('\n') || change.title.includes('\r')) throw new BookManagementError('Введите непустое название в одну строку.');
+      }
+      let created: { name: string; bytes: Uint8Array } | undefined;
+      if (change.type === 'rename') wire.title = change.title.trim();
+      else if (change.type === 'create' || change.type === 'add') {
+        const names = change.type === 'create' ? [change.path] : change.paths;
+        if (!names.length || new Set(names).size !== names.length) throw new BookManagementError('Выберите разные файлы глав.');
+        for (const name of names) {
+          if (change.type === 'create') {
+            reviewPathFor(name);
+            if (name.startsWith('.') || book.manifest.ignored_files.includes(name) || book.manifest.chapters.some(c => c.path === name)) throw new BookManagementError('Это имя уже используется или исключено.');
+            for (const target of [name, reviewPathFor(name), `${name}.review.json`]) {
+              await assertWritableFileTarget(path.join(book.root, target));
+              if (await readOptionalFileBytes(path.join(book.root, target)) !== null) throw new BookManagementError('Файл с этим именем уже существует.');
+            }
+            created = { name, bytes: utf8Bytes(`# ${change.title.trim()}\n`) };
           }
-          created = { name, bytes: utf8Bytes(`# ${change.title.trim()}\n`) };
+          const chapter = change.type === 'create' ? { id: randomUUID(), path: name, title: change.title.trim() } : await addition(book, name);
+          if (chapters.some(c => c.id === chapter.id)) throw new BookManagementError('Идентификатор рецензии уже принадлежит другой главе.');
+          const reviewNames = [reviewPathFor(chapter.path), `${chapter.path}.review.json`];
+          if (chapters.some(c => reviewNames.some(name => name === reviewPathFor(c.path as string) || name === `${c.path}.review.json`))) throw new BookManagementError('Имена файлов рецензии пересекаются с другой главой.');
+          chapters.push(wire.schema_version === 2 ? { id: chapter.id, path: chapter.path } : chapter);
         }
-        const chapter = change.type === 'create' ? { id: randomUUID(), path: name, title: change.title.trim() } : await addition(book, name);
-        if (chapters.some(c => c.id === chapter.id)) throw new BookManagementError('Идентификатор рецензии уже принадлежит другой главе.');
-        const reviewNames = [reviewPathFor(chapter.path), `${chapter.path}.review.json`];
-        if (chapters.some(c => reviewNames.some(name => name === reviewPathFor(c.path as string) || name === `${c.path}.review.json`))) throw new BookManagementError('Имена файлов рецензии пересекаются с другой главой.');
-        chapters.push(wire.schema_version === 2 ? { id: chapter.id, path: chapter.path } : chapter);
+        wire.chapters = chapters;
+      } else {
+        const chapter = book.manifest.chapters.find(c => c.id === change.chapterId);
+        if (!chapter) throw new UnknownChapterError(change.chapterId);
+        if (change.type === 'trash') {
+          if (!trashItem) throw new BookManagementError('Корзина недоступна; файлы не удалены.');
+          for (const name of [chapter.path, reviewPathFor(chapter.path), `${chapter.path}.review.json`]) await assertWritableFileTarget(path.join(book.root, name));
+          const { sourceRel, reviewRel } = await resolveChapter(book, chapter.id);
+          const targets: string[] = [];
+          // Validate both targets before moving either one, including symlink guards.
+          for (const name of [sourceRel, reviewRel]) {
+            await assertWritableFileTarget(path.join(book.root, name));
+            if (await readOptionalFileBytes(path.join(book.root, name)) !== null) targets.push(name);
+          }
+          const review = await readOptionalFileBytes(path.join(book.root, reviewRel));
+          if (review) {
+            try { decodeReview(utf8Text(review), chapter.id, chapter.path); }
+            catch { throw new BookManagementError('Принадлежность рецензии не подтверждена; удаление отменено.'); }
+          }
+          await checkedManifest(book);
+          const moved: string[] = [];
+          for (const name of targets) {
+            try { await trashItem(path.join(book.root, name)); moved.push(name); filesMoved = true; }
+            catch { throw new BookManagementError(`Не удалось переместить файлы в корзину. Перемещены: ${moved.join(', ') || 'нет'}. Остались: ${targets.filter(n => !moved.includes(n)).join(', ')}. Глава оставлена в оглавлении. Обновите список; перемещённые файлы можно восстановить из корзины.`); }
+          }
+        }
+        wire.chapters = chapters.filter(c => c.id !== change.chapterId);
       }
-      wire.chapters = chapters;
-    } else {
-      const chapter = book.manifest.chapters.find(c => c.id === change.chapterId);
-      if (!chapter) throw new UnknownChapterError(change.chapterId);
-      if (change.type === 'trash') {
-        if (!trashItem) throw new BookManagementError('Корзина недоступна; файлы не удалены.');
-        for (const name of [chapter.path, reviewPathFor(chapter.path), `${chapter.path}.review.json`]) await assertWritableFileTarget(path.join(book.root, name));
-        const { sourceRel, reviewRel } = await resolveChapter(book, chapter.id);
-        const targets: string[] = [];
-        // Validate both targets before moving either one, including symlink guards.
-        for (const name of [sourceRel, reviewRel]) {
-          await assertWritableFileTarget(path.join(book.root, name));
-          if (await readOptionalFileBytes(path.join(book.root, name)) !== null) targets.push(name);
-        }
-        const review = await readOptionalFileBytes(path.join(book.root, reviewRel));
-        if (review) {
-          try { decodeReview(utf8Text(review), chapter.id, chapter.path); }
-          catch { throw new BookManagementError('Принадлежность рецензии не подтверждена; удаление отменено.'); }
-        }
-        await checkedManifest(book);
-        const moved: string[] = [];
-        for (const name of targets) {
-          try { await trashItem(path.join(book.root, name)); moved.push(name); }
-          catch { throw new BookManagementError(`Не удалось переместить файлы в корзину. Перемещены: ${moved.join(', ') || 'нет'}. Остались: ${targets.filter(n => !moved.includes(n)).join(', ')}. Глава оставлена в оглавлении. Обновите список; перемещённые файлы можно восстановить из корзины.`); }
-        }
+      const next = utf8Bytes(JSON.stringify(wire, null, 2) + '\n');
+      const manifest = decodeManifest(utf8Text(next));
+      await checkedManifest(book);
+      // Exclusive creation never replaces an existing file. If manifest saving fails,
+      // leave this new chapter discoverable so it can be explicitly added later.
+      if (created) { await writeFileSynced(path.join(book.root, created.name), created.bytes, 'wx'); await fsyncDir(book.root); }
+      await checkedManifest(book);
+      await replaceFileSynced(book.root, MANIFEST_NAME, next);
+      book.manifest = manifest;
+      manifestBytes.set(book, next);
+    } catch (error) {
+      if (filesMoved) {
+        throw new BookManagementError(error instanceof BookManagementError ? error.message :
+          'Файлы главы перемещены в корзину, но оглавление не сохранено. Обновите список; файлы можно восстановить из корзины.', true);
       }
-      wire.chapters = chapters.filter(c => c.id !== change.chapterId);
+      throw error;
     }
-    const next = utf8Bytes(JSON.stringify(wire, null, 2) + '\n');
-    const manifest = decodeManifest(utf8Text(next));
-    await checkedManifest(book);
-    // Exclusive creation never replaces an existing file. If manifest saving fails,
-    // leave this new chapter discoverable so it can be explicitly added later.
-    if (created) { await writeFileSynced(path.join(book.root, created.name), created.bytes, 'wx'); await fsyncDir(book.root); }
-    await checkedManifest(book);
-    await replaceFileSynced(book.root, MANIFEST_NAME, next);
-    book.manifest = manifest;
-    manifestBytes.set(book, next);
   });
 }

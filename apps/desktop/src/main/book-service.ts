@@ -10,6 +10,7 @@ import type { FSWatcher } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  BookManagementError,
   manageBook as changeStoredBook,
   discoverChapters as discoverStoredChapters,
   ChapterSession,
@@ -574,14 +575,27 @@ export function createBookService(deps: BookServiceDeps): BookService {
             if (entry.session.state === 'external' || entry.session.state === 'error') throw new IpcError('SAVE_FAILED', 'Сначала разрешите внешнее изменение или ошибку сохранения');
           }
         }
-        // Retire a removed session before files move; reopening after a failed trash
-        // must read the actual remaining pair rather than a stale cached model.
+        // Keep the mounted session and undo history until the operation succeeds.
+        // Validation and first-trash failures leave both files untouched.
+        try {
+          await changeStoredBook(book.handle, change, deps.trashItem);
+        } catch (error) {
+          if (change.type === 'trash' && error instanceof BookManagementError && error.filesMoved) {
+            const previous = book.chapters.get(change.chapterId);
+            const chapter = book.handle.manifest.chapters.find(chapter => chapter.id === change.chapterId)!;
+            const next = await createChapterEntry(book.handle, change.chapterId, chapter.path);
+            next.revision = (previous?.revision ?? 0) + 1;
+            if (previous?.kind === 'live') await previous.session.close();
+            book.chapters.set(change.chapterId, next);
+            notify(snapshotOf(bookId, change.chapterId, next));
+          }
+          throw error;
+        }
         if (change.type === 'remove' || change.type === 'trash') {
           const entry = book.chapters.get(change.chapterId);
           if (entry?.kind === 'live') await entry.session.close();
           book.chapters.delete(change.chapterId);
         }
-        await changeStoredBook(book.handle, change, deps.trashItem);
         const stored = await loadRecentBooks(appData);
         await saveRecentBooks(appData, upsertRecent(stored, { path: book.handle.root, bookId, title: book.handle.manifest.title }));
         return await bookView(book.handle);
