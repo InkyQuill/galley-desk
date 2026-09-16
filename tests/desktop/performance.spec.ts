@@ -4,12 +4,13 @@
 // - открытие большой главы ≤ 2 с (клик → текст виден);
 // - p95 «ввод → рендер» ≤ 50 мс (beforeinput → DOM-изменение, MutationObserver);
 // - RSS main-процесса и heap рендерера — фиксируются (бюджета нет).
-import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { encodeReview, makeAnchor } from '@galley-desk/pocket-format';
+import { openChapter } from '../../packages/review-engine/src/index';
 import type { Review } from '@galley-desk/pocket-format';
 
 const BIG_CHAPTER = 'Глава 050.md';
@@ -171,6 +172,10 @@ test('синтетическая книга: открытие главы, p95 в
     // Инструментация «ввод → рендер»: beforeinput → первое DOM-изменение
     // (MutationObserver в микрозадаче после мутации; без ожидания кадра).
     await page.locator('.book__text .cm-content').click();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
+    const source = await readFile(path.join(bookRoot, BIG_CHAPTER));
+    const sidecarPath = path.join(bookRoot, BIG_CHAPTER.replace(/\.md$/, '.review.json'));
+    const initialText = openChapter(source, JSON.parse(await readFile(sidecarPath, 'utf8'))).text;
     await page.evaluate(() => {
       const content = document.querySelector('.book__text .cm-content')!;
       const withMarks = window as unknown as { __lat: number | null; __t0: number };
@@ -188,7 +193,9 @@ test('синтетическая книга: открытие главы, p95 в
     });
 
     const latencies: number[] = [];
+    const confirmedSaveLatencies: number[] = [];
     for (let sample = 0; sample < TYPING_SAMPLES; sample++) {
+      const saveStartedAt = performance.now();
       await page.keyboard.type('x');
       await page.waitForFunction(() => (window as unknown as { __lat: number | null }).__lat !== null, undefined, {
         timeout: 15_000,
@@ -201,7 +208,16 @@ test('синтетическая книга: открытие главы, p95 в
           return value;
         }),
       );
+      await expect.poll(async () => openChapter(source, JSON.parse(await readFile(sidecarPath, 'utf8'))).text, { timeout: 30_000 }).toBe('x'.repeat(sample + 1) + initialText);
+      await expect(page.locator('.book__save-state')).toHaveText('Сохранено');
+      confirmedSaveLatencies.push(performance.now() - saveStartedAt);
     }
+    await page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await page.getByRole('button', { name: 'Открыть', exact: true }).click();
+    await page.getByRole('button', { name: BIG_CHAPTER_TITLE }).click();
+    await expect(page.locator('.cm-content')).toContainText('x'.repeat(TYPING_SAMPLES) + 'Абзац 000000');
+    expect(openChapter(await readFile(path.join(bookRoot, BIG_CHAPTER)), JSON.parse(await readFile(sidecarPath, 'utf8'))).text).toBe('x'.repeat(TYPING_SAMPLES) + initialText);
+    expect(await readFile(path.join(bookRoot, BIG_CHAPTER))).toEqual(source);
     const sorted = [...latencies].sort((left, right) => left - right);
     const p95 = percentile(sorted, 0.95);
     const median = percentile(sorted, 0.5);
@@ -226,6 +242,9 @@ test('синтетическая книга: открытие главы, p95 в
       openChapterMs,
       openBudgetMs: OPEN_BUDGET_MS,
       inputToRenderMs: { median, p95, max: sorted[sorted.length - 1]!, samples: latencies },
+      inputToConfirmedSaveMs: { samples: confirmedSaveLatencies, p95: percentile([...confirmedSaveLatencies].sort((a, b) => a - b), 0.95) },
+      saveMeasurement: "host keyboard dispatch through matching sidecar read and saved UI acknowledgement; includes polling overhead, not physical media fsync timing",
+      finalTextAfterReopen: "exact engine reconstruction and visible prefix verified",
       p95BudgetMs: P95_BUDGET_MS,
       rssMainBytes,
       rendererHeapBytes,

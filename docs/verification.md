@@ -1,6 +1,6 @@
 # Протокол верификации настольного приложения
 
-> **Актуализация 2026-09-16:** ниже исторический протокол реализации. Свежие результаты и ограничения см. в [аудите](reviews/2026-09-16-implementation-audit.md): unit/contracts/package прошли, Linux runtime завершается SIGSEGV; macOS/Android roundtrip остаются непроверенными. Исторические PASS не заменяют текущую приёмку.
+> **A7, 2026-09-16:** Linux executable и performance проверены на свежей сборке. Android folder roundtrip выявил blocker sidecar discovery. Реальный Mac и системная IME не проверены. Общий platform gate открыт; исторический аудит не заменяет результаты ниже.
 
 Фактические результаты финальной проверки задачи D5 (поиск, оформление,
 итоговая проверка packaged-приложений). Принцип: записывается только то,
@@ -36,7 +36,7 @@ Pad: window capture намеренно отменяет `mousedown`/`auxclick` �
 во всём окне, включая tabstrip, чтобы отпускание после сдвига табов не
 вставляло Linux primary selection. Исправлено устаревшее ожидание теста;
 реальные middle-close сценарии также прошли. Production handler сохранён.
-Audit исправлен patch-обновлениями Vitest/mocker `4.1.11`, js-yaml `4.3.2`,
+Audit исправлен совместимыми patch/minor-обновлениями Vitest/mocker `4.1.11`, js-yaml `4.3.2`,
 nanoid `3.3.19`, postcss `8.5.28`, undici `6.28.1`/`7.29.1` в существующих
 совместимых диапазонах; audit не отключался.
 
@@ -45,126 +45,85 @@ nanoid `3.3.19`, postcss `8.5.28`, undici `6.28.1`/`7.29.1` в существу�
 `new.md`); focused-повтор и полный pre-commit под `mise exec` прошли.
 Этот тест не менялся; единичный сбой сохранён как риск стабильности suite.
 Есть предупреждения Node experimental localStorage, Playwright color env и
-Vite/Storybook о размере bundle; ошибок сборки нет. Это Linux-проверка,
+Vite/Storybook о размере bundle и Storybook module.register deprecation; ошибок сборки нет. Это Linux-проверка,
 macOS и бинарные релизы companion-приложений здесь не запускались.
 Проверено не означает слито/выпущено: точные source pins и отдельный
 статус опубликованных артефактов — в [compatibility.md](compatibility.md).
 
-## Окружение (Linux, локальная машина)
+## A7: свежая проверка 2026-09-16
 
-| Параметр | Значение |
+База Desk `d30237cefd13fe84d8b4a0cc2c72ba537aceee00`; production fix A7
+`872a80a` восстанавливает фокус после Escape через CodeMirror API, сохраняя выделение.
+Pocket база `f3012aa8abb73cda32b943ff74f5b78039300d8f`, новый opt-in harness
+`f2d44a1` воспроизводит folder-level failure через production ReaderRepository.
+Полные команды, результаты и SHA артефактов: [A7 report](reviews/2026-09-16-evidence/a7/report.md).
+
+| Проверка | Результат |
 | --- | --- |
-| ОС | CachyOS Linux (kernel 7.2.4-3-cachyos), x86_64 |
-| CPU | AMD Ryzen 7 5800X, 8 ядер / 16 потоков, ~4.0 ГГц |
-| RAM | 62 ГиБ |
-| Сессия | Wayland (XWayland, `DISPLAY=:0`) |
-| Node.js | v26.2.0 |
-| Electron | 44.4.0 (из `apps/desktop/package.json`) |
-| TypeScript | 5.9.3, Vitest 5.0.1, Playwright 1.63.0, Electron Forge 7.11.2 |
+| TypeScript / unit | PASS, 274 tests |
+| Kotlin ↔ TS contracts | PASS, 21 cases; это не folder roundtrip |
+| Forge package | PASS, Electron 44.4.0, production fuses включены |
+| Packaged executable | PASS: изолированный профиль, UI open/save/restart/apply/byte-exact undo |
+| Desktop suite | PASS: 44 passed, 1 perf skip; после fix первоначального Esc selection FAIL |
+| Performance | PASS, ниже |
+| Chromium CDP IME commit/cancel и multiline/emoji/CRLF | PASS; source CRLF bytes сохранены |
+| Linux системная IME / настоящий clipboard | not-run; ibus/fcitx5 отсутствуют |
+| Android connected suite (до нового harness) | PASS: 237 passed, 5 skipped, 0 failures; Pocket f3012aa |
+| Android реальная загрузка переданной папки | **FAIL**: chapter_note ожидается, Reader возвращает null |
+| Реальный macOS packaged/manual | **not-run**, имеется только Linux; инструкция подготовлена |
+| GitHub CI dispatch / подпись / notarization | not-run |
 
-## Команды и результаты
+### Машина и performance
 
-| Проверка | Команда | Результат |
+CachyOS rolling, kernel 7.2.4-3-cachyos x86_64, glibc 2.44; Ryzen 7 5800X,
+MemTotal 65,741,008 kB; Node 26.2.0, npm 11.13.0, Electron 44.4.0.
+Один performance worker, без параллельного Electron suite; Android emulator
+оставался запущен в этой desktop-сессии. Машина не была
+изолирована от всех фоновых процессов, числа не являются гарантией для CI.
+
+Синтетическая книга: 100 глав; большая глава 1,048,645 UTF-8 bytes,
+500 review records, 24 последовательных input samples.
+
+| Метрика | Результат | Бюджет |
 | --- | --- | --- |
-| Типы | `npm run typecheck` | чисто (все workspaces) |
-| Модульные тесты | `npm test` | 242 теста, 20 файлов — зелёные (включая 3 новых теста `search.test.ts` и 3 теста `settings.test.ts`) |
-| Контракты Kotlin ↔ TypeScript | `npm run test:contracts` | зелёные (Pocket Editor `f3012aa`, изолированная копия `.cache/contracts`) |
-| Упаковка | `npm run package` | `apps/desktop/out/Galley Desk-linux-x64/` собран, executable `Galley Desk` |
-| Electron-тесты | `npm run test:desktop` | **30 passed + 1 skipped** (performance.spec — по флагу `GALLEY_PERF=1`, см. раздел производительности) против **собранного** Forge build entry (`.vite/build`), не dev-сервера. Финальный прогон на итоговом коде: 31/31 с включённым perf-тестом. Примечание: при сильной параллельной загрузке машины тест быстрого ввода из `edit-and-reopen.spec.ts` (существовал до этой задачи) может терять нажатия при 7 одновременных Electron-экземплярах; изолированно и в финальном прогоне — зелёный |
-| Производительность | `GALLEY_PERF=1 npx playwright test tests/desktop/performance.spec.ts --workers=1` | passed (изолированный прогон, числа ниже) |
-| Ручной запуск packaged | запуск `Galley Desk` из `out` | см. «Ручная проверка собранного приложения» |
+| Запуск + открытие книги | 573 ms | нет |
+| Открытие большой главы | 957 ms | ≤2000 ms |
+| beforeinput → первая DOM mutation, median / p95 / max | 18.8 / 27.6 / 31 ms | p95 ≤50 ms |
+| input dispatch → подтверждённое сохранение, p95 | 1033.0 ms | нет |
+| RSS main / renderer heap | 432,361,472 / 29,400,000 bytes | фиксация |
 
-## Производительность (синтетическая книга)
+[Все samples](reviews/2026-09-16-evidence/a7-performance-results.json) доступны в evidence
+`reviews/2026-09-16-evidence/a7-performance-results.json`.
+Метрика сохранения включает host keyboard dispatch, чтение sidecar,
+реконструкцию точного текста движком и UI ack «Сохранено», включая overhead
+polling. Это **не** измерение физического fsync. После опустошения очереди
+через Close и reopen проверены точный полный текст и неизменность source bytes.
+DOM mutation не означает ни сохранение, ни завершение paint.
 
-Фикстура: 100 глав, большая глава **1 048 645 байт** (~1 MiB UTF-8),
-**500 записей** (250 правок + 250 сигналов) в её sidecar.
+### Реальные ограничения и диагностика
 
-**Порядок запуска:** тест производительности исключён из стандартного
-`npm run test:desktop` (в CI тоже — бюджеты честны только для выделенного
-железа, шумные общие раннеры с параллельными Electron-экземплярами уже
-давали потерю нажатий). Запускается явно и изолированно:
+Linux SIGSEGV происходил и в минимальном Electron из-за GTK appmenu module
+lifetime; воспроизведение и диагностика ранее выполнены контроллером.
+Унаследованное KDE `GTK_MODULES=colorreload-gtk-module:appmenu-gtk-module`
+устранило запуск. DISPLAY/XAUTHORITY взяты из текущей user-manager сессии;
+production workaround или отключения fuses нет.
 
-```bash
-GALLEY_PERF=1 npx playwright test tests/desktop/performance.spec.ts --workers=1
-```
+Packaged test использует Chromium renderer CDP, а обычные desktop tests —
+`node_modules/electron` с Forge `.vite` entry. Оба пути реально проверены.
+В packaged smoke recent-запись подготавливается в тестовом профиле; native
+folder picker и native window close отдельно этим smoke не доказываются.
 
-Измерения — Playwright-инструментация в `tests/desktop/performance.spec.ts`,
-сырые числа: `test-results/performance-results.json`.
+Pocket emulator-5554: Android 15 / API 35, sdk_gphone64_x86_64. Harness
+копирует **только синтетическую** папку в offline cache, регистрирует её в
+Room и вызывает production ReaderRepository.observeChapter. Файл
+`chapter.review.json` остаётся под настоящим Desk именем. Reader ищет
+`chapter.md.review.json`: chapter_note=null и записи не найдены.
+Это fail реального app-layer discovery, несмотря на зелёные codec contracts.
+SaveNote/return-to-Desk пока не достигнуты; копирование adb не засчитывается
+как успех. Требуется совместимый canonical/legacy fix с защитой от коллизий.
 
-| Метрика | Бюджет | Измерено (этот компьютер, прогон 2026-09-16) |
-| --- | --- | --- |
-| Открытие книги (100 глав) | — | 624 мс |
-| Открытие большой главы (клик → текст в редакторе) | ≤ 2000 мс | **895 мс** |
-| Ввод → рендер, p95 (24 замера, beforeinput → DOM-мутация) | ≤ 50 мс | **25.6 мс** (медиана 17.6, max 27.1) |
-| RSS main-процесса | фиксация | ~399 МБ |
-| Heap рендерера | фиксация | ~77 МБ |
-
-Методика p95: слушатель `beforeinput` на `.cm-content` фиксирует время
-нажатия, `MutationObserver` — первую мутацию DOM. Завершение IPC и записи
-не доказывается этим замером: первая DOM-мутация может быть оптимистическим рендером CodeMirror до завершения IPC/записи. Для сохранения нужна отдельная метрика и проверка опустошения очереди (A7 плана доведения).
-Фикстура не ослаблялась; при невыполнении бюджета требовался бы профилинг.
-
-## Electron-тесты (состав)
-
-- `shell.spec.ts` — изоляция рендерера (нет `require`), запрет навигации.
-- `open-book.spec.ts` — открытие папки, манифест, картинки/bookres,
-  восстановление позиции, недавние.
-- `edit-and-reopen.spec.ts`, `review-actions.spec.ts`,
-  `external-change.spec.ts` — правки, sidecar, применение, внешние изменения.
-- `search-and-appearance.spec.ts` (новое) — поиск в «Тексте» (счётчик,
-  переходы, выделение, обновление по ревизии), области поиска
-  (snapshot.text против snapshot.sourceText), переход в «Сравнении» через
-  координаты сегментов, фильтр глав (манифест не меняется), оформление
-  (тема красит контейнер, настройки в appData, границы main отвергают
-  неизвестную тему и fontSize вне 10–48), Zen (панели скрыты, Escape:
-  сначала popup, затем выход; постоянная кнопка выхода).
-- `performance.spec.ts` (новое) — фикстура и бюджеты выше.
-
-## Ручная проверка собранного приложения (Linux)
-
-Выполнена на `apps/desktop/out/Galley Desk-linux-x64/Galley Desk`
-(не dev-вход):
-
-- Прямой запуск executable: приложение загружается (main + окно рендерера;
-  в свежем профиле создаются артефакты Chromium-сессии), в журнале только
-  стандартные предупреждения GTK-темы, ошибок нет.
-- Содержимое собранного `resources/app.asar` проверено на вхождение нового
-  функционала: строки поиска («Поиск по главе»), Zen («Выйти из Zen»),
-  каталог тем (gruvbox-dark и др.), `revealRange` — присутствуют.
-- Автоматическое подключение Playwright к packaged-бинарнику невозможно:
-  включены предохранители Electron (`RunAsNode: false`,
-  `EnableNodeCliInspectArguments: false`) — это ожидаемое укрепление, а не
-  дефект. Поэтому Electron-сценарии `npm run test:desktop` исполняются
-  против того же собранного Forge-входа (`.vite/build` + собранный
-  renderer) через node_modules Electron, а packaged-бинарник проверен
-  прямой загрузкой (см. выше).
-
-## Явно НЕ проверено
-
-- **macOS (всё вручное):** приложение недоступно на этой машине — IME,
-  буфер обмена, нативный выбор папки, Cmd-акселераторы, масштабирование на
-  macOS **не проверялись** и не заявляются. Автоматическая часть для macOS
-  покрыта джобой `macos` в `.github/workflows/desktop.yml` (native runner:
-  `npm ci → typecheck → unit → Forge package → Electron tests`); её прогона
-  в этом репозитории пока не было.
-- **Сквозная передача папки** (Desktop → Pocket Editor → Desktop):
-  `adb devices` не показывает устройств; эмуляторы существуют
-  (`~/Android/Sdk/emulator`, AVD `PocketEditor_API_35_A/B`), но цикл не
-  прогонялся. Процедура для выполнения:
-  1. Собрать и установить Pocket Editor (ветка `galley-desk-tolerant-reviews`)
-     на эмулятор: `~/Android/Sdk/emulator/emulator -avd PocketEditor_API_35_A`,
-     `./gradlew installDebug`.
-  2. В Galley Desk открыть тестовую папку, создать активную правку,
-     устаревшую (испортить исходник пересохранением) и конфликтующую
-     (пересекающуюся) записи, закрыть книгу.
-  3. Скопировать папку на эмулятор (`adb push`), открыть в Pocket Editor,
-     прочитать записи, сохранить заметку главы и правку, вернуть папку
-     (`adb pull`).
-  4. Снова открыть в Galley Desk: применить одну активную правку, убедиться,
-     что остальные записи (включая заметку из Pocket Editor) сохранены.
-  Контрактный уровень (кодеки, якоря, классификация, discovery) при этом
-  проверяется автоматически: `npm run test:contracts` — зелёный.
-- **Подпись и нотаризация** — не выполнялись (нет учётных данных),
-  см. `docs/runbooks/release.md`.
-- **CI-прогоны** workflows `desktop.yml` — файл добавлен, запуск в GitHub
-  Actions не наблюдался (нет push из этой сессии).
+Предупреждения сборки: три Vite native-config compatibility warnings,
+inlineDynamicImports deprecation, bundle-size warnings. Первоначально был
+NO_COLOR/FORCE_COLOR conflict; финальные запуски очищают обе переменные.
+Forge make ZIP: FAIL (`spawn zip ENOENT`). ZIP создан отдельно Python с
+permission bits/symlinks; deb/rpm не собраны. Release остаётся не завершён.

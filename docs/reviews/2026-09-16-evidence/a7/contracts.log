@@ -1,0 +1,64 @@
+
+> test:contracts
+> node scripts/check-contracts.mjs
+
+[contracts] generate input: /home/inky/Development/.worktrees/galley-desk-v0.1/node_modules/.bin/tsx /home/inky/Development/.worktrees/galley-desk-v0.1/tests/contracts/generate.ts
+exchange input: /home/inky/Development/.worktrees/galley-desk-v0.1/.cache/contracts/exchange/input.json
+cases: exchange-note-comment, exchange-corrupted-hash; anchors: 5; discovery: 2
+[contracts] kotlin exchange test: ./gradlew testDebugUnitTest --tests *DesktopExchangeTest --rerun-tasks
+Reusing configuration cache.
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:extractDeepLinksDebug
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:mapDebugSourceSetPaths
+> Task :app:generateDebugBuildConfig
+> Task :app:generateDebugResources
+> Task :app:javaPreCompileDebugUnitTest
+> Task :app:packageDebugResources
+> Task :app:processDebugNavigationResources
+> Task :app:checkDebugAarMetadata
+> Task :app:compileDebugNavigationResources
+> Task :app:javaPreCompileDebug
+> Task :app:parseDebugLocalResources
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:generateDebugRFile
+> Task :app:processDebugManifestForPackage
+> Task :app:mergeDebugResources
+> Task :app:processDebugResources
+> Task :app:kspDebugKotlin
+> Task :app:compileDebugKotlin
+> Task :app:processDebugJavaRes
+> Task :app:compileDebugJavaWithJavac
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:kspDebugUnitTestKotlin SKIPPED
+
+> Task :app:compileDebugUnitTestKotlin
+w: file:///home/inky/Development/pocket-editor/.worktrees/galley-desk-tolerant-reviews/app/src/test/java/net/inkyquill/pocketeditor/reader/ReviewProjectorTest.kt:280:38 Unnecessary safe call on a non-null receiver of type 'Anchor'.
+w: file:///home/inky/Development/pocket-editor/.worktrees/galley-desk-tolerant-reviews/app/src/test/java/net/inkyquill/pocketeditor/reader/ReviewProjectorTest.kt:281:39 Unnecessary safe call on a non-null receiver of type 'Anchor'.
+
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes
+> Task :app:testDebugUnitTest
+
+BUILD SUCCESSFUL in 22s
+27 actionable tasks: 27 executed
+Configuration cache entry reused.
+[contracts] typescript exchange tests: npm test -- tests/contracts/exchange.test.ts
+
+> test
+> vitest run tests/contracts/exchange.test.ts
+
+
+ RUN  v5.0.1 /home/inky/Development/.worktrees/galley-desk-v0.1
+
+
+ Test Files  1 passed (1)
+      Tests  21 passed (21)
+   Start at  12:00:31
+   Duration  207ms (import 64%, transform 25%, tests 7%, worker 4%)
+
+[contracts] OK

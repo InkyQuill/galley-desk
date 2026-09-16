@@ -1,0 +1,3 @@
+26d0e95ddf30ceee919685211449810dda9130855e80b06f88d5dce3ecc58739  apps/desktop/out/Galley Desk-linux-x64/Galley Desk
+3d7030b5f419a3e9316683e785b14bc85937a7c4983c87492127d31baa980d6b  apps/desktop/out/Galley Desk-linux-x64/resources/app.asar
+8ddaff54520e5a55213bc09c6dfd388b45d2124e6ac92e90b719d3584b95dc12  apps/desktop/out/make/zip/linux/x64/Galley Desk-linux-x64-0.1.0.zip

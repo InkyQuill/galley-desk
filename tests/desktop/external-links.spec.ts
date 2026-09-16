@@ -77,13 +77,13 @@ test('http(s)-ссылка уходит во внешний браузер, пр
     const urlBefore = page.url();
 
     // http(s)-ссылка: Ctrl+клик — desk:open-external, навигации в окне нет.
-    await page.locator('.ge-link[data-ge-url="https://example.com/galley"]').click({ modifiers: ['Control'] });
+    await page.locator('.ge-link[data-ge-url="https://example.com/galley"]').click({ modifiers: ['ControlOrMeta'] });
     await expect.poll(() => openedUrls(app)).toContain('https://example.com/galley');
     expect(page.url()).toBe(urlBefore);
     await expect(content).toContainText('внешняя');
 
     // Относительная ссылка: инертна — ничего не открывается, окно не покидается.
-    await page.locator('.ge-link[data-ge-url="другая.md"]').click({ modifiers: ['Control'] });
+    await page.locator('.ge-link[data-ge-url="другая.md"]').click({ modifiers: ['ControlOrMeta'] });
     await page.waitForTimeout(300);
     expect(await openedUrls(app)).toEqual(['https://example.com/galley']);
     expect(page.url()).toBe(urlBefore);

@@ -90,7 +90,7 @@ test('ввод кот→кит пишет sidecar, исходник цел, по
 
     // Замена кот спит. → кит одним вводом поверх выделения всего текста.
     await content.click();
-    await session.page.keyboard.press('Control+a');
+    await session.page.keyboard.press('ControlOrMeta+a');
     await session.page.keyboard.type('кит');
     await expect(content).toContainText('кит');
     await expect(session.page.getByText('Сохранено')).toBeVisible();
@@ -103,12 +103,12 @@ test('ввод кот→кит пишет sidecar, исходник цел, по
     expect(sidecar).toContain('"after": "кит"');
 
     // Undo в «Тексте» — это undo-input: один шаг снимает весь ввод.
-    await session.page.keyboard.press('Control+z');
+    await session.page.keyboard.press('ControlOrMeta+z');
     await expect(content).toContainText('кот спит.');
     await expect(session.page.getByText('Сохранено')).toBeVisible();
 
     // Redo возвращает правку (Shift+z синтезирует заглавную «Z» в key-имени).
-    await session.page.keyboard.press('Control+Shift+Z');
+    await session.page.keyboard.press('ControlOrMeta+Shift+Z');
     await expect(content).toContainText('кит');
 
     // Закрытие книги дожидается очереди сохранения.
@@ -121,7 +121,7 @@ test('ввод кот→кит пишет sidecar, исходник цел, по
     await expect(session.page.locator('.cm-content')).toContainText('кит');
     const sidecarBeforeUndo = await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8');
     await session.page.locator('.cm-content').click();
-    await session.page.keyboard.press('Control+z');
+    await session.page.keyboard.press('ControlOrMeta+z');
     await expect(session.page.locator('.cm-content')).toContainText('кит');
     expect(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')).toBe(sidecarBeforeUndo);
   } finally {
@@ -156,7 +156,7 @@ test('смена главы во время пачки ввода не пере�
     // приходить уже после переключения — окно обязано их игнорировать.
     const burstA = 'abc'.repeat(10);
     await content.click();
-    await session.page.keyboard.press('Control+End');
+    await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
     // insertText — одна атомарная вставка: одна команда с одним тяжёлым
     // сохранением двухмегабайтной главы — её ack живёт дольше смены главы.
     await session.page.keyboard.insertText(burstA);
@@ -191,7 +191,7 @@ test('смена главы во время пачки ввода не пере�
     // Ввод в главе B работает поверх стабильного документа.
     const burstB = 'xyzxyzxyzxyzx';
     await content.click();
-    await session.page.keyboard.press('Control+End');
+    await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
     await session.page.keyboard.insertText(burstB);
     await expect(content).toContainText(burstB);
 
@@ -237,7 +237,7 @@ test('быстрый ввод 50 транзакций не теряет и не 
     // 50 быстрых нажатий — 50 транзакций и команд в FIFO при задержанных ack.
     const burst = 'qwertyuiopasdfghjklzxcvbnmqwertyuiopasdfghjklzxc';
     await content.click();
-    await session.page.keyboard.press('Control+End');
+    await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
     await session.page.keyboard.type(burst, { delay: 5 });
     await expect(content).toContainText(burst);
 
@@ -252,6 +252,39 @@ test('быстрый ввод 50 транзакций не теряет и не 
     const restored = await session.page.locator('.cm-content').innerText();
     // Ровно один хвост пачки: ничего не потеряно и не задублировано.
     expect(restored.replace(/\n/g, '')).toBe(`Текст${burst}`);
+  } finally {
+    await session.app.close();
+  }
+});
+
+// Chromium's native composition pipeline via CDP (not dispatchEvent).
+// This deliberately does not claim OS input-method / candidate-window coverage.
+test('Chromium composition commit/cancel and multiline emoji CRLF insertion survive reopen', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-composition-');
+  const original = Buffer.from('original\r\n🦊\r\n');
+  const session = await launch(bookRoot, { 'Глава.md': original });
+  try {
+    await openOwnBook(session);
+    const page = session.page;
+    const content = page.locator('.cm-content');
+    const cdp = await page.context().newCDPSession(page);
+    await content.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await cdp.send('Input.imeSetComposition', { text: 'にほん', selectionStart: 3, selectionEnd: 3 });
+    await cdp.send('Input.insertText', { text: '日本' });
+    await expect(content).toContainText('日本');
+    await cdp.send('Input.imeSetComposition', { text: 'cancel', selectionStart: 6, selectionEnd: 6 });
+    await cdp.send('Input.imeSetComposition', { text: '', selectionStart: 0, selectionEnd: 0 });
+    await expect(content).not.toContainText('cancel');
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.insertText('line one\r\nemoji 🦊\r\nlast');
+    await page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    const review = JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')) as Review;
+    expect(openChapter(original, review).text).toBe('line one\nemoji 🦊\nlast');
+    expect(await readFile(path.join(bookRoot, 'Глава.md'))).toEqual(original);
+    await page.getByRole('button', { name: 'Открыть', exact: true }).click();
+    await expect(content).toContainText('emoji 🦊');
+    await cdp.detach();
   } finally {
     await session.app.close();
   }

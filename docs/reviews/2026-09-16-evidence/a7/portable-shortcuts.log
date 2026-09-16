@@ -1,0 +1,19 @@
+
+Running 13 tests using 1 worker
+
+  ✓   1 tests/desktop/external-links.spec.ts:57:1 › http(s)-ссылка уходит во внешний браузер, прочие ссылки инертны (1.0s)
+[main] [desk] desk:command: code=SAVE_FAILED
+  ✓   2 tests/desktop/review-actions.spec.ts:265:1 › заметка главы сохраняется в sidecar; при ошибке черновик остаётся (998ms)
+  ✓   3 tests/desktop/review-actions.spec.ts:293:1 › черновик заметки главы не переезжает в другую главу (1.1s)
+  ✓   4 tests/desktop/review-actions.spec.ts:332:1 › применение правки в «Сравнении» пишет обе пары, Отменить/Повторить восстанавливают байты (895ms)
+  ✓   5 tests/desktop/review-actions.spec.ts:378:1 › клавиатурный путь выделение → flyout → попап создаёт сигнал с комментарием (962ms)
+  ✓   6 tests/desktop/review-actions.spec.ts:408:1 › Esc закрывает попап без создания сигнала и возвращает фокус в редактор (981ms)
+  ✓   7 tests/desktop/review-actions.spec.ts:443:1 › четыре типа сигналов получают свои цвета flyout; пересекающиеся сигналы независимы (2.0s)
+  ✓   8 tests/desktop/review-actions.spec.ts:500:1 › изменение существующего сигнала заменяет тип и комментарий, не дублируя запись (1.2s)
+  ✓   9 tests/desktop/review-actions.spec.ts:532:1 › сигнал на добавленном тексте якорится к исходному диапазону правки (983ms)
+  ✓  10 tests/desktop/review-actions.spec.ts:561:1 › Отклонить правки сохраняет независимый сигнал; отметки видны в обоих видах (960ms)
+  ✓  11 tests/desktop/review-actions.spec.ts:591:1 › недоступные записи открывают карточку в панели с причиной и удалением (858ms)
+  ✓  12 tests/desktop/review-actions.spec.ts:620:1 › конфликтующие правки исключены из текста; удаление участника возвращает другую (883ms)
+  ✓  13 tests/desktop/review-actions.spec.ts:653:1 › стек применения очищается после обычной мутации и после закрытия книги (1.7s)
+
+  13 passed (15.3s)

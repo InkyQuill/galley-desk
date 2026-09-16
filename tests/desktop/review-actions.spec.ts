@@ -228,7 +228,7 @@ async function writeTwoChapterBook(bookRoot: string, review: Review, noteA: stri
 async function selectFromStart(page: Page, skip: number, length: number): Promise<void> {
   // Клик у левого верхнего угла контента: не задевает виджеты-маркеры.
   await page.locator('.cm-content').click({ position: { x: 5, y: 8 } });
-  await page.keyboard.press('Control+Home');
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
   for (let i = 0; i < skip; i++) await page.keyboard.press('ArrowRight');
   for (let i = 0; i < length; i++) await page.keyboard.press('Shift+ArrowRight');
 }
@@ -257,7 +257,7 @@ async function createSignalByKeyboard(
   const textarea = page.getByRole('textbox', { name: 'Комментарий сигнала' });
   await expect(textarea).toBeFocused();
   if (comment !== '') await textarea.fill(comment);
-  await textarea.press('Control+Enter');
+  await textarea.press('ControlOrMeta+Enter');
   return waitSidecar(page, sidecarPath, (review) =>
     review.signals.some((signal) => signal.type === type && signal.comment === comment));
 }
@@ -485,7 +485,7 @@ test('четыре типа сигналов получают свои цвет�
     await selectFromStart(page, 4, 4);
     await page.keyboard.press('Backspace');
     await expect(page.getByRole('button', { name: 'Удаление: спит' })).toBeVisible();
-    await page.keyboard.press('Control+z');
+    await page.keyboard.press('ControlOrMeta+z');
     await expect(page.getByRole('button', { name: 'Удаление: спит' })).toHaveCount(0);
 
     // «Исходник» немаркированный: ни маркеров, ни flyout.
@@ -517,7 +517,7 @@ test('изменение существующего сигнала заменя�
     await expect(textarea).toHaveValue('Первый');
     await dialog.getByRole('button', { name: 'review', exact: true }).click();
     await textarea.fill('Второй');
-    await textarea.press('Control+Enter');
+    await textarea.press('ControlOrMeta+Enter');
 
     const sidecar = await waitSidecar(page, sidecarPath, (review) =>
       review.signals.length === 1 && review.signals[0] !== undefined && review.signals[0].comment === 'Второй');
@@ -667,7 +667,7 @@ test('стек применения очищается после обычной
     // Обычная мутация (ввод) завершает стек применения.
     await page.getByRole('button', { name: 'Текст', exact: true }).click();
     await page.locator('.cm-content').click();
-    await page.keyboard.press('Control+End');
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
     await page.keyboard.type('!');
     await page.getByRole('button', { name: 'Сравнение', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Отменить применение' })).toBeDisabled();

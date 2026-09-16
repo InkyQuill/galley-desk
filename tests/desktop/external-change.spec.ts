@@ -81,13 +81,13 @@ test('внешнее изменение принимается: чужая ве�
 
     // Локальная правка сохраняется в sidecar…
     await content.click();
-    await session.page.keyboard.press('Control+End');
+    await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
     await session.page.keyboard.type('!');
     await expect(content).toContainText('кот!');
     await expect(session.page.getByText('Сохранено')).toBeVisible();
     // …и снимается Undo-ом, чтобы sidecar остался без правок: внешний текст
     // после принятия не искажается переносами старых правок.
-    await session.page.keyboard.press('Control+z');
+    await session.page.keyboard.press('ControlOrMeta+z');
     await expect(content).toContainText('кот');
     await expect(session.page.getByText('Сохранено')).toBeVisible();
 
@@ -102,7 +102,7 @@ test('внешнее изменение принимается: чужая ве�
 
     // Ввод продолжается поверх внешней версии; правки идут только в sidecar.
     await content.click();
-    await session.page.keyboard.press('Control+End');
+    await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
     await session.page.keyboard.type('!');
     await expect(content).toContainText('внешний текст!');
     await expect(session.page.getByText('Сохранено')).toBeVisible();
@@ -125,7 +125,7 @@ test('STALE_REVISION при внешнем изменении не маскир�
     // сессия переходит в 'error', чип «Ошибка сохранения» уместен.
     await chmod(bookRoot, 0o555);
     await content.click();
-    await session.page.keyboard.press('Control+End');
+    await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
     await session.page.keyboard.type('?');
     await expect(session.page.getByText('Ошибка сохранения')).toBeVisible();
     await expect(session.page.getByRole('alert')).toContainText('локальный текст сохранён');
@@ -149,7 +149,7 @@ test('STALE_REVISION при внешнем изменении не маскир�
     // (STALE_REVISION). Чип обязан остаться аффордансом внешнего изменения,
     // а не превращаться в «Ошибка сохранения» с «Перечитать главу».
     await content.click();
-    await session.page.keyboard.press('Control+End');
+    await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
     await session.page.keyboard.type('#');
     // Отказ команды обработан очередью: синхронизируемся на его алерте,
     // прежде чем судить о стабильном состоянии чипа.
@@ -177,10 +177,10 @@ test('сбой сохранения сохраняет локальный тек
 
     // Правка и откат: sidecar остаётся без правок.
     await content.click();
-    await session.page.keyboard.press('Control+End');
+    await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
     await session.page.keyboard.type('!');
     await expect(content).toContainText('кот!');
-    await session.page.keyboard.press('Control+z');
+    await session.page.keyboard.press('ControlOrMeta+z');
     await expect(content).toContainText('кот');
     await expect(session.page.getByText('Сохранено')).toBeVisible();
 
@@ -215,7 +215,7 @@ test('сбой сохранения сохраняет локальный тек
 
     // После явного принятия ввод снова работает поверх внешней версии.
     await content.click();
-    await session.page.keyboard.press('Control+End');
+    await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
     await session.page.keyboard.type('!');
     await expect(content).toContainText('чужая версия!');
     await expect(session.page.getByText('Сохранено')).toBeVisible();

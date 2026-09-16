@@ -205,12 +205,14 @@ mise run verify
 
 ### Task 7: A7 — Реально выполнить desktop/platform gate
 
+Статус 2026-09-16: Linux пакет/desktop/performance PASS; Mac/native IME not-run; Android app-layer roundtrip FAIL (Pocket ищет legacy имя sidecar). A7 остаётся открыт. См. [evidence](../../reviews/2026-09-16-evidence/a7/report.md).
+
 **Files:** Existing `tests/desktop/*.spec.ts`, `tests/desktop/performance.spec.ts`, `docs/verification.md`, `docs/runbooks/release.md`; Pocket existing `app/src/androidTest/java/net/inkyquill/pocketeditor/ui/review/UnavailableReviewCardTest.kt`. Create `tests/desktop/packaged-smoke.spec.ts` только для минимального запуска настоящего artifact без ослабления production fuses.
 
 **Interfaces:** Обычные Playwright Electron tests запускают `node_modules/electron` с `apps/desktop` и собранным JS. Это отличается от проверки `apps/desktop/out/...` с asar/fuses. Оба пути нужны; platform gate не может быть заменён unit-тестами.
 
-- [ ] **Step 1:** Локализовать Linux SIGSEGV. Сопоставить чистое минимальное Electron-окно и Desk на том же binary, собрать backtrace/core metadata; проверить системные библиотеки/fontconfig/графический backend. Наблюдавшееся предупреждение fontconfig — лишь улика, не установленная причина. Изменять код/версию Electron только по результату воспроизведения. Не пропускать launch tests ради зелёного gate.
-- [ ] **Step 2:** После устранения препятствия и A1–A5:
+- [x] **Step 1:** Локализовать Linux SIGSEGV. Сопоставить чистое минимальное Electron-окно и Desk на том же binary, собрать backtrace/core metadata; проверить системные библиотеки/fontconfig/графический backend. Наблюдавшееся предупреждение fontconfig — лишь улика, не установленная причина. Изменять код/версию Electron только по результату воспроизведения. Не пропускать launch tests ради зелёного gate.
+- [x] **Step 2:** После устранения препятствия и A1–A5:
 
 ```bash
 npm run typecheck
@@ -223,8 +225,8 @@ GALLEY_PERF=1 npx playwright test tests/desktop/performance.spec.ts --workers=1
 
 Использовать DISPLAY/XAUTHORITY текущей графической сессии, не зашивать путь xauth из аудита. Сохранить фактические результаты в verification.md.
 
-- [ ] **Step 3:** Запустить настоящий packaged executable с отдельным временным профилем; открыть синтетическую книгу, ввести правку, дождаться сохранения, закрыть, открыть вновь, применить/undo и сравнить md+review bytes. Не отключать production fuses для подмены packaged smoke обычным electron.launch.
-- [ ] **Step 4:** В performance-тесте оставить отдельный input→DOM показатель. Добавить latency до подтверждённой записи и проверку итогового текста после опустошения очереди/переоткрытия. Называть показатели точно: DOM не означает fsync. Измерить книгу 100 глав, главу1MiB/500 записей; критерии исходной спецификации: открытие ≤2s, input→render p95≤50ms. Указать машину и нагрузку, не переносить старые числа как новые.
+- [x] **Step 3:** Запустить настоящий packaged executable с отдельным временным профилем; открыть синтетическую книгу, ввести правку, дождаться сохранения, закрыть, открыть вновь, применить/undo и сравнить md+review bytes. Не отключать production fuses для подмены packaged smoke обычным electron.launch.
+- [x] **Step 4:** В performance-тесте оставить отдельный input→DOM показатель. Добавить latency до подтверждённой записи и проверку итогового текста после опустошения очереди/переоткрытия. Называть показатели точно: DOM не означает fsync. Измерить книгу 100 глав, главу1MiB/500 записей; критерии исходной спецификации: открытие ≤2s, input→render p95≤50ms. Указать машину и нагрузку, не переносить старые числа как новые.
 - [ ] **Step 5:** На macOS выполнить packaged smoke, Cmd+Z/Cmd+Shift+Z, закрытие окна без quit, быстрый ввод→Close, IME composition commit/cancel, вставку multiline/emoji/CRLF. На Linux проверить IME отдельно от синтетического dispatch CompositionEvent. Описать точные версии ОС, сборку и результат.
 - [ ] **Step 6:** Pocket: подключить тестовое устройство/эмулятор, выполнить `./gradlew connectedDebugAndroidTest`. Затем передать копию синтетической книги с active/stale/overlapping edits, signals, chapter_note через реально поддерживаемый Pocket путь открытия/синхронизации, вернуть в Desk; сравнить IDs/тексты/порядок. `adb push` само по себе не доказывает, что Pocket открыл эту папку. Не использовать личные книги/credentials в fixtures.
 - [ ] **Step 7:** Обновить matrix: PASS/FAIL/not-run, команды и редакции. Если машины/устройства нет, этот шаг остаётся unchecked с конкретной причиной; весь v1 gate не объявлять завершённым. Коммит: `test(desktop): verify release artifacts and roundtrip`.

@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "chapter_id": "a7000000-0000-4000-8000-000000000002",
+  "source_path": "chapter.md",
+  "chapter_note": "Desk roundtrip note",
+  "signals": [
+    {
+      "id": "a7000000-0000-4000-8000-000000000020",
+      "type": "note",
+      "selected_text": "alpha",
+      "anchor": {
+        "source_sha256": "57a7164626f91075bb4674b3d96eadcacb6c08ce72559cbed7cdfdddb8ddadc8",
+        "selection_sha256": "8ed3f6ad685b959ead7022518e1af76cd816f8e8ec7ccdda1ed4018e8f2223f8",
+        "start_byte": 0,
+        "end_byte": 5,
+        "start_line": 1,
+        "end_line": 1,
+        "prefix": "",
+        "suffix": " beta gamma delta\r\n🦊 next line\r\n"
+      },
+      "comment": "keep order 🦊"
+    },
+    {
+      "id": "a7000000-0000-4000-8000-000000000021",
+      "type": "warning",
+      "selected_text": "beta",
+      "anchor": {
+        "source_sha256": "57a7164626f91075bb4674b3d96eadcacb6c08ce72559cbed7cdfdddb8ddadc8",
+        "selection_sha256": "f44e64e75f3948e9f73f8dfa94721c4ce8cbb4f265c4790c702b2d41cfbf2753",
+        "start_byte": 6,
+        "end_byte": 10,
+        "start_line": 1,
+        "end_line": 1,
+        "prefix": "alpha ",
+        "suffix": " gamma delta\r\n🦊 next line\r\n"
+      },
+      "comment": "overlapping signal"
+    }
+  ],
+  "edits": [
+    {
+      "id": "a7000000-0000-4000-8000-000000000010",
+      "before": "delta",
+      "after": "DELTA",
+      "anchor": {
+        "source_sha256": "57a7164626f91075bb4674b3d96eadcacb6c08ce72559cbed7cdfdddb8ddadc8",
+        "selection_sha256": "4f4a9410ffcdf895c4adb880659e9b5c0dd1f23a30790684340b3eaacb045398",
+        "start_byte": 17,
+        "end_byte": 22,
+        "start_line": 1,
+        "end_line": 1,
+        "prefix": "alpha beta gamma ",
+        "suffix": "\r\n🦊 next line\r\n"
+      }
+    },
+    {
+      "id": "a7000000-0000-4000-8000-000000000011",
+      "before": "beta",
+      "after": "BETA",
+      "anchor": {
+        "source_sha256": "57a7164626f91075bb4674b3d96eadcacb6c08ce72559cbed7cdfdddb8ddadc8",
+        "selection_sha256": "f44e64e75f3948e9f73f8dfa94721c4ce8cbb4f265c4790c702b2d41cfbf2753",
+        "start_byte": 6,
+        "end_byte": 10,
+        "start_line": 1,
+        "end_line": 1,
+        "prefix": "alpha ",
+        "suffix": " gamma delta\r\n🦊 next line\r\n"
+      }
+    },
+    {
+      "id": "a7000000-0000-4000-8000-000000000012",
+      "before": "beta gamma",
+      "after": "OVERLAP",
+      "anchor": {
+        "source_sha256": "57a7164626f91075bb4674b3d96eadcacb6c08ce72559cbed7cdfdddb8ddadc8",
+        "selection_sha256": "77c87a2a0999472ebec208d3b34774235850e78c637906bc550beaa524733770",
+        "start_byte": 6,
+        "end_byte": 16,
+        "start_line": 1,
+        "end_line": 1,
+        "prefix": "alpha ",
+        "suffix": " delta\r\n🦊 next line\r\n"
+      }
+    },
+    {
+      "id": "a7000000-0000-4000-8000-000000000013",
+      "before": "missing",
+      "after": "stale",
+      "anchor": {
+        "source_sha256": "57a7164626f91075bb4674b3d96eadcacb6c08ce72559cbed7cdfdddb8ddadc8",
+        "selection_sha256": "8ed3f6ad685b959ead7022518e1af76cd816f8e8ec7ccdda1ed4018e8f2223f8",
+        "start_byte": 0,
+        "end_byte": 5,
+        "start_line": 1,
+        "end_line": 1,
+        "prefix": "",
+        "suffix": " beta gamma delta\r\n🦊 next line\r\n"
+      }
+    }
+  ]
+}
