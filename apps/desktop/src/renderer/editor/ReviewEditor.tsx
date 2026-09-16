@@ -16,7 +16,7 @@
 //   отправки блокируются до ресинхронизации (замена документа/смена главы).
 // - Undo/redo в «Тексте» маршрутизируются в сессию (undo-input/redo-input);
 //   вне редактора нативный undo полей не затрагивается.
-import { Prec } from '@codemirror/state';
+import { Compartment, EditorState, Prec } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import type { KeyBinding } from '@codemirror/view';
@@ -142,6 +142,18 @@ export function ReviewEditor({
     });
   }
   const queue = queueRef.current;
+  const readOnly = snapshot.readOnlyReason !== null;
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
+  const readOnlyCompartment = useRef(new Compartment());
+  // Galley supplies its own editable facets; these must win from creation.
+  const readOnlyExtensions = (value: boolean): Extension[] => [
+    Prec.highest(EditorState.readOnly.of(value)),
+    Prec.highest(EditorView.editable.of(!value)),
+  ];
+  useEffect(() => {
+    handleRef.current?.view?.dispatch({ effects: readOnlyCompartment.current.reconfigure(readOnlyExtensions(readOnly)) });
+  }, [readOnly]);
 
   /** Помечает документ к замене и применяет план, если сейчас можно. */
   function requestReplace(kind: 'switch' | 'sync', chapterId: string, text: string, anchor: number | null): void {
@@ -190,7 +202,7 @@ export function ReviewEditor({
 
   /** Ставит пользовательскую команду в FIFO; транспорт — на момент вызова. */
   function enqueue(command: Command): void {
-    if (queue.blocked) return;
+    if (queue.blocked || readOnlyRef.current) return;
     const chapterId = stateRef.current.chapterId;
     const transport = onCommandRef.current;
     queue.push(command, () => transport(command), chapterId);
@@ -337,7 +349,7 @@ export function ReviewEditor({
   }
   const extensionsRef = useRef<Extension[] | null>(null);
   if (extensionsRef.current === null) {
-    extensionsRef.current = [Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers()];
+    extensionsRef.current = [readOnlyCompartment.current.of(readOnlyExtensions(readOnly)), Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers()];
   }
 
   // Выделение → окно flyout: непустой диапазон даёт координаты конца выделения,

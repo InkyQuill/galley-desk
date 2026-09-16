@@ -42,7 +42,8 @@ export type BookHandle = { id: string; root: string; manifest: Manifest };
 const MANIFEST_NAME = '.pocket-editor.json';
 
 /**
- * Thrown by {@link openBook} when `.pocket-editor.json` exists but cannot be
+ * Thrown by {@link openBook} when reviews exist without their original manifest,
+ * or when `.pocket-editor.json` exists but cannot be
  * decoded as a supported manifest — v1, or v2 read tolerantly (a structurally
  * broken file, for example a bad UUID, or an unknown `schema_version`). This
  * is a read-only identity error: the manifest file is never overwritten,
@@ -107,7 +108,8 @@ function resolveChapter(book: BookHandle, chapterId: string): { chapter: Chapter
 /**
  * Open the book folder. The root is resolved to its real path; the manifest
  * is read when present (a decode failure is a read-only {@link ManifestError})
- * and otherwise created from discovery of direct-child ordinary Markdown
+ * and otherwise created only when no existing review sidecars need their original
+ * identity, from discovery of direct-child ordinary Markdown
  * files with fresh UUIDs, then persisted so re-opening keeps identity and
  * chapter order stable. Existing sidecars are never touched at open time.
  */
@@ -124,6 +126,9 @@ export async function openBook(root: string): Promise<BookHandle> {
       throw new ManifestError(manifestAbs, cause);
     }
     return { id: manifest.book_id, root: realRoot, manifest };
+  }
+  if (names.some((name) => name.endsWith('.review.json'))) {
+    throw new ManifestError(manifestAbs, new Error('Existing reviews require the original manifest'));
   }
   const markdownNames = names.filter((name) => name.endsWith('.md') && !name.startsWith('.'));
   const files = [];

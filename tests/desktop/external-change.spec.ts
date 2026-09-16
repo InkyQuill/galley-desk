@@ -1,6 +1,7 @@
 import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { encodeReview, makeAnchor } from '@galley-desk/pocket-format';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 
 const tempDirs: string[] = [];
@@ -236,7 +237,8 @@ test('recovery conflict blocks input and preserves local pair before explicit ac
   });
   try {
     const bytes = (text: string) => ({ base64: Buffer.from(text).toString('base64'), sha256: createHash('sha256').update(text).digest('hex') });
-    const record = { version: 1, root: bookRoot, chapter_id: chapterId, source_path: '01.md', review_path: '01.review.json', complete: false, before: { source: bytes('cat'), review: null }, after: { source: bytes('local dog'), review: null } };
+    const review = encodeReview({ schema_version: 1, chapter_id: chapterId, source_path: '01.md', chapter_note: 'local note', edits: [], signals: [{ id: randomUUID(), type: 'note', selected_text: 'dog', comment: 'local signal', anchor: makeAnchor(Buffer.from('local dog'), { from: 6, to: 9 }) }] });
+    const record = { version: 1, root: bookRoot, chapter_id: chapterId, source_path: '01.md', review_path: '01.review.json', complete: false, before: { source: bytes('cat'), review: null }, after: { source: bytes('local dog'), review: bytes(review) } };
     const name = `galley-journal-${createHash('sha256').update(`${bookRoot}\n${chapterId}`).digest('hex').slice(0, 32)}.json`;
     await writeFile(path.join(session.userData, name), JSON.stringify(record));
     await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
@@ -244,6 +246,15 @@ test('recovery conflict blocks input and preserves local pair before explicit ac
     await expect(session.page.getByRole('alert')).toContainText('Восстановление приостановлено');
     await expect(session.page.getByLabel('Локальная версия восстановления')).toHaveText('local dog');
     await expect(session.page.locator('.cm-content')).toHaveCount(0);
+    await session.page.getByRole('button', { name: 'Заметка главы', exact: true }).click();
+    await expect(session.page.getByRole('textbox', { name: 'Текст заметки' })).toHaveAttribute('readonly', '');
+    await expect(session.page.getByRole('button', { name: 'Сохранить', exact: true })).toBeDisabled();
+    await session.page.getByRole('button', { name: 'Закрыть', exact: true }).click();
+    await session.page.getByRole('button', { name: 'Сигнал [note]: local signal', exact: true }).click();
+    await expect(session.page.getByRole('textbox', { name: 'Комментарий сигнала' })).toHaveAttribute('readonly', '');
+    await expect(session.page.getByRole('button', { name: 'Сохранить', exact: true })).toBeDisabled();
+    await expect(session.page.getByRole('button', { name: 'Удалить', exact: true })).toBeDisabled();
+    await expect(session.page.getByRole('button', { name: 'warning', exact: true })).toBeDisabled();
     expect(JSON.parse(await readFile(path.join(session.userData, name), 'utf8'))).toEqual(record);
     expect(await readFile(path.join(bookRoot, '01.md'), 'utf8')).toBe('external fox');
     await session.page.getByRole('button', { name: 'Открыть внешнюю версию' }).click();

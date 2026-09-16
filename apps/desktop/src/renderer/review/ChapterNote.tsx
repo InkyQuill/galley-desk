@@ -8,6 +8,7 @@ import type { CSSProperties, KeyboardEvent } from 'react';
 
 type Props = {
   value: string;
+  readOnly?: boolean;
   /** Сохранение через BookWindow; ошибка пробрасывается, черновик остаётся. */
   onCommand: (text: string) => Promise<void>;
 };
@@ -22,7 +23,7 @@ const cardStyle: CSSProperties = {
   color: 'CanvasText',
 };
 
-export function ChapterNote({ value, onCommand }: Props) {
+export function ChapterNote({ value, onCommand, readOnly = false }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +41,7 @@ export function ChapterNote({ value, onCommand }: Props) {
     buttonRef.current?.focus();
   };
   const save = async (): Promise<void> => {
+    if (readOnly) return;
     setBusy(true);
     setError(null);
     try {
@@ -66,6 +68,7 @@ export function ChapterNote({ value, onCommand }: Props) {
       {open && (
         <div role="dialog" aria-label="Заметка главы" style={cardStyle} onKeyDown={onKeyDown}>
           <textarea
+            readOnly={readOnly}
             autoFocus
             aria-label="Текст заметки"
             rows={5}
@@ -81,7 +84,7 @@ export function ChapterNote({ value, onCommand }: Props) {
             </p>
           )}
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button type="button" disabled={busy} onClick={() => void save()}>
+            <button type="button" disabled={busy || readOnly} onClick={() => void save()}>
               Сохранить
             </button>
             <button type="button" onClick={close}>

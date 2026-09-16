@@ -14,6 +14,7 @@ export function recordLabel(record: RecordView): string {
 }
 
 type Props = {
+  readOnly?: boolean;
   records: RecordView[];
   /** Запись, чья карточка раскрыта в панели (нет якоря или переход невозможен). */
   cardRecordId: string | null;
@@ -22,7 +23,7 @@ type Props = {
   onCardClose: () => void;
 };
 
-export function ReviewList({ records, cardRecordId, onSelect, onCommand, onCardClose }: Props) {
+export function ReviewList({ records, cardRecordId, onSelect, onCommand, onCardClose, readOnly = false }: Props) {
   if (records.length === 0) return null;
   return (
     <nav aria-label="Рецензия главы" style={{ display: 'grid', gap: '0.25rem' }}>
@@ -39,7 +40,7 @@ export function ReviewList({ records, cardRecordId, onSelect, onCommand, onCardC
               {recordLabel(record)}
             </button>
             {cardRecordId === record.id && (
-              <RecordPopup record={record} at={null} onCommand={onCommand} onClose={onCardClose} />
+              <RecordPopup readOnly={readOnly} record={record} at={null} onCommand={onCommand} onClose={onCardClose} />
             )}
           </li>
         ))}

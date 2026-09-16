@@ -14,6 +14,7 @@ export type SignalDraft = { from: number; to: number; signalType: SignalTypeName
 export type PopupPosition = { x: number; y: number; bottom: number } | null;
 
 type Props = {
+  readOnly?: boolean;
   record?: RecordView | null;
   draft?: SignalDraft | null;
   at: PopupPosition;
@@ -54,7 +55,7 @@ function floatingCard(at: NonNullable<PopupPosition>): CSSProperties {
 
 const rowStyle: CSSProperties = { display: 'flex', gap: '0.5rem', flexWrap: 'wrap' };
 
-export function RecordPopup({ record = null, draft = null, at, onCommand, onClose }: Props) {
+export function RecordPopup({ record = null, draft = null, at, onCommand, onClose, readOnly = false }: Props) {
   const theme = useMarkerTheme();
   const [comment, setComment] = useState(draft !== null ? '' : record?.comment ?? '');
   const [signalType, setSignalType] = useState<SignalTypeName>(
@@ -82,6 +83,7 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
   };
 
   const saveDraft = (): void => {
+    if (readOnly) return;
     if (draft !== null) {
       onCommand({ type: 'signal', from: draft.from, to: draft.to, signalType, comment });
       // Черновик отправлен: попап закрывается, повторное сохранение невозможно.
@@ -89,6 +91,7 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
     }
   };
   const saveSignal = (): void => {
+    if (readOnly) return;
     if (
       record !== null &&
       record.kind === 'signal' &&
@@ -111,6 +114,7 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
           Новый сигнал: <span style={{ color: signalColor(draft.signalType, theme) }}>{draft.signalType}</span>
         </strong>
         <textarea
+          readOnly={readOnly}
           autoFocus
           aria-label="Комментарий сигнала"
           rows={3}
@@ -122,7 +126,7 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
           }}
         />
         <div style={rowStyle}>
-          <button type="button" onClick={saveDraft}>
+          <button type="button" disabled={readOnly} onClick={saveDraft}>
             Сохранить
           </button>
           <button type="button" onClick={onClose}>
@@ -151,7 +155,7 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
         )}
         <span>Причина: {reasonText(record.reason)} ({record.reason})</span>
         <div style={rowStyle}>
-          <button type="button" onClick={remove}>
+          <button type="button" disabled={readOnly} onClick={remove}>
             Удалить
           </button>
         </div>
@@ -170,12 +174,12 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
           <button
             type="button"
             aria-label="Применить"
-            disabled={record.status !== 'active'}
+            disabled={readOnly || record.status !== 'active'}
             onClick={() => void onCommand({ type: 'apply', id: record.id })}
           >
             Применить
           </button>
-          <button type="button" onClick={remove}>
+          <button type="button" disabled={readOnly} onClick={remove}>
             Отклонить
           </button>
         </div>
@@ -193,6 +197,7 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
           <button
             key={type}
             type="button"
+            disabled={readOnly}
             aria-pressed={signalType === type}
             style={{
               color: signalColor(type, theme),
@@ -209,6 +214,7 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
         ))}
       </div>
       <textarea
+        readOnly={readOnly}
         aria-label="Комментарий сигнала"
         rows={3}
         placeholder="Комментарий (необязательно)"
@@ -219,10 +225,10 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
         }}
       />
       <div style={rowStyle}>
-        <button type="button" onClick={saveSignal}>
+        <button type="button" disabled={readOnly} onClick={saveSignal}>
           Сохранить
         </button>
-        <button type="button" onClick={remove}>
+        <button type="button" disabled={readOnly} onClick={remove}>
           Удалить
         </button>
       </div>

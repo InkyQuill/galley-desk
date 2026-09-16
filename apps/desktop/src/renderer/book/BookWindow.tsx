@@ -562,6 +562,7 @@ export function BookWindow({
 
   const activeChapter = book.entries.find((entry) => entry.id === chapterId) ?? null;
   // Локальный флаг ошибки сильнее снимка: main не уведомляет о сбое записи.
+  const readOnly = snapshot === null || snapshot.readOnlyReason !== null;
   const saveState = saveError !== null ? 'error' : snapshot?.saveState ?? null;
   const popupRecord =
     popup?.kind === 'record' ? snapshot?.records.find((record) => record.id === popup.id) ?? null : null;
@@ -583,16 +584,17 @@ export function BookWindow({
         <header className="book__header">
           <h1 className="book__title">{book.title}</h1>
           {saveState !== null && (
-            <span className={`book__save-state book__save-state--${saveState}`}>{SAVE_STATE_LABELS[saveState]}</span>
+            <span className={`book__save-state book__save-state--${saveState}`}>{snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}</span>
           )}
           {saveError !== null && (
             <button type="button" className="book__reread" onClick={rereadChapter}>
               Перечитать главу
             </button>
           )}
+          {snapshot?.readOnlyReason && <p role="alert">{snapshot.readOnlyReason}</p>}
           {snapshot !== null && snapshot.saveState === 'external' && (
             <span className="book__external-actions">
-              {snapshot.recoveryConflict && <span role="alert">Восстановление приостановлено. Локальная пара сохранена в журнале. Открытие внешней версии сохранит резервную копию; экспорт сохранит копию главы в новую папку и откроет внешнюю версию.</span>}
+              {snapshot.recoveryConflict && <span>Восстановление приостановлено. Локальная пара сохранена в журнале. Открытие внешней версии сохранит резервную копию; экспорт сохранит копию главы в новую папку и откроет внешнюю версию.</span>}
               <button type="button" onClick={() => void resolveExternal('open-external')}>
                 Открыть внешнюю версию
               </button>
@@ -722,14 +724,14 @@ export function BookWindow({
               <div style={{ display: 'flex', gap: '0.5rem' }} aria-label="История применения">
                 <button
                   type="button"
-                  disabled={snapshot === null || !snapshot.canUndoApply}
+                  disabled={readOnly || snapshot === null || !snapshot.canUndoApply}
                   onClick={() => void submit({ type: 'undo-apply' })}
                 >
                   Отменить применение
                 </button>
                 <button
                   type="button"
-                  disabled={snapshot === null || !snapshot.canRedoApply}
+                  disabled={readOnly || snapshot === null || !snapshot.canRedoApply}
                   onClick={() => void submit({ type: 'redo-apply' })}
                 >
                   Повторить применение
@@ -773,8 +775,9 @@ export function BookWindow({
           >
             {/* Ключ по главе: заметка, черновик и попап принадлежат главе —
                 смена главы не переносит черновик в другую главу. */}
-            <ChapterNote key={chapterId ?? 'none'} value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />
+            <ChapterNote readOnly={readOnly} key={chapterId ?? 'none'} value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />
             <ReviewList
+              readOnly={readOnly}
               records={snapshot?.records ?? []}
               cardRecordId={cardId}
               onSelect={selectRecord}
@@ -784,10 +787,10 @@ export function BookWindow({
           </aside>
         )}
       </div>
-      {mode === 'text' && flyout !== null && (
+      {!readOnly && mode === 'text' && flyout !== null && (
         <SignalFlyout x={flyout.x} bottom={flyout.bottom} onPick={openDraft} registerFocus={registerFlyoutFocus} />
       )}
-      {popup?.kind === 'draft' && (
+      {!readOnly && popup?.kind === 'draft' && (
         <RecordPopup
           draft={{ from: popup.from, to: popup.to, signalType: popup.signalType }}
           at={popup.at}
@@ -796,7 +799,7 @@ export function BookWindow({
         />
       )}
       {popup?.kind === 'record' && popupRecord !== null && (
-        <RecordPopup record={popupRecord} at={popup.at} onCommand={dispatchCommand} onClose={() => setPopup(null)} />
+        <RecordPopup readOnly={readOnly} record={popupRecord} at={popup.at} onCommand={dispatchCommand} onClose={() => setPopup(null)} />
       )}
     </div>
   );

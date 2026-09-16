@@ -448,6 +448,11 @@ export function createBookService(deps: BookServiceDeps): BookService {
       chapterId,
       revision: entry.revision,
       recoveryConflict: entry.kind === 'recovery',
+      readOnlyReason: entry.kind === 'live' ? null : entry.kind === 'recovery'
+        ? 'Только чтение: Восстановление приостановлено. Сохраните локальную пару или откройте внешнюю версию.'
+        : entry.kind === 'readonly-missing'
+          ? 'Только чтение: файл главы отсутствует или недоступен.'
+          : 'Только чтение: файл рецензии повреждён или имеет неподдерживаемый формат.',
       // Доступность undo/redo — истина движка (стеки сессии); сгруппированные
       // пачки набора считаются одним шагом, поэтому зеркала-счётчики удалены.
       canUndoInput: live?.canUndoInput ?? false,
@@ -462,7 +467,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
         sourceText: '',
         records: [],
         chapterNote: '',
-        saveState: 'saved',
+        saveState: 'error',
       };
     }
     const model = entry.kind === 'live' ? entry.session.model : entry.model;
@@ -472,7 +477,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
       sourceText: strictUtf8.decode(model.source),
       records: buildRecordViews(model),
       chapterNote: model.review.chapter_note,
-      saveState: entry.kind === 'recovery' ? 'external' : entry.kind === 'live' ? entry.session.state : 'saved',
+      saveState: entry.kind === 'recovery' ? 'external' : entry.kind === 'live' ? entry.session.state : 'error',
     };
   }
 

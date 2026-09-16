@@ -321,7 +321,42 @@ test('неизвестная версия манифеста не перезап
     // Экран недавних не сменился, файл манифеста не тронут.
     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
     expect(await readFile(path.join(bookRoot, '.pocket-editor.json'), 'utf8')).toBe(brokenManifest);
+    expect(await session.page.evaluate(() => window.desk.recent())).toEqual([]);
+    expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe('текст\n');
   } finally {
     await closeApp(session);
   }
+});
+
+test('malformed review is read-only from the first editor frame and preserves files', async () => {
+  const bookRoot = await makeTempDir('galley-readonly-');
+  const manifest = JSON.stringify({ schema_version: 1, book_id: '99999999-9999-4999-8999-999999999999', title: 'Read only', chapters: [{ id: '11111111-1111-4111-8111-111111111111', path: 'chapter.md', title: 'Chapter' }], ignored_files: [] });
+  const files = { '.pocket-editor.json': manifest, 'chapter.md': 'original\r\n', 'chapter.review.json': '{ broken' };
+  const session = await launch(bookRoot, files);
+  try {
+    await session.page.evaluate(() => {
+      const state = window as unknown as { editableFrames: string[] };
+      state.editableFrames = [];
+      new MutationObserver(() => {
+        const editor = document.querySelector('.cm-content');
+        if (editor) state.editableFrames.push(editor.getAttribute('contenteditable') ?? 'missing');
+      }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['contenteditable'] });
+    });
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    const editor = session.page.locator('.cm-content');
+    await expect(editor).toHaveAttribute('contenteditable', 'false');
+    await expect(session.page.getByRole('alert')).toContainText('Только чтение');
+    await expect(session.page.locator('.book__save-state')).not.toContainText('Сохранено');
+    await session.page.getByRole('button', { name: 'Заметка главы', exact: true }).click();
+    await expect(session.page.getByRole('textbox', { name: 'Текст заметки' })).toHaveAttribute('readonly', '');
+    await expect(session.page.getByRole('button', { name: 'Сохранить', exact: true })).toBeDisabled();
+    const frames = await session.page.evaluate(() => (window as unknown as { editableFrames: string[] }).editableFrames);
+    expect(frames.length).toBeGreaterThan(0);
+    expect(frames.every(value => value === 'false')).toBe(true);
+    await session.page.getByRole('button', { name: 'Закрыть', exact: true }).click();
+    await editor.click();
+    await session.page.keyboard.type('attempted mutation');
+    for (const [name, bytes] of Object.entries(files)) expect(await readFile(path.join(bookRoot, name), 'utf8')).toBe(bytes);
+  } finally { await closeApp(session); }
 });

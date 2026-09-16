@@ -229,6 +229,8 @@ test('битый sidecar открывается read-only и не перезап
   const snapshot = await harness.openChapter(reopened.bookId, reopened.entries[0]!.id);
   expect(snapshot.text).toBe('кот\n');
   expect(snapshot.records).toEqual([]);
+  expect(snapshot.readOnlyReason).toBeTruthy();
+  expect(snapshot.saveState).not.toBe('saved');
   const command = await harness
     .command(view.bookId, view.entries[0]!.id, snapshot.revision, {
       type: 'note',
@@ -253,6 +255,8 @@ test('sidecar неизвестной версии открывается read-on
   const snapshot = await harness.openChapter(reopened.bookId, reopened.entries[0]!.id);
   expect(snapshot.text).toBe('кот\n');
   expect(snapshot.records).toEqual([]);
+  expect(snapshot.readOnlyReason).toBeTruthy();
+  expect(snapshot.saveState).not.toBe('saved');
   expect(await readFile(path.join(harness.bookRoot, 'Глава.review.json'), 'utf8')).toBe(before);
 });
 
@@ -266,6 +270,8 @@ test('отсутствующий файл главы помечается missin
   expect(reopened.entries[0]!.missing).toBe(true);
   const snapshot = await harness.openChapter(view.bookId, view.entries[0]!.id);
   expect(snapshot.text).toBe('');
+  expect(snapshot.readOnlyReason).toBeTruthy();
+  expect(snapshot.saveState).not.toBe('saved');
   const command = await harness
     .command(view.bookId, view.entries[0]!.id, snapshot.revision, { type: 'note', text: 'x' })
     .catch((caught) => caught);
@@ -843,6 +849,7 @@ test('audit: unresolved third revision must block new writes and preserve journa
   expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe('fox');
   expect(existsSync(path.join(h.bookRoot, '01.review.json'))).toBe(false);
   expect(s.recoveryConflict).toBe(true);
+  expect(s.readOnlyReason).toBeTruthy();
   const current = await readPair(book, c);
   await expect(writePair(book, c, current.revision, current.pair, h.appData)).rejects.toThrow('Unresolved chapter recovery');
   expect(await readJournalsForRoot(h.appData, h.bookRoot)).toEqual(journals);
@@ -941,4 +948,13 @@ test('deferred recovery picker cannot replace a newer session or reset its histo
   expect(await h.openChapter(v.bookId, c)).toEqual(newer);
   const undone = await h.command(v.bookId, c, newer.revision, { type: 'undo-input' });
   expect(undone.text).toBe('fox');
+});
+
+test('identity refusal does not record a recent success or alter files', async () => {
+  const h = await makeService({ 'Глава.md': 'кот\n', 'Глава.review.json': '{ broken' });
+  await expect(h.chooseBook()).rejects.toThrow('Existing reviews require the original manifest');
+  expect(await h.recent()).toEqual([]);
+  expect(existsSync(path.join(h.bookRoot, '.pocket-editor.json'))).toBe(false);
+  expect(await readFile(path.join(h.bookRoot, 'Глава.review.json'), 'utf8')).toBe('{ broken');
+  expect(await readFile(path.join(h.bookRoot, 'Глава.md'), 'utf8')).toBe('кот\n');
 });

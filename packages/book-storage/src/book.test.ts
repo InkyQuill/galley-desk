@@ -643,3 +643,15 @@ test('exported recovery is a usable single-chapter copy with exact source/review
     expect(await readJournalsForRoot(appData, directory)).toEqual([]);
   } finally { await cleanup(root, appData, destination); }
 });
+
+test.each([reviewJson(ID1, '01.md'), '{ broken'])('audit: missing manifest with existing sidecar must not create new identity (%s)', async review => {
+  const root = await tempDir('galley-identity-');
+  try {
+    await writeFile(path.join(root, '01.md'), SOURCE_1);
+    await writeFile(path.join(root, '01.review.json'), review);
+    await expect(openBook(root)).rejects.toThrow('Existing reviews require the original manifest');
+    expect(await readFile(path.join(root, '01.review.json'), 'utf8')).toBe(review);
+    expect(await readFile(path.join(root, '01.md'), 'utf8')).toBe(SOURCE_1);
+    expect(await readdir(root)).not.toContain('.pocket-editor.json');
+  } finally { await cleanup(root); }
+});

@@ -109,7 +109,7 @@ type FakeSnapshot = Pick<Snapshot, 'revision' | 'text' | 'chapterId'>;
 function snapshot(revision: number, text: string): Snapshot {
   return {
     bookId: 'book', chapterId: 'chapter', revision, text, sourceText: text,
-    records: [], chapterNote: '', saveState: 'saved',
+    records: [], chapterNote: '', readOnlyReason: null, saveState: 'saved',
     canUndoInput: false, canRedoInput: false, canUndoApply: false, canRedoApply: false,
   } satisfies Snapshot;
 }
