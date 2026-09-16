@@ -16,6 +16,7 @@ import {
 } from '@inkyquill/galley-themes';
 import type { ThemeCssVariables, ThemeDefinition } from '@inkyquill/galley-themes';
 import type { AppearanceSettings } from '../../shared/api';
+import { UI_FONT_SIZE_BOUNDS } from '../../shared/appearance';
 
 /** Системная схема: светлая/тёмная тема каталога выбирается по ОС. */
 export const SYSTEM_THEME_ID = 'auto';
@@ -178,13 +179,13 @@ export function Appearance({ value, onChange }: Props) {
           onChange={(event) => onChange({ ...value, uiFontFamily: event.target.value })} />
       </div>
       <div className="book__appearance-row">
-        <label htmlFor={`${formId}-ui-size`}>Размер интерфейса (10–24)</label>
-        <input id={`${formId}-ui-size`} type="number" min={10} max={24} step={1}
+        <label htmlFor={`${formId}-ui-size`}>Размер интерфейса ({UI_FONT_SIZE_BOUNDS.min}–{UI_FONT_SIZE_BOUNDS.max})</label>
+        <input id={`${formId}-ui-size`} type="number" min={UI_FONT_SIZE_BOUNDS.min} max={UI_FONT_SIZE_BOUNDS.max} step={1}
           value={uiSizeDraft ?? String(value.uiFontSize)} onBlur={() => setUiSizeDraft(null)}
           onChange={(event) => {
             setUiSizeDraft(event.target.value);
             const size = Number.parseInt(event.target.value, 10);
-            if (Number.isFinite(size)) onChange({ ...value, uiFontSize: clamp(size, { min: 10, max: 24 }) });
+            if (Number.isFinite(size)) onChange({ ...value, uiFontSize: clamp(size, UI_FONT_SIZE_BOUNDS) });
           }} />
       </div>
       <div className="book__appearance-row">

@@ -5,6 +5,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isThemeId } from '@inkyquill/galley-themes';
 import type { AppearanceSettings } from '../shared/api';
+import { UI_FONT_SIZE_BOUNDS } from '../shared/appearance';
 
 const SETTINGS_FILE = 'settings.json';
 
@@ -68,7 +69,7 @@ export function validateAppearance(value: unknown): AppearanceSettings {
   if (typeof uiFontFamily !== 'string' || !uiFontFamily.trim() || uiFontFamily.length > 200) {
     throw new Error('Некорректное имя шрифта интерфейса');
   }
-  if (typeof uiFontSize !== 'number' || !Number.isSafeInteger(uiFontSize) || uiFontSize < 10 || uiFontSize > 24) {
+  if (typeof uiFontSize !== 'number' || !Number.isSafeInteger(uiFontSize) || uiFontSize < UI_FONT_SIZE_BOUNDS.min || uiFontSize > UI_FONT_SIZE_BOUNDS.max) {
     throw new Error('Размер шрифта интерфейса должен быть целым числом от 10 до 24');
   }
   return { themeId, fontFamily, fontSize: record.fontSize, lineWidth: record.lineWidth, uiFontFamily, uiFontSize };
