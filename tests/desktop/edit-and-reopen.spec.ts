@@ -112,6 +112,7 @@ test('ввод кот→кит пишет sidecar, исходник цел, по
     await expect(content).toContainText('кит');
 
     // Закрытие книги дожидается очереди сохранения.
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
     expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe('кот спит.\n');
@@ -200,6 +201,7 @@ test('смена главы во время пачки ввода не пере�
     await waitSaveDrained(session.page, path.join(bookRoot, 'Вторая.review.json'));
 
     // Основная истина на диске: закрытие дожидается очередей сохранения.
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
 
@@ -245,6 +247,7 @@ test('быстрый ввод 50 транзакций не теряет и не 
     expect(sidecar.length).toBeGreaterThan(0);
 
     // Основная истина на диске: закрытие и повторное открытие книги.
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
     await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
@@ -276,6 +279,7 @@ test('Chromium composition commit/cancel and multiline emoji CRLF insertion surv
     await cdp.send('Input.imeSetComposition', { text: 'cancel', selectionStart: 6, selectionEnd: 6 });
     await cdp.send('Input.imeSetComposition', { text: '', selectionStart: 0, selectionEnd: 0 });
     await expect(content).not.toContainText('cancel');
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     const compositionReview = JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')) as Review;
     expect(openChapter(original, compositionReview).text).toBe('日本');
@@ -288,6 +292,7 @@ test('Chromium composition commit/cancel and multiline emoji CRLF insertion surv
     await content.click();
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.insertText('line one\r\nemoji 🦊\r\nlast');
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     const review = JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')) as Review;
     expect(openChapter(original, review).text).toBe('line one\nemoji 🦊\nlast');

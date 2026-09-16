@@ -49,6 +49,7 @@ for (const sidecar of ['chapter.review.json', 'chapter.md.review.json']) {
       expect(await readFile(path.join(root, sidecar))).toEqual(review);
       expect(await readFile(path.join(root, '.pocket-editor.json'))).toEqual(manifest);
       expect((await readdir(root)).filter(name => name.endsWith('.review.json'))).toEqual([sidecar]);
+      await page.getByRole('button', { name: 'Меню книги' }).click();
       await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     } finally {
       try {

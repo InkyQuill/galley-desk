@@ -688,6 +688,7 @@ test('стек применения очищается после обычной
     await expect(page.getByRole('button', { name: 'Отменить применение' })).toBeEnabled();
 
     // Закрытие книги очищает стек: после открытия отменить применение нельзя.
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
     await page.getByRole('button', { name: 'Открыть', exact: true }).click();

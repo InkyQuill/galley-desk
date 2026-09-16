@@ -225,6 +225,7 @@ test('восстанавливает главу и прокрутку в жив�
     });
     // Дожидаемся сохранения позиции (debounce 200 мс) и закрываем книгу.
     await session.page.waitForTimeout(700);
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
 
@@ -280,6 +281,7 @@ test('недоступная папка помечается, забывание
     await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
     await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
     await expect(session.page.getByRole('button', { name: 'Глава' })).toBeVisible();
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
 

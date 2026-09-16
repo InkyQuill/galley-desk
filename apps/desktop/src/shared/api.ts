@@ -16,7 +16,7 @@ export type Command =
  | {type:'note';text:string}
  | {type:'remove'|'apply';id:string}
  | {type:'undo-input'|'redo-input'|'undo-apply'|'redo-apply'};
-export type AppearanceSettings = {themeId:string; fontFamily:string; fontSize:number; lineWidth:number};
+export type AppearanceSettings = {themeId:string; fontFamily:string; fontSize:number; uiFontFamily:string; uiFontSize:number; lineWidth:number};
 export interface DeskApi {
   onCloseRequest(listener:(closing:boolean)=>Promise<void>):()=>void;
   appearance():Promise<AppearanceSettings>;

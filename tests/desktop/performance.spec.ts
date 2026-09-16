@@ -212,6 +212,7 @@ test('синтетическая книга: открытие главы, p95 в
       await expect(page.locator('.book__save-state')).toHaveText('Сохранено');
       confirmedSaveLatencies.push(performance.now() - saveStartedAt);
     }
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await page.getByRole('button', { name: 'Открыть', exact: true }).click();
     await page.getByRole('button', { name: BIG_CHAPTER_TITLE }).click();

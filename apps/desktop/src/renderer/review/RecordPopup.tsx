@@ -32,9 +32,9 @@ function reasonText(reason: string): string {
 }
 
 const cardBase: CSSProperties = {
-  background: 'Canvas',
-  color: 'CanvasText',
-  border: '1px solid color-mix(in srgb, CanvasText 30%, transparent)',
+  background: 'var(--app-panel)',
+  color: 'var(--app-text)',
+  border: 'none',
   borderRadius: 8,
   padding: '0.75rem',
   display: 'grid',
@@ -50,7 +50,7 @@ function floatingCard(at: NonNullable<PopupPosition>): CSSProperties {
     left: Math.max(8, Math.min(at.x, window.innerWidth - 336)),
     top: Math.max(8, Math.min(at.bottom + 8, window.innerHeight - 220)),
     zIndex: 40,
-    boxShadow: '0 4px 16px rgba(0,0,0,0.22)',
+    boxShadow: 'var(--app-dialog-shadow)',
   };
 }
 

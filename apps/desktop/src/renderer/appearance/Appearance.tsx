@@ -28,9 +28,11 @@ export const LINE_WIDTH_BOUNDS = { min: 320, max: 1600 } as const;
  * настроек не оставляет приложение без оформления. */
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   themeId: SYSTEM_THEME_ID,
-  fontFamily: 'system-ui',
-  fontSize: 16,
-  lineWidth: 720,
+  fontFamily: 'Literata',
+  fontSize: 18,
+  uiFontFamily: 'Geist',
+  uiFontSize: 13,
+  lineWidth: 700,
 };
 
 /** Идентификаторы тем для селекта: «auto» + весь встроенный каталог. */
@@ -105,13 +107,15 @@ export function windowContainerStyle(
     colorScheme: vars.colorScheme,
     backgroundColor: 'var(--app-bg)',
     color: 'var(--app-text)',
-    fontFamily: appearance.fontFamily,
-    fontSize: `${appearance.fontSize}px`,
+    fontFamily: `${appearance.uiFontFamily}, system-ui, sans-serif`,
+    fontSize: `${appearance.uiFontSize}px`,
     ...custom,
     // Типографика редактора Galley управляется переменными, наследование
     // rem-значений из root не отражает настройку пользователя.
+    '--desk-book-font': `${appearance.fontFamily}, Georgia, serif`,
+    '--desk-book-size': `${appearance.fontSize}px`,
     '--ge-font-size': `${appearance.fontSize}px`,
-    '--ge-font-body': `${appearance.fontFamily}, system-ui, sans-serif`,
+    '--ge-font-body': `${appearance.fontFamily}, Georgia, serif`,
   } as CSSProperties;
 }
 
@@ -132,6 +136,7 @@ export function Appearance({ value, onChange }: Props) {
   // Черновик числовых полей: во время набора «1» не должна превращаться в
   // нижнюю границу; в значение уходит только корректное число.
   const [fontSizeDraft, setFontSizeDraft] = useState<string | null>(null);
+  const [uiSizeDraft, setUiSizeDraft] = useState<string | null>(null);
   const [lineWidthDraft, setLineWidthDraft] = useState<string | null>(null);
 
   const commitFontSize = (raw: string): void => {
@@ -166,7 +171,22 @@ export function Appearance({ value, onChange }: Props) {
         </select>
       </div>
       <div className="book__appearance-row">
-        <label htmlFor={`${formId}-font`}>Шрифт</label>
+        <label htmlFor={`${formId}-ui-font`}>Шрифт интерфейса</label>
+        <input id={`${formId}-ui-font`} value={value.uiFontFamily} maxLength={200}
+          onChange={(event) => onChange({ ...value, uiFontFamily: event.target.value })} />
+      </div>
+      <div className="book__appearance-row">
+        <label htmlFor={`${formId}-ui-size`}>Размер интерфейса (10–24)</label>
+        <input id={`${formId}-ui-size`} type="number" min={10} max={24} step={1}
+          value={uiSizeDraft ?? String(value.uiFontSize)} onBlur={() => setUiSizeDraft(null)}
+          onChange={(event) => {
+            setUiSizeDraft(event.target.value);
+            const size = Number.parseInt(event.target.value, 10);
+            if (Number.isFinite(size)) onChange({ ...value, uiFontSize: clamp(size, { min: 10, max: 24 }) });
+          }} />
+      </div>
+      <div className="book__appearance-row">
+        <label htmlFor={`${formId}-font`}>Шрифт книги</label>
         <input
           id={`${formId}-font`}
           type="text"
@@ -176,7 +196,7 @@ export function Appearance({ value, onChange }: Props) {
         />
       </div>
       <div className="book__appearance-row">
-        <label htmlFor={`${formId}-font-size`}>Размер шрифта (10–48)</label>
+        <label htmlFor={`${formId}-font-size`}>Размер шрифта книги (10–48)</label>
         <input
           id={`${formId}-font-size`}
           type="number"

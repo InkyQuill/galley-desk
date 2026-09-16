@@ -80,6 +80,7 @@ test('failed profile write refuses book close, window close and repeated quit wh
     await expect(page.getByText('Ошибка сохранения', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Исходник', exact: true }).click();
     await expect(page.locator('.cm-content')).toHaveText('cat local');
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(page.getByRole('alert').filter({ hasText: 'окно остаётся открытым' }).first()).toBeVisible();
     await expect(page.locator('.cm-content')).toHaveText('cat local');
@@ -153,6 +154,7 @@ test('successful close stays inert until delayed response unmounts the book and 
         return result;
       });
     });
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect.poll(() => app.evaluate(() => (globalThis as unknown as { storageClosed: boolean }).storageClosed)).toBe(true);
     await expect(page.locator('.book')).toHaveJSProperty('inert', true);

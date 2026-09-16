@@ -552,19 +552,21 @@ test('внешний вид хранит значения по умолчани�
   const harness = await makeService({});
   expect(await harness.appearance()).toEqual({
     themeId: 'auto',
-    fontFamily: 'system-ui',
-    fontSize: 16,
-    lineWidth: 720,
+    fontFamily: 'Literata',
+    fontSize: 18,
+    uiFontFamily: 'Geist',
+    uiFontSize: 13,
+    lineWidth: 700,
   });
-  await harness.setAppearance({ themeId: 'galley-dark', fontFamily: 'Lora', fontSize: 19, lineWidth: 640 });
+  await harness.setAppearance({ uiFontFamily: 'Geist', uiFontSize: 13, themeId: 'galley-dark', fontFamily: 'Lora', fontSize: 19, lineWidth: 640 });
   expect((await harness.appearance()).fontSize).toBe(19);
   // Неизвестная тема отклоняется main (известен «auto» и каталог galley-themes).
   const rejectedTheme = await harness
-    .setAppearance({ themeId: 'night', fontFamily: 'Lora', fontSize: 19, lineWidth: 640 })
+    .setAppearance({ uiFontFamily: 'Geist', uiFontSize: 13, themeId: 'night', fontFamily: 'Lora', fontSize: 19, lineWidth: 640 })
     .catch((caught) => caught);
   expect(rejectedTheme).toBeInstanceOf(Error);
   const rejected = await harness
-    .setAppearance({ themeId: 'galley-dark', fontFamily: 'Lora', fontSize: 999, lineWidth: 640 })
+    .setAppearance({ uiFontFamily: 'Geist', uiFontSize: 13, themeId: 'galley-dark', fontFamily: 'Lora', fontSize: 999, lineWidth: 640 })
     .catch((caught) => caught);
   expect(rejected).toBeInstanceOf(Error);
   expect((await harness.appearance()).fontSize).toBe(19);

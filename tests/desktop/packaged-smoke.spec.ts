@@ -35,6 +35,7 @@ test('packaged executable: save, restart, apply and byte-exact undo', async () =
     await page.keyboard.insertText('кит\nНовая строка 🦊');
     await expect(page.locator('.book__save-state')).toHaveText('Сохранено');
     await expect.poll(async () => (await readFile(reviewPath, 'utf8').catch(() => '')).includes('кит')).toBe(true);
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     const review = await readFile(reviewPath);
     expect(await readFile(sourcePath)).toEqual(source);
@@ -50,6 +51,7 @@ test('packaged executable: save, restart, apply and byte-exact undo', async () =
     await expect(page.getByRole('button', { name: 'Повторить применение' })).toBeEnabled();
     expect(await readFile(sourcePath)).toEqual(source);
     expect(await readFile(reviewPath)).toEqual(review);
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
   } finally {
     try {

@@ -1,3 +1,4 @@
+import { IconArrowUp, IconArrowDown, IconX } from '@tabler/icons-react';
 // Панель поиска по главе. Запрос — точная подстрока (findLiteral: UTF-16
 // indexOf, без регулярок и замен). Область зависит от вида: «Текст» и
 // «Сравнение» ищут по snapshot.text, «Исходник» — по snapshot.sourceText;
@@ -19,13 +20,14 @@ const AREA_LABELS: Record<SearchArea, string> = {
 
 type Props = {
   area: SearchArea;
+  onClose: () => void;
   /** Текст области поиска: snapshot.text или snapshot.sourceText. */
   searchText: string;
   /** Переход к находке: выделение и прокрутка (знает вид BookWindow). */
   onReveal: (range: SearchRange) => void;
 };
 
-export function ChapterSearch({ area, searchText, onReveal }: Props) {
+export function ChapterSearch({ area, searchText, onReveal, onClose }: Props) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   // Пересчёт при смене текста (ввод, применение правки, смена главы).
@@ -54,6 +56,7 @@ export function ChapterSearch({ area, searchText, onReveal }: Props) {
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => {
+          if (event.key === 'Escape') { event.stopPropagation(); if (query) setQuery(''); else onClose(); }
           if (event.key === 'Enter') goTo(event.shiftKey ? active - 1 : active + 1);
         }}
       />
@@ -66,7 +69,7 @@ export function ChapterSearch({ area, searchText, onReveal }: Props) {
         disabled={results.length === 0}
         onClick={() => goTo(active - 1)}
       >
-        ↑
+        <IconArrowUp />
       </button>
       <button
         type="button"
@@ -74,8 +77,9 @@ export function ChapterSearch({ area, searchText, onReveal }: Props) {
         disabled={results.length === 0}
         onClick={() => goTo(active + 1)}
       >
-        ↓
+        <IconArrowDown />
       </button>
+      <button type="button" aria-label="Закрыть поиск" title="Закрыть поиск" onClick={onClose}><IconX /></button>
     </div>
   );
 }

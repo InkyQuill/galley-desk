@@ -125,6 +125,7 @@ test('поиск в «Тексте»: счётчик, переходы, выде
     await expect(page.locator('.cm-content')).toBeVisible();
 
     // Область поиска подписана видом.
+    await page.keyboard.press('Control+f');
     const search = page.getByRole('search', { name: 'Поиск по главе (Текст)' });
     await expect(search).toBeVisible();
 
@@ -171,6 +172,7 @@ test('область поиска зависит от вида: «Текст» �
     await expect(page2.locator('.cm-content')).toBeVisible();
 
     // В «Тексте» (snapshot.text) применённая правка видна: «кит» найден.
+    await page2.keyboard.press('Control+f');
     await page2.getByRole('textbox', { name: 'Поиск по главе' }).fill('кит');
     await expect(page2.locator('.book__search-counter')).toHaveText('1/1');
     await page2.getByRole('button', { name: 'Следующее совпадение' }).click();
@@ -215,6 +217,7 @@ test('в «Сравнении» находка во введённой част�
 
     // Запрос «кит» существует только во введённой части правки: переход
     // выделяет именно её (display-координаты через сегменты), а не удалённую.
+    await page2.keyboard.press('Control+f');
     await page2.getByRole('textbox', { name: 'Поиск по главе' }).fill('кит');
     await expect(page2.locator('.book__search-counter')).toHaveText('1/1');
     await page2.getByRole('button', { name: 'Следующее совпадение' }).click();
@@ -261,6 +264,7 @@ test('оформление: тема красит контейнер, настр
     await openByDialog();
     await expect(page.getByRole('button', { name: 'Глава 1' })).toBeVisible();
 
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Оформление' }).click();
     const themeSelect = page.getByLabel('Тема');
     await expect(themeSelect).toBeVisible();
@@ -281,9 +285,9 @@ test('оформление: тема красит контейнер, настр
       .toBe('dark');
 
     // Размер шрифта: значение уходит и в контейнер, и в appData.
-    await page.getByLabel('Размер шрифта (10–48)').fill('20');
+    await page.getByLabel('Размер шрифта книги (10–48)').fill('20');
     await expect
-      .poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.book')!).fontSize))
+      .poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.cm-content')!).fontSize))
       .toBe('20px');
     await expect
       .poll(async () => {
@@ -362,4 +366,52 @@ test('Zen: панели и topbar скрыты, Escape сначала закры
   } finally {
     await app.close();
   }
+});
+
+test('поиск открывается с клавиатуры и Escape очищает запрос до закрытия', async () => {
+  const session = await launchWithBook({ 'Глава.md': 'кот спит\n' });
+  try {
+    await session.openByDialog();
+    const { page } = session;
+    await expect(page.locator('.cm-content')).toBeVisible();
+    const field = page.getByRole('textbox', { name: 'Поиск по главе' });
+    await expect(field).toHaveCount(0);
+    await page.keyboard.press('Control+f');
+    await expect(field).toBeFocused();
+    await field.fill('кот');
+    await page.keyboard.press('Escape');
+    await expect(field).toHaveValue('');
+    await expect(field).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(field).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Поиск по главе', exact: true })).toBeFocused();
+    await page.getByRole('button', { name: 'Меню книги' }).click();
+    await expect(page.getByRole('button', { name: 'Оформление', exact: true })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Оформление', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Меню книги' })).toBeFocused();
+  } finally { await closeApp(session); }
+});
+
+test('размер книги не меняет интерфейс; оба локальных шрифта доступны с кириллицей', async () => {
+  const session = await launchWithBook({ 'Глава.md': 'Кириллица: ёж и щука.\n' });
+  try {
+    await session.openByDialog();
+    const { page } = session;
+    await expect(page.locator('.cm-content')).toBeVisible();
+    await page.getByRole('button', { name: 'Меню книги' }).click();
+    await page.getByRole('button', { name: 'Оформление', exact: true }).click();
+    await page.getByLabel('Размер шрифта книги (10–48)').fill('26');
+    await expect(page.locator('.cm-content')).toHaveCSS('font-size', '26px');
+    await expect(page.locator('.book')).toHaveCSS('font-size', '13px');
+    await page.getByLabel('Размер интерфейса (10–24)').fill('15');
+    await expect(page.locator('.book')).toHaveCSS('font-size', '15px');
+    await expect(page.locator('.cm-content')).toHaveCSS('font-size', '26px');
+    const loaded = await page.evaluate(async () => {
+      const ui = await document.fonts.load('13px Geist', 'Ёж');
+      const book = await document.fonts.load('18px Literata', 'Щука');
+      return [ui.length > 0, book.length > 0];
+    });
+    expect(loaded).toEqual([true, true]);
+  } finally { await closeApp(session); }
 });

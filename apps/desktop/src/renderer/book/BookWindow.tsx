@@ -1,3 +1,4 @@
+import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconX } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { AppearanceSettings, BookView, Command, RecordView, Snapshot } from '../../shared/api';
@@ -156,6 +157,23 @@ export function BookWindow({
   // изменение доезжает до тематического контейнера мгновенно и сохраняется
   // там же через DeskApi.
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuRef.current?.querySelector<HTMLButtonElement>('.book__menu-items button')?.focus();
+    const dismiss = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [menuOpen]);
+  useEffect(() => {
+    if (searchOpen) document.querySelector<HTMLInputElement>('.book__search-input')?.focus();
+  }, [searchOpen]);
   // Zen: панели и topbar скрыты; выход — постоянная кнопка или Escape
   // (сначала закрываются popup/flyout/карточка, затем сам Zen).
   const [zen, setZen] = useState(false);
@@ -212,10 +230,17 @@ export function BookWindow({
 
   // --- Zen и порядок Escape ---------------------------------------------------
 
-  const overlayRef = useRef({ popup, flyout, cardId, appearanceOpen, zen });
-  overlayRef.current = { popup, flyout, cardId, appearanceOpen, zen };
+  const overlayRef = useRef({ popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen });
+  overlayRef.current = { popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        event.stopPropagation();
+        setSearchOpen(true);
+        document.querySelector<HTMLInputElement>('.book__search-input')?.focus();
+        return;
+      }
       if (event.key !== 'Escape') return;
       const overlay = overlayRef.current;
       // Порядок: сначала всплывающие слои (попап обрабатывает и свой
@@ -232,8 +257,19 @@ export function BookWindow({
         setCardId(null);
         return;
       }
+      if (overlay.menuOpen) {
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+        return;
+      }
       if (overlay.appearanceOpen) {
         setAppearanceOpen(false);
+        return;
+      }
+      if (overlay.searchOpen) {
+        // The focused search field clears its query before collapsing.
+        if ((event.target as HTMLElement)?.closest('.book__search')) return;
+        setSearchOpen(false);
         return;
       }
       if (overlay.zen) setZen(false);
@@ -507,6 +543,9 @@ export function BookWindow({
   const enterZen = useCallback((): void => {
     setFlyout(null);
     setCardId(null);
+    setAppearanceOpen(false);
+    setMenuOpen(false);
+    setSearchOpen(false);
     setZen(true);
   }, []);
 
@@ -584,7 +623,7 @@ export function BookWindow({
         <header className="book__header">
           <h1 className="book__title">{book.title}</h1>
           {saveState !== null && (
-            <span className={`book__save-state book__save-state--${saveState}`}>{snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}</span>
+            <span role="status" title={snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]} className={`book__save-state book__save-state--${snapshot?.readOnlyReason ? 'readonly' : saveState}`}>{snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}</span>
           )}
           {saveError !== null && (
             <button type="button" className="book__reread" onClick={rereadChapter}>
@@ -603,23 +642,25 @@ export function BookWindow({
               </button>
             </span>
           )}
-          <button
-            type="button"
-            aria-expanded={appearanceOpen}
-            onClick={() => setAppearanceOpen((open) => !open)}
-          >
-            Оформление
-          </button>
-          <button type="button" onClick={enterZen}>
-            Режим Zen
-          </button>
-          <button type="button" className="book__close" onClick={() => void closeBook()}>
-            Закрыть книгу
-          </button>
+          <button type="button" ref={searchButtonRef} title="Поиск по главе (Ctrl+F)" aria-label="Поиск по главе" aria-expanded={searchOpen} onClick={() => setSearchOpen((open) => !open)}><IconSearch /></button>
+          <div className="book__view-toggle" aria-label="Режим просмотра">
+            <button type="button" title="Текст" aria-label="Текст" aria-pressed={mode === 'text'} onClick={() => switchMode('text')}><IconFileText /></button>
+            <button type="button" title="Сравнение" aria-label="Сравнение" aria-pressed={mode === 'comparison'} onClick={() => switchMode('comparison')}><IconColumns2 /></button>
+            <button type="button" title="Исходник" aria-label="Исходник" aria-pressed={mode === 'source'} onClick={() => switchMode('source')}><IconCode /></button>
+          </div>
+          <button type="button" title="Режим Zen" aria-label="Режим Zen" onClick={enterZen}><IconTarget /></button>
+          <div className="book__menu" ref={menuRef}>
+            <button type="button" ref={menuButtonRef} title="Меню книги" aria-label="Меню книги" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><IconDots /></button>
+            {menuOpen && <div className="book__menu-items" aria-label="Действия книги" onBlur={(event) => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) setMenuOpen(false); }}>
+              <button type="button" onClick={() => { setAppearanceOpen((open) => !open); setMenuOpen(false); }}><IconAdjustments />Оформление</button>
+              <button type="button" className="book__close" onClick={() => void closeBook()}><IconBookOff />Закрыть книгу</button>
+            </div>}
+          </div>
         </header>
       )}
       {appearanceOpen && (
         <div className="book__appearance-panel">
+          <button className="book__appearance-close" type="button" aria-label="Закрыть оформление" onClick={() => setAppearanceOpen(false)}><IconX /></button>
           <Appearance value={appearance} onChange={onAppearanceChange} />
           {appearanceError !== null && (
             <p className="app__error" role="alert">
@@ -637,7 +678,7 @@ export function BookWindow({
           onClick={() => setZen(false)}
           title="Выйти из Zen (Esc)"
         >
-          Выйти из Zen
+          <IconTargetOff /><span>Выйти из Zen</span>
         </button>
       )}
       {error !== null && (
@@ -647,10 +688,10 @@ export function BookWindow({
       )}
       <div
         className="book__body"
-        style={{ gridTemplateColumns: zen ? '1fr' : '16rem 1fr 18rem' }}
       >
         {!zen && (
           <nav className="book__chapters" aria-label="Оглавление">
+            <h2 className="book__panel-title">Оглавление</h2>
             <input
               type="text"
               className="book__chapter-filter"
@@ -678,36 +719,11 @@ export function BookWindow({
         )}
         <section className="book__content">
           {activeChapter !== null && <h2 className="book__chapter-title">{activeChapter.title || activeChapter.path}</h2>}
-          <div className="book__view-toggle" aria-label="Режим просмотра">
-            <button
-              type="button"
-              aria-pressed={mode === 'text'}
-              className={mode === 'text' ? 'book__view book__view--active' : 'book__view'}
-              onClick={() => switchMode('text')}
-            >
-              Текст
-            </button>
-            <button
-              type="button"
-              aria-pressed={mode === 'comparison'}
-              className={mode === 'comparison' ? 'book__view book__view--active' : 'book__view'}
-              onClick={() => switchMode('comparison')}
-            >
-              Сравнение
-            </button>
-            <button
-              type="button"
-              aria-pressed={mode === 'source'}
-              className={mode === 'source' ? 'book__view book__view--active' : 'book__view'}
-              onClick={() => switchMode('source')}
-            >
-              Исходник
-            </button>
-          </div>
-          {snapshot !== null && (
+          {snapshot !== null && searchOpen && (
             // Поиск по главе: область подписана и зависит от вида (Текст/
             // Сравнение — snapshot.text, Исходник — snapshot.sourceText).
             <ChapterSearch
+              onClose={() => { setSearchOpen(false); searchButtonRef.current?.focus(); }}
               area={mode}
               searchText={mode === 'source' ? snapshot.sourceText : snapshot.text}
               onReveal={revealSearchResult}
@@ -764,15 +780,8 @@ export function BookWindow({
           <aside
             className="book__review"
             aria-label="Рецензия"
-            style={{
-              borderLeft: '1px solid color-mix(in srgb, currentColor 20%, transparent)',
-              padding: '0.75rem',
-              overflowY: 'auto',
-              display: 'grid',
-              gap: '0.75rem',
-              alignContent: 'start',
-            }}
           >
+            <h2 className="book__panel-title">Рецензия</h2>
             {/* Ключ по главе: заметка, черновик и попап принадлежат главе —
                 смена главы не переносит черновик в другую главу. */}
             <ChapterNote readOnly={readOnly} key={chapterId ?? 'none'} value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />

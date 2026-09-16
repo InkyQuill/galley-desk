@@ -37,10 +37,10 @@ export function SignalFlyout({ x, bottom, onPick, registerFocus }: Props) {
         gap: 4,
         padding: 4,
         borderRadius: 8,
-        background: 'Canvas',
-        color: 'CanvasText',
-        border: '1px solid color-mix(in srgb, CanvasText 30%, transparent)',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+        background: 'var(--app-panel)',
+        color: 'var(--app-text)',
+        border: 'none',
+        boxShadow: 'var(--app-dialog-shadow)',
       }}
     >
       {SIGNAL_TYPES.map((type) => (

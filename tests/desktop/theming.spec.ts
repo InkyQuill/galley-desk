@@ -96,7 +96,7 @@ test('тёмная тема из настроек красит экран нед
     expect(root.bgColor).toBe(themeTokenRgb('gruvbox-dark', '--app-bg'));
     expect(root.colorScheme).toBe('dark');
     expect(root.dataScheme).toBe('dark');
-    expect(root.fontFamily).toContain('Lora');
+    expect(root.fontFamily).toContain('Geist');
     // Локальный warning-токен переключён на тёмный вариант пары.
     expect(root.warningVar).toBe('#d9a34a');
     // Экран недавних — внутри тематического контейнера (наследование переменных).
@@ -145,6 +145,7 @@ test('ошибки следуют теме: «папка не найдена» �
     );
     expect(bookBg).toBe('#1d2021');
 
+    await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(page.getByRole('heading', { name: 'Galley Desk' })).toBeVisible();
   } finally {
