@@ -7,6 +7,7 @@ import { encodeReview, makeAnchor } from '@galley-desk/pocket-format';
 import type { Edit, Review, Signal } from '@galley-desk/pocket-format';
 import { createBookService } from './book-service';
 import { IpcError } from './ipc';
+
 import type { Snapshot } from '../shared/api';
 
 const tempDirs: string[] = [];
@@ -957,4 +958,75 @@ test('identity refusal does not record a recent success or alter files', async (
   expect(existsSync(path.join(h.bookRoot, '.pocket-editor.json'))).toBe(false);
   expect(await readFile(path.join(h.bookRoot, 'Глава.review.json'), 'utf8')).toBe('{ broken');
   expect(await readFile(path.join(h.bookRoot, 'Глава.md'), 'utf8')).toBe('кот\n');
+});
+
+
+test('watcher queued behind an own write does not advance revision or interrupt subsequent input', async () => {
+  const harness = await makeService({ 'Глава.md': 'кот\n' });
+  const view = (await harness.chooseBook())!;
+  const chapterId = view.entries[0]!.id;
+  const initial = await harness.openChapter(view.bookId, chapterId);
+  const snapshots: Snapshot[] = [];
+  harness.subscribe(snapshot => snapshots.push(snapshot));
+  let release!: () => void;
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const storageBook = await vi.importActual<typeof import('@galley-desk/book-storage')>(
+    '../../../../packages/book-storage/src/book',
+  );
+  const writePair = storageBook.writePair;
+  const spy = vi.spyOn(storageBook, 'writePair').mockImplementationOnce(async (...args) => {
+    entered();
+    await gate;
+    return writePair(...args);
+  });
+  try {
+    const writing = harness.command(view.bookId, chapterId, initial.revision, {
+      type: 'text', changes: [{ from: 3, to: 3, insert: '!' }], selection: { anchor: 4, head: 4 },
+    });
+    await started;
+    const checking = harness.recheckExternal();
+    release();
+    const edited = await writing;
+    await checking;
+    expect(snapshots).toHaveLength(1);
+    const next = await harness.command(view.bookId, chapterId, edited.revision, {
+      type: 'text', changes: [{ from: 4, to: 4, insert: '?' }], selection: { anchor: 5, head: 5 },
+    });
+    expect(next.text).toBe('кот!?\n');
+    expect(next.revision).toBe(initial.revision + 2);
+    await writeFile(path.join(harness.bookRoot, 'Глава.md'), 'external');
+    await harness.recheckExternal();
+    expect(snapshots).toHaveLength(3);
+    expect(snapshots[2]!.revision).toBe(next.revision + 1);
+    await expect(harness.command(view.bookId, chapterId, next.revision, {
+      type: 'text', changes: [{ from: 0, to: 0, insert: 'lost' }], selection: { anchor: 4, head: 4 },
+    })).rejects.toMatchObject({ code: 'STALE_REVISION' });
+    expect(await readFile(path.join(harness.bookRoot, 'Глава.md'), 'utf8')).toBe('external');
+  } finally {
+    release();
+    spy.mockRestore();
+    await harness.closeBook(view.bookId);
+  }
+});
+
+test('command preflight rejects an external adoption queued by the watcher ahead of it', async () => {
+  const harness = await makeService({ 'Глава.md': 'кот\n' });
+  const view = (await harness.chooseBook())!;
+  const chapterId = view.entries[0]!.id;
+  const initial = await harness.openChapter(view.bookId, chapterId);
+  const snapshots: Snapshot[] = [];
+  harness.subscribe(snapshot => snapshots.push(snapshot));
+  await writeFile(path.join(harness.bookRoot, 'Глава.md'), 'external');
+  const checking = harness.recheckExternal();
+  const command = harness.command(view.bookId, chapterId, initial.revision, {
+    type: 'text', changes: [{ from: 0, to: 0, insert: 'lost' }], selection: { anchor: 4, head: 4 },
+  });
+  await expect(command).rejects.toMatchObject({ code: 'STALE_REVISION' });
+  await checking;
+  expect(snapshots).toHaveLength(1);
+  expect(snapshots[0]!.revision).toBe(initial.revision + 1);
+  expect(await readFile(path.join(harness.bookRoot, 'Глава.md'), 'utf8')).toBe('external');
+  await harness.closeBook(view.bookId);
 });

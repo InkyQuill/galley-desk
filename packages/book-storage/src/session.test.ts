@@ -229,7 +229,7 @@ test('checkExternal adopts the on-disk pair and invalidates both histories', asy
   await session.edit([{ from: 3, to: 3, insert: '!' }], { anchor: 4, head: 4 });
   await externalWrite(root, 'ABCD');
 
-  await session.checkExternal();
+  expect(await session.checkExternal()).toBe(true);
   expect(session.state).toBe('saved');
   expect(session.model.text).toBe('ABCD');
   const pair = await readPair(book, chapterId);
@@ -421,8 +421,8 @@ test('checkExternal with an unchanged pair is a no-op: model and histories stay'
   expect(session.canUndoInput).toBe(true);
   const model = session.model;
 
-  await session.checkExternal();
-  await session.checkExternal();
+  expect(await session.checkExternal()).toBe(false);
+  expect(await session.checkExternal()).toBe(false);
   // Второй вызов не перестраивает модель и не очищает undo-стек.
   expect(session.model).toBe(model);
   expect(session.canUndoInput).toBe(true);

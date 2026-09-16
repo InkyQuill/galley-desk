@@ -338,15 +338,13 @@ export function createBookService(deps: BookServiceDeps): BookService {
     if (book === undefined) return;
     for (const [chapterId, entry] of book.chapters) {
       if (entry.kind !== 'live') continue;
-      const before = { revision: entry.session.revision, state: entry.session.state };
       try {
-        await entry.session.checkExternal();
+        if (!await entry.session.checkExternal()) continue;
       } catch {
         // Черновик мог не сохраниться — состояние увидит следующая проверка.
         console.error('[desk] watcher: code=SAVE_FAILED');
         continue;
       }
-      if (entry.session.revision === before.revision && stateOf(entry.session) === before.state) continue;
       // Ревизия сервиса растёт вместе с принятым изменением: устаревшие
       // expectedRevision рендера не проходят оптимистическую проверку.
       entry.revision += 1;
@@ -646,11 +644,12 @@ export function createBookService(deps: BookServiceDeps): BookService {
         // внешней версии и отказ команды: никакого silent rebase локального
         // ввода поверх чужого текста. Жёсткую гарантию всё равно даёт
         // writePair (WriteConflictError с сохранением черновика).
-        const revisionBefore = entry.session.revision;
-        await entry.session.checkExternal();
-        if (stateOf(entry.session) === 'external' || entry.session.revision !== revisionBefore) {
+        const externalChanged = await entry.session.checkExternal();
+        if (externalChanged) {
           entry.revision += 1;
           notify(snapshotOf(bookId, chapterId, entry));
+        }
+        if (externalChanged || stateOf(entry.session) === 'external' || expectedRevision !== entry.revision) {
           throw new IpcError('STALE_REVISION', 'Глава изменена снаружи; разрешите изменение перед вводом');
         }
         // Ошибки хранения (конфликт записи, пустой исходник, неактивная запись)

@@ -377,25 +377,29 @@ export class ChapterSession {
    * draft pair is first saved atomically into appData and only then the
    * state switches to `external`. A failed draft write changes nothing: the
    * model, the pending work and the state stay as they were.
+   * Returns whether this queued check adopted an external pair or changed
+   * state, excluding local writes completed ahead of it in the queue.
    */
-  checkExternal(): Promise<void> {
+  checkExternal(): Promise<boolean> {
     return this.queue.enqueue(async () => {
       if (this.state === 'saved') {
         const { pair, revision } = await readPair(this.book, this.chapterId);
         if (revision.sourceHash === this.revision.sourceHash && revision.reviewHash === this.revision.reviewHash) {
           // Внешней версии нет: дешёвый no-op без перестроения модели.
-          return;
+          return false;
         }
         this.applyHistory.clear();
         this.inputHistory.clear();
         this.adopt(pair, modelFromPair(pair, this.chapterId, this.sourcePath), revision);
         this.state = 'saved';
-        return;
+        return true;
       }
+      const changed = this.state !== 'external';
       await writeDraft(this.appData, this.chapterId, this.pending ?? this.pair);
       this.applyHistory.clear();
       this.inputHistory.clear();
       this.state = 'external';
+      return changed;
     });
   }
 
