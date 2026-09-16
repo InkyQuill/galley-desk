@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-app-bg: var(--app-bg);
+  --color-app-panel: var(--app-panel);
+  --color-app-panel-muted: var(--app-panel-muted);
+  --color-app-text: var(--app-text);
+  --color-app-text-muted: var(--app-text-muted);
+  --color-app-hover: var(--app-hover);
+  --color-app-accent: var(--app-accent);
+  --color-app-error: var(--app-error-text);
+}
+
+/* Нейтральная системная подложка до первой покраски AppearanceProvider —
+   тот же приём, что и в apps/desktop/src/renderer/app.css, чтобы не
+   мигать чужой темой на первом кадре. */
+body {
+  margin: 0;
+  background: Canvas;
+  color: CanvasText;
+}
