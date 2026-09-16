@@ -1,0 +1,1 @@
+3f01f04930a22f512bd84764ba0c40ff993ae9e76bb7c19d36747f0882d3c566  apps/desktop/out/make/zip/linux/x64/Galley Desk-linux-x64-0.1.0.zip
