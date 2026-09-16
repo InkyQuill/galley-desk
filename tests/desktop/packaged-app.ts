@@ -4,7 +4,7 @@ import { chromium, type Browser, type Page } from '@playwright/test';
 const LAUNCH_TIMEOUT_MS = 30_000;
 const STOP_TIMEOUT_MS = 3_000;
 
-type PackagedApp = { page: Page; stop: () => Promise<void> };
+type PackagedApp = { page: Page; pid: number; stop: () => Promise<void> };
 
 async function bounded<T>(operation: Promise<T>, timeout: number, message: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
@@ -85,7 +85,8 @@ export async function launchPackaged(executable: string, profile: string): Promi
     const context = browser.contexts()[0];
     if (!context) throw new Error('Packaged executable did not expose a browser context');
     const page = context.pages()[0] ?? await context.waitForEvent('page', { timeout: LAUNCH_TIMEOUT_MS });
-    return { page, stop };
+    if (child.pid === undefined) throw new Error('Packaged executable has no process id');
+    return { page, pid: child.pid, stop };
   } catch (error) {
     try {
       await stop();

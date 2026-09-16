@@ -8,7 +8,7 @@ import type { WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
-import type { Command } from '../shared/api';
+import type { Command, WindowAction, WindowState } from '../shared/api';
 import { isHttpHttpsUrl } from './resources';
 
 /** Stable IPC error codes of the contract (never renamed). */
@@ -205,6 +205,8 @@ export type DeskIpcDeps = {
   broadcast: SnapshotBroadcaster;
   /** Внешнее открытие ссылок (main передаёт shell.openExternal); инъекция — для тестов. */
   openExternal: (url: string) => Promise<void>;
+  windowState?: (contents: WebContents) => WindowState;
+  windowAction?: (contents: WebContents, action: WindowAction) => WindowState;
 };
 
 /** Only a matching one-shot acknowledgement from the requested top frame counts. */
@@ -242,7 +244,7 @@ export function resumeRenderer(contents: WebContents): void {
  */
 export function registerDeskIpc(deps: DeskIpcDeps): void {
   const { service } = deps;
-  const handle = (channel: string, handler: (event: IpcMainInvokeEvent, args: unknown[]) => Promise<unknown>): void => {
+  const handle = (channel: string, handler: (event: IpcMainInvokeEvent, args: unknown[]) => unknown | Promise<unknown>): void => {
     ipcMain.handle(channel, async (event, ...args) => {
       if (!senderIsTrusted(event)) {
         console.error(`[desk] ${channel}: отклонено — недоверенный senderFrame`);
@@ -259,6 +261,18 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
     });
   };
 
+  handle('desk:window-state', (event) => {
+    if (deps.windowState === undefined) throw new IpcError('SAVE_FAILED', 'Окно недоступно');
+    return deps.windowState(event.sender);
+  });
+  handle('desk:window-action', (event, args) => {
+    if (deps.windowAction === undefined) throw new IpcError('SAVE_FAILED', 'Окно недоступно');
+    const action = args[0];
+    if (action !== 'minimize' && action !== 'toggle-maximize' && action !== 'close') {
+      throw new IpcError('SAVE_FAILED', 'Неизвестное действие окна');
+    }
+    return deps.windowAction(event.sender, action);
+  });
   handle('desk:appearance', () => service.appearance());
   // Валидация значения происходит в сервисе (validateAppearance принимает
   // неизвестные данные); на границе это лишь формальная типизация.

@@ -153,3 +153,25 @@ test('management IPC validates operation and all supplied values', () => {
  expect(validateBookChange({type:'add',paths:['a.md']})).toEqual({type:'add',paths:['a.md']});
  expect(validateBookChange({type:'trash',chapterId:'a'})).toEqual({type:'trash',chapterId:'a'});
 });
+
+test('window controls accept only explicit actions from the trusted top frame', async () => {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
+  const trusted = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
+  const foreign = { sender, senderFrame: { parent: null, url: 'https://example.com/' } };
+  const windowAction = vi.fn(() => ({ maximized: false, platform: 'linux' as const }));
+  vi.mocked(ipcMain.handle).mockClear();
+  registerDeskIpc({
+    service: { subscribe: vi.fn() } as unknown as BookService,
+    broadcast: vi.fn(), openExternal: vi.fn(), windowAction,
+  });
+  const handler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === 'desk:window-action')![1];
+  await expect(handler(trusted as never, 'destroy')).resolves.toMatchObject({ ok: false });
+  expect(windowAction).not.toHaveBeenCalled();
+  await expect(handler(foreign as never, 'close')).rejects.toThrow('IPC rejected');
+  expect(windowAction).not.toHaveBeenCalled();
+  await expect(handler(trusted as never, 'close')).resolves.toEqual({
+    ok: true, value: { maximized: false, platform: 'linux' },
+  });
+  expect(windowAction).toHaveBeenCalledWith(sender, 'close');
+});

@@ -1,9 +1,10 @@
 /// <reference types="@electron-forge/plugin-vite/forge-vite-env" />
-import { app, BrowserWindow, dialog, protocol, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, protocol, shell } from 'electron';
 import path from 'node:path';
 import { createBookService } from './book-service';
 import { flushRenderer, resumeRenderer, isOwnRendererUrl, registerDeskIpc } from './ipc';
 import { BOOK_RESOURCE_SCHEME, parseBookResourceUrl, resolveBookImage } from './resources';
+import { buildMainWindowOptions, readWindowState, runWindowAction } from './window';
 
 // Глобальные константы создаёт Forge Vite plugin на этапе сборки:
 // в dev это URL dev-сервера, в упакованном приложении — undefined,
@@ -42,16 +43,18 @@ let closeWindow: ((window: BrowserWindow) => void) | null = null;
 let quitFlushed = false;
 
 const createWindow = (): void => {
-  const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 850,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
+  const icon = app.isPackaged
+    ? path.join(process.resourcesPath, 'branding', 'generated', 'galley-desk-icon.png')
+    : path.resolve(__dirname, '../../assets/branding/generated/galley-desk-icon.png');
+  const mainWindow = new BrowserWindow(buildMainWindowOptions(process.platform, path.join(__dirname, 'preload.js'), icon));
+
+  const publishWindowState = (): void => {
+    if (!mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('desk:window-state-changed', readWindowState(mainWindow));
+    }
+  };
+  mainWindow.on('maximize', publishWindowState);
+  mainWindow.on('unmaximize', publishWindowState);
 
   // Local book review needs no browser permissions (camera, microphone,
   // notifications, location). Deny both requests and permission probes.
@@ -104,6 +107,9 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
+    // Frameless Linux chrome must not retain Electron's Alt-activated menu.
+    // macOS keeps the conventional application menu and keyboard roles.
+    if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
     const service = createBookService({
       appData: app.getPath('userData'),
       trashItem: (target) => shell.trashItem(target),
@@ -150,6 +156,16 @@ if (!app.requestSingleInstanceLock()) {
       // Обёртка (а не ссылка на метод): подмена shell.openExternal в тестах
       // перехватывается, так как свойство читается в момент вызова.
       openExternal: (url) => shell.openExternal(url),
+      windowState: (contents) => {
+        const window = BrowserWindow.fromWebContents(contents);
+        if (window === null) throw new Error('Window missing');
+        return readWindowState(window);
+      },
+      windowAction: (contents, action) => {
+        const window = BrowserWindow.fromWebContents(contents);
+        if (window === null) throw new Error('Window missing');
+        return runWindowAction(window, action);
+      },
       broadcast: (snapshot) => {
         for (const window of BrowserWindow.getAllWindows()) {
           window.webContents.send('desk:snapshot', snapshot);

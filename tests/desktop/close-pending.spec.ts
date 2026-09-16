@@ -104,12 +104,12 @@ test('failed profile write refuses book close, window close and repeated quit wh
   } finally { await forceStop(app); }
 });
 
-test('native window close flushes pending text before destroying the window', async () => {
+test('custom window close flushes pending text before destroying the window', async () => {
   const { app, page, bookRoot } = await launch();
   try {
     await burst(page, 'y');
     const closed = page.waitForEvent('close');
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
+    await page.getByRole('button', { name: 'Закрыть окно' }).click();
     await closed;
     const second = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, GALLEY_DESK_USER_DATA: await temp('desk-reopen-') } });
     try {

@@ -4,7 +4,17 @@
 [data-scheme='dark'] { --desk-warning: #d9a34a; }
 * { box-sizing: border-box; }
 body { margin: 0; background: Canvas; }
-.app-root { min-height: 100vh; --desk-accent: var(--app-focus); }
+.app-root { height: 100vh; display: flex; flex-direction: column; overflow: hidden; --desk-accent: var(--app-focus); }
+.app-root__content { flex: 1; min-height: 0; }
+.titlebar { -webkit-app-region: drag; flex: none; height: 38px; display: flex; align-items: center; gap: 9px; padding-left: 12px; background: var(--app-panel); color: var(--app-text); user-select: none; }
+.titlebar--mac { padding-left: 82px; }
+.titlebar__icon { width: 23px; height: 23px; object-fit: contain; }
+.titlebar__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88em; font-weight: 500; }
+.titlebar__controls { -webkit-app-region: no-drag; align-self: stretch; display: flex; }
+.app-root .titlebar__controls button { width: 46px; height: 100%; border-radius: 0; padding: 0; }
+.app-root .titlebar__controls button:hover { background: var(--app-hover); }
+.app-root .titlebar__controls .titlebar__close:hover { color: white; background: #c42b1c; }
+.titlebar__controls svg { width: 16px; height: 16px; }
 .app-root button, .app-root input, .app-root select, .app-root textarea { font: inherit; color: inherit; }
 .app-root button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 6px; padding: 7px 9px; background: transparent; cursor: pointer; }
 .app-root button:hover { background: var(--app-hover); }
@@ -14,7 +24,7 @@ body { margin: 0; background: Canvas; }
 .app-root :is(input, select, textarea) { min-width: 0; border: 0; border-radius: 6px; padding: 8px 10px; background: var(--app-panel-muted); }
 .app-root textarea { width: 100%; resize: vertical; }
 .app-root svg { width: 18px; height: 18px; flex: none; stroke-width: 2; }
-.app { display: grid; place-content: center; justify-items: center; min-height: 100vh; text-align: center; gap: 12px; }
+.app { display: grid; place-content: center; justify-items: center; height: 100%; text-align: center; gap: 12px; }
 .app__hint, .recent-list__path { color: var(--app-text-muted); margin: 0; }
 .app .app__primary { background: var(--app-hover); padding: 10px 22px; }
 .app__error, .recent-list__missing { color: var(--app-error-text); overflow-wrap: anywhere; }
@@ -25,7 +35,7 @@ body { margin: 0; background: Canvas; }
 .recent-list__title { font-weight: 600; }
 .recent-list__path { font-size: .9em; overflow-wrap: anywhere; }
 .recent-list__actions { display: flex; gap: 8px; }
-.book { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.book { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .book__header { display: flex; flex: none; align-items: center; gap: 6px; padding: 8px 14px; background: var(--app-panel); flex-wrap: wrap; }
 .book__title { font-size: 1em; font-weight: 500; margin: 0; flex: 1; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .book__save-state { font-size: .9em; color: var(--app-text-muted); }
@@ -73,7 +83,7 @@ body { margin: 0; background: Canvas; }
 .book__record--unavailable { opacity: .65; }
 .book__review [role='dialog'] { min-width: 0; max-width: 100%; overflow-wrap: anywhere; background: var(--app-panel-muted) !important; }
 .chapter-note > button { background: var(--app-panel-muted); justify-content: flex-start; text-align: left; }
-.book__zen-exit { position: fixed; top: 8px; right: 12px; z-index: 50; background: var(--app-panel) !important; color: var(--app-text-muted) !important; }
+.book__zen-exit { position: fixed; top: 46px; right: 12px; z-index: 50; background: var(--app-panel) !important; color: var(--app-text-muted) !important; }
 .book__image { max-width: 100%; max-height: 128px; border-radius: 6px; }
 .book__image-unavailable { color: var(--app-text-muted); font-style: italic; }
 @media (max-width: 1000px) {

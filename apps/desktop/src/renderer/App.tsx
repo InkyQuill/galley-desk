@@ -11,6 +11,7 @@ import {
 import { BookWindow } from './book/BookWindow';
 import type { ReadingRestore } from './book/BookWindow';
 import { RecentBooks } from './book/RecentBooks';
+import { TitleBar } from './TitleBar';
 
 declare global {
   interface Window {
@@ -107,10 +108,12 @@ export function App() {
       style={windowContainerStyle(appearanceTheme, appearance)}
       data-scheme={appearanceTheme.scheme}
     >
-      {book === null ? (
-        <RecentBooks onOpen={openBook} refreshKey={refreshKey} />
-      ) : (
-        <BookWindow
+      <TitleBar title={book?.title ?? 'Galley Desk'} />
+      <div className="app-root__content">
+        {book === null ? (
+          <RecentBooks onOpen={openBook} refreshKey={refreshKey} />
+        ) : (
+          <BookWindow
           book={book}
           restore={restore}
           onClose={closeBook}
@@ -118,8 +121,9 @@ export function App() {
           appearanceTheme={appearanceTheme}
           appearanceError={appearanceError}
           onAppearanceChange={updateAppearance}
-        />
-      )}
+          />
+        )}
+      </div>
     </div>
   );
 }

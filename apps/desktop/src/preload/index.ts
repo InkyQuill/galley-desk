@@ -10,6 +10,7 @@ import type {
   DeskApi,
   Recent,
   Snapshot,
+  WindowState,
 } from '../shared/api';
 
 /** Ответ основного процесса: ошибки приходят конвертом со стабильным кодом. */
@@ -55,6 +56,13 @@ const desk: DeskApi = {
   openExternal: (url) => call<void>('desk:open-external', url),
   resolveExternal: (bookId, chapterId, choice) =>
     call<Snapshot>('desk:resolve-external', bookId, chapterId, choice),
+  windowState: () => call<WindowState>('desk:window-state'),
+  windowAction: (action) => call<WindowState>('desk:window-action', action),
+  onWindowState: (listener) => {
+    const handler = (_event: unknown, state: WindowState): void => listener(state);
+    ipcRenderer.on('desk:window-state-changed', handler);
+    return () => { ipcRenderer.removeListener('desk:window-state-changed', handler); };
+  },
   onSnapshot: (listener) => {
     // Подписка удаляет ровно свой обработчик, не чужие.
     const handler = (_event: unknown, snapshot: Snapshot): void => listener(snapshot);

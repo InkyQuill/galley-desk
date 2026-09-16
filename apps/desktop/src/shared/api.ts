@@ -24,6 +24,8 @@ export type BookChange =
  | {type:'add';paths:string[]}
  | {type:'remove'|'trash';chapterId:string};
 export type ChapterDiscovery = {book:BookView;files:{path:string}[]};
+export type WindowAction = 'minimize'|'toggle-maximize'|'close';
+export type WindowState = {maximized:boolean;platform:NodeJS.Platform};
 export interface DeskApi {
   manageBook(bookId:string,change:BookChange):Promise<BookView>;
   discoverChapters(bookId:string):Promise<ChapterDiscovery>;
@@ -41,4 +43,7 @@ export interface DeskApi {
   openExternal(url:string):Promise<void>;
   onSnapshot(listener:(snapshot:Snapshot)=>void):()=>void;
   resolveExternal(bookId:string,chapterId:string,choice:'open-external'|'export-local'):Promise<Snapshot>;
+  windowState():Promise<WindowState>;
+  windowAction(action:WindowAction):Promise<WindowState>;
+  onWindowState(listener:(state:WindowState)=>void):()=>void;
 }
