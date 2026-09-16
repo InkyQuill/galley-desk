@@ -1238,3 +1238,18 @@ test('committed book management succeeds even when recent-list persistence fails
     await h.closeAll();
   }
 });
+
+test.each(['\n', '\r\n'])('editing a body-start insertion preserves its metadata support prefix (%j)', async eol => {
+  const source = '\uFEFF' + ['---', 'title: A', '---', 'Body'].join(eol);
+  const h = await makeService({'01.md': source});
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  const body = initial.text.indexOf('Body');
+  const inserted = await h.command(book.bookId, id, initial.revision, {type: 'text', changes: [{from: body, to: body, insert: 'XY'}], selection: {anchor: body + 2, head: body + 2}});
+  const edited = await h.command(book.bookId, id, inserted.revision, {type: 'text', changes: [{from: body, to: body + 1, insert: 'Z'}], selection: {anchor: body + 1, head: body + 1}});
+  expect(edited.text).toBe(initial.text.slice(0, body) + 'ZYBody');
+  await expect(h.command(book.bookId, id, edited.revision, {type: 'text', changes: [{from: body - 1, to: body, insert: ''}], selection: {anchor: body - 1, head: body - 1}})).rejects.toMatchObject({code: 'UNAVAILABLE_RECORD'});
+  expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe(source);
+  await h.closeAll();
+});

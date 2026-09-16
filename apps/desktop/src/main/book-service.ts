@@ -524,7 +524,22 @@ export function createBookService(deps: BookServiceDeps): BookService {
           metadataEnd = frontmatter(sourceUtf8.decode(session.model.source))?.byteEnd ?? 0;
           metadataEnds.set(session.model.source, metadataEnd);
         }
-        if (metadataEnd > 0 && command.changes.some(change => sourceRange(session.model, change.from, change.to).from < metadataEnd)) throw new IpcError('UNAVAILABLE_RECORD','Используйте изменение метаданных');
+        if (metadataEnd > 0 && command.changes.some(change => {
+          if (sourceRange(session.model, change.from, change.to).from >= metadataEnd) return false;
+          // A body-start insertion borrows the closing newline for its v1
+          // anchor. Only permit its body portion when that entire metadata
+          // prefix is still byte-derived and unchanged in the replacement.
+          let position = 0;
+          for (const piece of session.model.pieces) {
+            const end = position + piece.text.length;
+            if (piece.editId && piece.source.from < metadataEnd && piece.source.to >= metadataEnd && change.from >= position && change.from <= end) {
+              const prefix = sourceUtf8.decode(session.model.source.subarray(piece.source.from, metadataEnd)).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+              if (piece.text.startsWith(prefix) && change.from >= position + prefix.length) return false;
+            }
+            position = end;
+          }
+          return true;
+        })) throw new IpcError('UNAVAILABLE_RECORD','Используйте изменение метаданных');
         await session.edit(command.changes, command.selection, command.group);
         return;
       }

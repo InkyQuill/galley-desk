@@ -88,7 +88,10 @@ test('внешнее изменение принимается: чужая ве�
     // …и снимается Undo-ом, чтобы sidecar остался без правок: внешний текст
     // после принятия не искажается переносами старых правок.
     await session.page.keyboard.press('ControlOrMeta+z');
-    await expect(content).toContainText('кот');
+    // Substring 'кот' also matches the pre-undo 'кот!'; await the actual
+    // committed undo before racing a foreign source write against the session.
+    await expect(content).toHaveText('кот');
+    await expect.poll(async () => JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')).edits).toEqual([]);
     await expect(session.page.getByText('Сохранено')).toBeVisible();
 
     // Внешняя правка выполняется мимо приложения.
