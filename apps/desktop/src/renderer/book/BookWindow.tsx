@@ -230,8 +230,8 @@ export function BookWindow({
 
   // --- Zen и порядок Escape ---------------------------------------------------
 
-  const overlayRef = useRef({ popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen });
-  overlayRef.current = { popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen };
+  const overlayRef = useRef({ popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi });
+  overlayRef.current = { popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
@@ -270,6 +270,11 @@ export function BookWindow({
         // The focused search field clears its query before collapsing.
         if ((event.target as HTMLElement)?.closest('.book__search')) return;
         setSearchOpen(false);
+        return;
+      }
+      if (overlay.editorApi?.dismissPreview()) {
+        event.preventDefault();
+        event.stopPropagation();
         return;
       }
       if (overlay.zen) setZen(false);

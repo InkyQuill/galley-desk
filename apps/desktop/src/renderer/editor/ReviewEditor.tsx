@@ -26,12 +26,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { Command, Snapshot } from '../../shared/api';
 import { bookResourceUrl, isHttpHttpsUrl, isLocalImagePath } from '../book/bookres';
-import { dispatchRecordMarkers, installMarkerStyles, recordMarkers, subscribeScheme } from './markers';
+import { dispatchRecordMarkers, mappedRecords, recordMarkers, subscribeScheme } from './markers';
 import { CommandQueue, TypingGroups, fromSnapshot, isHistoryCommand, toTextChanges } from './transaction-adapter';
+import { dismissRecordPreview, recordPreview } from './record-preview';
 import '@inkyquill/galley-editor/style.css';
-
-// Значки маркеров правок/сигналов рисуются стилями — один раз на рендерер.
-installMarkerStyles();
 
 /** Императивный доступ панели/попапов к FIFO-очереди и геометрии редактора. */
 export type ReviewEditorApi = {
@@ -39,6 +37,7 @@ export type ReviewEditorApi = {
   enqueue: (command: Command) => void;
   flushPending: () => Promise<void>;
   focus: () => void;
+  dismissPreview: () => boolean;
   /** Скроллит к записи и выделяет её диапазон; false, если якоря нет. */
   reveal: (recordId: string) => boolean;
   /** Выделяет произвольный диапазон (поиск) и скроллит к нему; false без view. */
@@ -58,7 +57,7 @@ type Props = {
   initialAnchor?: number | null;
   /** Непустое выделение → координаты flyout; схлопывание → null. */
   onSelectionWindow?: (range: { from: number; to: number; x: number; y: number; bottom: number } | null) => void;
-  /** Клик по маркеру правки/сигнала (или подстроке комментария). */
+  /** Клик по маркеру или выделенной подложке правки/сигнала. */
   onRecordClick?: (recordId: string, rect: { x: number; y: number; bottom: number }) => void;
   /** Куда SignalFlyout кладёт функцию фокуса для Tab-пути из редактора. */
   flyoutFocusRef?: MutableRefObject<(() => void) | null>;
@@ -351,7 +350,7 @@ export function ReviewEditor({
   }
   const extensionsRef = useRef<Extension[] | null>(null);
   if (extensionsRef.current === null) {
-    extensionsRef.current = [readOnlyCompartment.current.of(readOnlyExtensions(readOnly)), Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers()];
+    extensionsRef.current = [readOnlyCompartment.current.of(readOnlyExtensions(readOnly)), Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers(), recordPreview()];
   }
 
   // Выделение → окно flyout: непустой диапазон даёт координаты конца выделения,
@@ -387,7 +386,7 @@ export function ReviewEditor({
     return true;
   }, []);
 
-  // Клик по маркеру правки/сигнала или подстроке комментария (делегирование).
+  // Клик по маркеру или подложке диапазона (делегирование).
   const handleHostClick = useCallback((event: React.MouseEvent<HTMLDivElement>): void => {
     const target = event.target as HTMLElement | null;
     const marker = target?.closest?.('[data-record-id]') ?? null;
@@ -415,9 +414,10 @@ export function ReviewEditor({
       },
       enqueue: (command) => enqueueRef.current(command),
       focus: () => handleRef.current?.focus(),
+      dismissPreview: () => handleRef.current?.view ? dismissRecordPreview(handleRef.current.view) : false,
       reveal: (recordId) => {
-        const record = recordsRef.current.find((candidate) => candidate.id === recordId);
         const view = handleRef.current?.view ?? null;
+        const record = view?.state.field(mappedRecords).find((candidate) => candidate.id === recordId);
         if (record === undefined || record.from === null || record.to === null || view === null) return false;
         const from = Math.max(0, Math.min(record.from, view.state.doc.length));
         const to = Math.max(0, Math.min(record.to, view.state.doc.length));

@@ -56,6 +56,25 @@ function floatingCard(at: NonNullable<PopupPosition>): CSSProperties {
 
 const rowStyle: CSSProperties = { display: 'flex', gap: '0.5rem', flexWrap: 'wrap' };
 
+/** Restore both CM and native selection after the popup's textarea owned it. */
+function focusEditor(content: HTMLElement): void {
+  if (!content.isConnected) return;
+  const view = EditorView.findFromDOM(content);
+  if (view === null || !view.dom.isConnected) return;
+  const selection = view.state.selection.main;
+  view.focus();
+  // CM focus can see its cached pre-popup DOM range and skip rewriting it,
+  // although textarea focus actually collapsed the browser selection. Restore
+  // via public positions before selectionchange can adopt that stale DOM range.
+  const anchor = view.domAtPos(selection.anchor);
+  const head = view.domAtPos(selection.head);
+  const native = content.ownerDocument.getSelection();
+  if (native !== null && (native.anchorNode !== anchor.node || native.anchorOffset !== anchor.offset ||
+      native.focusNode !== head.node || native.focusOffset !== head.offset)) {
+    native.setBaseAndExtent(anchor.node, anchor.offset, head.node, head.offset);
+  }
+}
+
 export function RecordPopup({ record = null, draft = null, at, onCommand, onClose, readOnly = false }: Props) {
   const theme = useMarkerTheme();
   const [comment, setComment] = useState(draft !== null ? '' : record?.comment ?? '');
@@ -71,13 +90,15 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
       const active = document.activeElement;
       if (!(active === null || active === document.body)) return;
       const restore = restoreRef.current;
-      if (restore !== null && restore.isConnected) restore.focus();
-      else {
+      if (restore !== null && restore.isConnected) {
+        if (restore.matches('.cm-content')) focusEditor(restore);
+        else restore.focus();
+      } else {
         const content = document.querySelector<HTMLElement>('.cm-content');
         // Native contenteditable.focus() can move the browser selection to
         // offset zero. CodeMirror.focus() restores its saved editor selection
         // while suppressing that intermediate DOM selection observation.
-        if (content !== null) EditorView.findFromDOM(content)?.focus();
+        if (content !== null) focusEditor(content);
       }
     };
   }, []);
