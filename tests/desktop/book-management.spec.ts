@@ -117,13 +117,28 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
       review,
     );
     await open();
+    // Delay the actual exclusive creation so the first read necessarily sees ENOENT.
+    await app.evaluate(async ({}, target) => {
+      const fs = process.getBuiltinModule('node:fs/promises');
+      const originalOpen = fs.open;
+      fs.open = async (...args) => {
+        if (args[0] === target) {
+          fs.open = originalOpen;
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
+        return originalOpen(...args);
+      };
+    }, path.join(root, 'b.md'));
     await panel.getByLabel('Название новой главы').fill('Second');
     await panel.getByLabel('Имя файла (.md)').fill('b.md');
     await panel
       .getByRole('button', { name: 'Создать главу', exact: true })
       .click();
     await expect
-      .poll(async () => readFile(path.join(root, 'b.md'), 'utf8'))
+      .poll(async () => readFile(path.join(root, 'b.md'), 'utf8').catch(error => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      }))
       .toBe('# Second\n');
     await writeFile(path.join(root, 'extra.md'), '# External extra\n');
     await panel.getByRole('button', { name: 'Обновить список файлов' }).click();
@@ -222,7 +237,10 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
     );
     expect(errors).toEqual([]);
   } finally {
-    await app.close();
+    // A failed assertion may leave management mid-flight; don't let the quit
+    // guard hide its error behind the entire test timeout. UI close is tested above.
+    await app.evaluate(({ app }) => app.exit(0)).catch(() => undefined);
+    await app.close().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
     await rm(userData, { recursive: true, force: true });
   }
