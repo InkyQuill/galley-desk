@@ -71,7 +71,7 @@ Forge package с production fuses; [SHA256](reviews/2026-09-16-evidence/a7-compa
 | Android full connected suite | PASS: 240 passed / 6 opt-in skipped / 0 failures (246 XML cases) |
 | Canonical folder → production Reader → SaveNote → export | PASS, точные MD/manifest bytes, edits/signals deep-equal, note `Pocket roundtrip note 🦊` |
 | Forge package / packaged executable | PASS, пересобран после filename fix |
-| Полный desktop suite | PASS, 46 passed / 1 perf skip |
+| Полный desktop suite | PASS, финальный повтор 48 passed / 1 perf skip; [controller check](reviews/2026-09-16-v0.1-final-checks.md) |
 | Финальный exported folder в packaged Desk | PASS, canonical и legacy варианты; 3 active / 2 conflicting / 1 unavailable; Apply→Undo exact pair |
 | Performance | PASS: open 1013 ms ≤2000; input→DOM p95 27.8 ms ≤50 |
 | Chromium CDP composition и multiline/emoji/CRLF | PASS в полном desktop suite |

@@ -46,7 +46,7 @@ A1 → A2 → A3 → A4 → A5 → A6 → A7. Каждый пункт закан
 
 **Interfaces:** Существующий `applyEdit(model: ChapterModel, id: string): ChapterModel` остаётся неизменным. Consumes `classifyReview` с разрешёнными byte ranges, produces новую пару source/review без утраты чужих IDs.
 
-- [ ] **Step 1: Добавить RED-регрессии.** В `apply.test.ts` использовать существующие `reviewWith`, `signalOn`, `E1/E2`; заменить тест, требующий удаления внутреннего сигнала.
+- [x] **Step 1: Добавить RED-регрессии.** В `apply.test.ts` использовать существующие `reviewWith`, `signalOn`, `E1/E2`; заменить тест, требующий удаления внутреннего сигнала.
 
 ```ts
 test('apply keeps an independent signal whose selection disappeared', () => {
@@ -68,8 +68,8 @@ test('apply refreshes an earlier active anchor even with zero shift', () => {
 });
 ```
 
-- [ ] **Step 2:** `npx vitest run packages/review-engine/src/apply.test.ts` — убедиться в двух содержательных FAIL.
-- [ ] **Step 3:** Обновлять anchor активной правки до замены с delta=0, после — с delta=shift. Так же обновлять непересекающиеся активные сигналы. Внутренний/частично утраченный диапазон сохранять как исходную запись; недоступные записи не трогать. Опорная ветка для edits:
+- [x] **Step 2:** `npx vitest run packages/review-engine/src/apply.test.ts` — убедиться в двух содержательных FAIL.
+- [x] **Step 3:** Обновлять anchor активной правки до замены с delta=0, после — с delta=shift. Так же обновлять непересекающиеся активные сигналы. Внутренний/частично утраченный диапазон сохранять как исходную запись; недоступные записи не трогать. Опорная ветка для edits:
 
 ```ts
 const delta = oldRange.from >= range.to ? shift : 0;
@@ -79,8 +79,8 @@ return [{ ...candidate, anchor: makeAnchor(source, moved) }];
 
 Не добавлять persisted unavailable-флаг или поддельный hash: статус вычисляет общий resolver. Обновить комментарий алгоритма, сейчас обещающий удаление.
 
-- [ ] **Step 4:** Добавить сигнал перед заменой с повторяющимся текстом и session apply→undo→redo с точным равенством исходной пары/сигналов. Запустить `npx vitest run packages/review-engine/src/apply.test.ts packages/book-storage/src/session.test.ts`, затем `npm run test:contracts`.
-- [ ] **Step 5:** Коммит выбранных файлов: `fix(review-engine): preserve records across apply`.
+- [x] **Step 4:** Добавить сигнал перед заменой с повторяющимся текстом и session apply→undo→redo с точным равенством исходной пары/сигналов. Запустить `npx vitest run packages/review-engine/src/apply.test.ts packages/book-storage/src/session.test.ts`, затем `npm run test:contracts`.
+- [x] **Step 5:** Коммит выбранных файлов: `fix(review-engine): preserve records across apply`.
 
 ### Task 2: A2 — Закрытие не теряет pending-текст и не уничтожает failed session
 
@@ -88,9 +88,9 @@ return [{ ...candidate, anchor: makeAnchor(source, moved) }];
 
 **Interfaces:** Сохранить `BookService.closeBook(bookId): Promise<void>` и `closeAll(): Promise<void>`: reject означает, что книга/окно ещё доступны. Добавить renderer-контракт `flushPending(): Promise<void>`: resolve только когда FIFO пуста и все команды подтверждены main; reject при blocked/error. В lifecycle использовать request/ack с одноразовым ID закрытия, не выполнять произвольные renderer-команды из main.
 
-- [ ] **Step 1:** Перенести тест `audit: failed close retains session and recoverable draft` из [service-repro](../../reviews/2026-09-16-evidence/service-repro.test.ts) в `book-service.test.ts`, используя его существующий `makeService`. В конце добавить проверку повторного доступа к `openChapter` после отказа закрытия. Это воспроизводит отказ appData после открытия, без chmod-зависимости от root.
-- [ ] **Step 2:** `npx vitest run apps/desktop/src/main/book-service.test.ts` — RED на утраченной книге.
-- [ ] **Step 3:** Переставить удаление из реестра после успешного закрытия. Не очищать историю/главы до успешного общего этапа подготовки; partial failure книги не должна уничтожать остальные сессии. Опорный порядок:
+- [x] **Step 1:** Перенести тест `audit: failed close retains session and recoverable draft` из [service-repro](../../reviews/2026-09-16-evidence/service-repro.test.ts) в `book-service.test.ts`, используя его существующий `makeService`. В конце добавить проверку повторного доступа к `openChapter` после отказа закрытия. Это воспроизводит отказ appData после открытия, без chmod-зависимости от root.
+- [x] **Step 2:** `npx vitest run apps/desktop/src/main/book-service.test.ts` — RED на утраченной книге.
+- [x] **Step 3:** Переставить удаление из реестра после успешного закрытия. Не очищать историю/главы до успешного общего этапа подготовки; partial failure книги не должна уничтожать остальные сессии. Опорный порядок:
 
 ```ts
 // При любой ошибке оставить book в registry и watcher активным.
@@ -106,9 +106,9 @@ books.delete(bookId);
 
 Здесь `ChapterSession.flushPending(): Promise<void>` — новый метод: drain queue, reject на failed save; историю не очищает. `close()` после него очищает оба стека. При неудачной записи сохранить pending-пару через существующий `writeDraft`; если appData тоже недоступен, оставить её в памяти и отказать закрытию. Не выдавать сообщение о сохранённом черновике без успешного завершения записи.
 
-- [ ] **Step 4:** Перед закрытием книги/BrowserWindow запросить `flushPending()` renderer. При reject сохранить окно и локальный текст; существующие действия разрешения ошибки остаются доступны. На macOS обработать закрытие последнего окна отдельно от завершения процесса. Повторный quit должен быть защищён от рекурсии/двойного ack.
-- [ ] **Step 5:** В новом Electron-тесте на временной книге отправить 50 вводов и сразу Close, открыть снова, сравнить весь текст; второй сценарий — отказ записи appData и Close оставляет окно/черновик. Третий — после успешного закрытия и повторного открытия оба Undo пусты. Дождаться ack, не добавлять фиксированный sleep как гарантию сохранения.
-- [ ] **Step 6:** `npm run typecheck`; focused unit; `npm run package`; `npx playwright test tests/desktop/close-pending.spec.ts --workers=1`. Коммит: `fix(storage): preserve pending work when close fails`.
+- [x] **Step 4:** Перед закрытием книги/BrowserWindow запросить `flushPending()` renderer. При reject сохранить окно и локальный текст; существующие действия разрешения ошибки остаются доступны. На macOS обработать закрытие последнего окна отдельно от завершения процесса. Повторный quit должен быть защищён от рекурсии/двойного ack.
+- [x] **Step 5:** В новом Electron-тесте на временной книге отправить 50 вводов и сразу Close, открыть снова, сравнить весь текст; второй сценарий — отказ записи appData и Close оставляет окно/черновик. Третий — после успешного закрытия и повторного открытия оба Undo пусты. Дождаться ack, не добавлять фиксированный sleep как гарантию сохранения.
+- [x] **Step 6:** `npm run typecheck`; focused unit; `npm run package`; `npx playwright test tests/desktop/close-pending.spec.ts --workers=1`. Коммит: `fix(storage): preserve pending work when close fails`.
 
 ### Task 3: A3 — Не продолжать запись поверх неразрешённого recovery
 
@@ -116,9 +116,9 @@ books.delete(bookId);
 
 **Interfaces:** `recoverBook(book, appData)` сохраняет существующие результаты `clean | recovered | external-change`. `writePair` отклоняет запись при незавершённом журнале. Текущее `resolveExternal(bookId, chapterId, choice: 'open-external' | 'export-local')` расширить на recovery-conflict, без отдельного экрана merge.
 
-- [ ] **Step 1:** Перенести тест `audit: unresolved third revision must block new writes and preserve journal` из service-repro в штатный test. После отказа дополнительно проверить сохранение исходного `JournalRecord.before/after` и byte identity внешних файлов.
-- [ ] **Step 2:** `npx vitest run apps/desktop/src/main/book-service.test.ts` — RED: сейчас команда accepted, journals=0.
-- [ ] **Step 3:** В storage проверять pending journal **внутри очереди, до нового writeJournal**; не перезаписывать его. В main при external-change возвращать ограниченный snapshot/состояние recovery, блокирующее команды, вместо одного console.error. Опорная проверка:
+- [x] **Step 1:** Перенести тест `audit: unresolved third revision must block new writes and preserve journal` из service-repro в штатный test. После отказа дополнительно проверить сохранение исходного `JournalRecord.before/after` и byte identity внешних файлов.
+- [x] **Step 2:** `npx vitest run apps/desktop/src/main/book-service.test.ts` — RED: сейчас команда accepted, journals=0.
+- [x] **Step 3:** В storage проверять pending journal **внутри очереди, до нового writeJournal**; не перезаписывать его. В main при external-change возвращать ограниченный snapshot/состояние recovery, блокирующее команды, вместо одного console.error. Опорная проверка:
 
 ```ts
 const pending = (await readJournalsForRoot(appData, book.root))
@@ -128,9 +128,9 @@ if (pending) throw new Error('Unresolved chapter recovery');
 
 Связать ошибку с существующим стабильным IPC-кодом и видимым уведомлением. Проверку обычного повторного сохранения выполнять только после recoverBook/явного разрешения.
 
-- [ ] **Step 4:** `export-local` экспортирует согласованную локальную пару из journal.after в новую выбранную папку без перезаписи чужих файлов. `open-external` сначала сохраняет резервную пару/журнал в appData под отдельным именем; только после успешной записи и явного выбора пользователя завершает pending operation и открывает внешнюю пару. При отказе backup/export journal остаётся и команды заблокированы. Не переносить этот журнал в папку книги автоматически.
-- [ ] **Step 5:** Проверить interrupted prepared/source-written/review-written; third revision; отказ экспорта; reopen после явного разрешения. Команды: `npx vitest run packages/book-storage/src/book.test.ts apps/desktop/src/main/book-service.test.ts`; после package — `npx playwright test tests/desktop/external-change.spec.ts --workers=1`.
-- [ ] **Step 6:** Коммит: `fix(storage): block writes until recovery is resolved`.
+- [x] **Step 4:** `export-local` экспортирует согласованную локальную пару из journal.after в новую выбранную папку без перезаписи чужих файлов. `open-external` сначала сохраняет резервную пару/журнал в appData под отдельным именем; только после успешной записи и явного выбора пользователя завершает pending operation и открывает внешнюю пару. При отказе backup/export journal остаётся и команды заблокированы. Не переносить этот журнал в папку книги автоматически.
+- [x] **Step 5:** Проверить interrupted prepared/source-written/review-written; third revision; отказ экспорта; reopen после явного разрешения. Команды: `npx vitest run packages/book-storage/src/book.test.ts apps/desktop/src/main/book-service.test.ts`; после package — `npx playwright test tests/desktop/external-change.spec.ts --workers=1`.
+- [x] **Step 6:** Коммит: `fix(storage): block writes until recovery is resolved`.
 
 ### Task 4: A4 — Редактирование сигнала сохраняет ID
 
@@ -138,9 +138,9 @@ if (pending) throw new Error('Unresolved chapter recovery');
 
 **Interfaces:** Существующий `Command` type `signal` с optional `id` остаётся неизменным; id означает обновление существующего сигнала, отсутствие id — создание.
 
-- [ ] **Step 1:** Перенести `audit: changing a signal preserves id` из service-repro. В существующем desktop-сценарии изменения сигнала читать sidecar до/после и сравнивать IDs, не только число записей.
-- [ ] **Step 2:** `npx vitest run apps/desktop/src/main/book-service.test.ts` — RED на UUID.
-- [ ] **Step 3:** Сохранить идентичность:
+- [x] **Step 1:** Перенести `audit: changing a signal preserves id` из service-repro. В существующем desktop-сценарии изменения сигнала читать sidecar до/после и сравнивать IDs, не только число записей.
+- [x] **Step 2:** `npx vitest run apps/desktop/src/main/book-service.test.ts` — RED на UUID.
+- [x] **Step 3:** Сохранить идентичность:
 
 ```ts
 const id = command.id ?? randomUUID();
@@ -150,8 +150,8 @@ const next = addSignal(withoutReplaced, command.from, command.to,
 
 Перед удалением проверять, что `command.id` действительно принадлежит сигналу текущей главы; ID правки/несуществующий ID не должны превращать его в сигнал. Для недоступного anchor не угадывать новый диапазон.
 
-- [ ] **Step 4:** Проверить UUID, новый type/comment, Undo/Redo, reopen, отказ неизвестного ID и сохранение других записей. Unit + `npx playwright test tests/desktop/review-actions.spec.ts --workers=1` после package.
-- [ ] **Step 5:** Коммит: `fix(desktop): preserve signal identity on update`.
+- [x] **Step 4:** Проверить UUID, новый type/comment, Undo/Redo, reopen, отказ неизвестного ID и сохранение других записей. Unit + `npx playwright test tests/desktop/review-actions.spec.ts --workers=1` после package.
+- [x] **Step 5:** Коммит: `fix(desktop): preserve signal identity on update`.
 
 ### Task 5: A5 — Отказ идентичности и read-only видны до начала ввода
 
@@ -159,9 +159,9 @@ const next = addSignal(withoutReplaced, command.from, command.to,
 
 **Interfaces:** `openBook(root): Promise<BookHandle>` не создаёт manifest при существующих sidecar без manifest. Добавить к `Snapshot` сериализуемое `readOnlyReason: string | null`; main заполняет, renderer выключает ввод и показывает причину. Это UI DTO, не изменение Pocket wire format.
 
-- [ ] **Step 1:** Перенести `audit: missing manifest with existing sidecar must not create new identity`. Добавить сравнение содержимого sidecar и отсутствие `.pocket-editor.json` после отказа.
-- [ ] **Step 2:** Focused tests дают RED. Для malformed sidecar snapshot должен иметь reason, а CodeMirror в Electron-тесте должен быть read-only с первого кадра.
-- [ ] **Step 3:** В `openBook`, до генерации IDs:
+- [x] **Step 1:** Перенести `audit: missing manifest with existing sidecar must not create new identity`. Добавить сравнение содержимого sidecar и отсутствие `.pocket-editor.json` после отказа.
+- [x] **Step 2:** Focused tests дают RED. Для malformed sidecar snapshot должен иметь reason, а CodeMirror в Electron-тесте должен быть read-only с первого кадра.
+- [x] **Step 3:** В `openBook`, до генерации IDs:
 
 ```ts
 if (names.some((name) => name.endsWith('.review.json'))) {
@@ -171,8 +171,8 @@ if (names.some((name) => name.endsWith('.review.json'))) {
 
 Не восстанавливать manifest догадками из sidecar. Сохранить прежнюю ветку нового проекта без рецензий. В snapshot readonly/missing/recovery передать явную причину; не объявлять такую главу редактируемой со статусом «Сохранено».
 
-- [ ] **Step 4:** Проверить чистую папку, валидный sidecar без manifest, невалидный sidecar, неизвестную версию manifest, пропавшую главу. Все исходные файлы неизменны; нет ложного recent-success при отказе. `npm run typecheck`; focused unit; package + open-book.spec.
-- [ ] **Step 5:** Коммит: `fix(desktop): surface read-only identity failures`.
+- [x] **Step 4:** Проверить чистую папку, валидный sidecar без manifest, невалидный sidecar, неизвестную версию manifest, пропавшую главу. Все исходные файлы неизменны; нет ложного recent-success при отказе. `npm run typecheck`; focused unit; package + open-book.spec.
+- [x] **Step 5:** Коммит: `fix(desktop): surface read-only identity failures`.
 
 ### Task 6: A6 — Подтвердить общие библиотеки и исправить проверяемые редакции
 
@@ -183,10 +183,10 @@ if (names.some((name) => name.endsWith('.review.json'))) {
 
 **Interfaces:** Сохранить опубликованные exports editor/themes и реальные consumer-тесты без mock Galley. Ревизия в baseline должна содержать заявленную миграцию; «проверено» не означает «слито/выпущено».
 
-- [ ] **Step 1:** Editor: воспроизвести сбой table normalization полным `npm test`, затем focused file. Проверить, нужен ли `forceParsing`/ожидание готовности синтаксиса в тестовом helper или сама команда неверно обрабатывает готовый документ. Не менять expected=true просто ради зелёного результата.
-- [ ] **Step 2:** Pad: `bun run test:integration --grep 'cancels middle-button'`. Разобрать, какой handler отменяет событие tabstrip. Сохранить отмену middle-click редактора и согласовать точное ожидаемое поведение табов; текущие результаты `defaultPrevented=true / dispatchResult=false` документированы в audit evidence.
-- [ ] **Step 3:** Pad: разобрать результат `bun audit --json`, обновить затронутые прямые/транзитивные зависимости минимально совместимым способом, зафиксировать bun.lock. Не выключать audit и не добавлять обход, называющий verify успешным.
-- [ ] **Step 4:** Из соответствующих worktrees:
+- [x] **Step 1:** Editor: воспроизвести сбой table normalization полным `npm test`, затем focused file. Проверить, нужен ли `forceParsing`/ожидание готовности синтаксиса в тестовом helper или сама команда неверно обрабатывает готовый документ. Не менять expected=true просто ради зелёного результата.
+- [x] **Step 2:** Pad: `bun run test:integration --grep 'cancels middle-button'`. Разобрать, какой handler отменяет событие tabstrip. Сохранить отмену middle-click редактора и согласовать точное ожидаемое поведение табов; текущие результаты `defaultPrevented=true / dispatchResult=false` документированы в audit evidence.
+- [x] **Step 3:** Pad: разобрать результат `bun audit --json`, обновить затронутые прямые/транзитивные зависимости минимально совместимым способом, зафиксировать bun.lock. Не выключать audit и не добавлять обход, называющий verify успешным.
+- [x] **Step 4:** Из соответствующих worktrees:
 
 ```bash
 # Editor
@@ -200,8 +200,8 @@ npm run build-storybook
 mise run verify
 ```
 
-- [ ] **Step 5:** Указать действительные tested commits: Pad начинается с `6f8cfff5175e423d19458571fc71c42b791f30b1`, далее итоговая ревизия исправлений. Проверить npm `0.14.0` как отдельный опубликованный артефакт, не приписывать исходному e5769b6 версию0.14.0 (его package.json ещё0.13.0). Задокументировать статус merge/release Pocket/Editor/Pad. Слияния и публикации выполнять только в отдельном согласованном workflow.
-- [ ] **Step 6:** Отдельные коммиты по репозиториям: `test(editor): stabilize table command regression` либо `fix(editor): ...` по установленной причине; `fix(pad): correct middle-button event handling`; `chore(deps): update verification dependencies`; `docs: record verified companion revisions`.
+- [x] **Step 5:** Указать действительные tested commits: Pad начинается с `6f8cfff5175e423d19458571fc71c42b791f30b1`, далее итоговая ревизия исправлений. Проверить npm `0.14.0` как отдельный опубликованный артефакт, не приписывать исходному e5769b6 версию0.14.0 (его package.json ещё0.13.0). Задокументировать статус merge/release Pocket/Editor/Pad. Слияния и публикации выполнять только в отдельном согласованном workflow.
+- [x] **Step 6:** Отдельные коммиты по репозиториям: `test(editor): stabilize table command regression` либо `fix(editor): ...` по установленной причине; `fix(pad): correct middle-button event handling`; `chore(deps): update verification dependencies`; `docs: record verified companion revisions`.
 
 ### Task 7: A7 — Реально выполнить desktop/platform gate
 
@@ -233,10 +233,24 @@ GALLEY_PERF=1 npx playwright test tests/desktop/performance.spec.ts --workers=1
 
 ## Критерий закрытия этого плана
 
-- [ ] R1–R6 воспроизводятся в штатных регрессиях и исправлены без расширения wire schema.
-- [ ] Нельзя потерять локальную работу через failed close, а unresolved recovery нельзя молча затереть.
-- [ ] Проверенные companion commits соответствуют реальному коду; проверки A6 зелёные либо явно отмечен незакрытый blocker, при котором этот план остаётся открытым.
+- [x] R1–R6 воспроизводятся в штатных регрессиях и исправлены без расширения wire schema.
+- [x] Нельзя потерять локальную работу через failed close, а unresolved recovery нельзя молча затереть.
+- [x] Проверенные companion commits соответствуют реальному коду; проверки A6 зелёные либо явно отмечен незакрытый blocker, при котором этот план остаётся открытым.
 - [ ] Пройдены реальные Linux/macOS packaged и Android roundtrip gates A7.
-- [ ] Документы редизайна не изменены; изменения по результатам аудита имеют собственную историю.
+- [x] Документы редизайна не изменены; изменения по результатам аудита имеют собственную историю.
 
 Покрытие: C5/D2/D3 → A2/A3/A5; C6/D4 → A1/A4; L2/L3 → A6; P3/D1/D5 и финальные gates → A7. P1/P2/P4/C1/C2/C3/C4/L1 повторно не скаффолдятся.
+
+## Итог исполнения 2026-09-16
+
+A1–A6 выполнены и прошли отдельное и итоговое ревью. Доступная часть A7
+(Linux packaged, Android app-layer roundtrip в обе стороны, contracts,
+performance) выполнена; подготовлен Mac checklist по уточнению пользователя
+«Пока только Linux — подготовить проверку для Mac».
+
+Этот план остаётся открытым **только как платформенный checklist** для A7
+Step5/Step7 и общего критерия Linux/macOS: реального Mac и системной IME не
+проверяли. Незапущенные проверки не закрыты результатами Chromium CDP.
+Реализация в согласованном доступном объёме одобрена без блокирующих замечаний:
+[итоговое ревью](../../reviews/2026-09-16-v0.1-final-review.md).
+Точные результаты и оставшиеся ограничения — в [verification](../../verification.md).
