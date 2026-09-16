@@ -56,3 +56,9 @@ Linux: подтверждён дефект Chromium SUID wrapper с пробел
 ## Итог объединённого локального прогона
 
 Код `b42c810`: **68 Electron PASS / 1 ожидаемый performance skip**, весь набор с настоящим slug executable и принудительным SUID sandbox. **362 unit PASS**. Package/typecheck прошли; отдельное scoped review последней поправки одобрено. Удалённый CI запускается после публикации объединённого состояния. Performance-ограничение выше остаётся явным, не скрыто пропуском штатного native-набора.
+
+## Последние два отказа CI
+
+На `1c9fe9f` macOS: 65 passed, управление книгой timeout; Linux: 66 passed, управление книгой timeout и keyboard preview. `f8dcdd9` воспроизвёл ENOENT при намеренно задержанном создании главы и исправил ожидание; cleanup больше не скрывает исходную ошибку. `341b09e` сохраняет Tab intent до получения фокуса и подсказку именно сфокусированной записи при автоматической прокрутке браузером. Inline deletion также распознаётся; Escape/blur и hover другой записи остаются проверены. Оба сценария прошли пять повторений, 10/10 PASS.
+
+Финальное объединённое состояние `341b09e`: **68 native PASS / 1 performance skip**, **362 unit PASS**, package/typecheck PASS. Native-набор запущен с настоящим slug executable и принудительным SUID sandbox. [Доказательства последних исправлений](evidence/pr1-followup/remaining-ci-notes.md). Удалённый CI перепроверяет опубликованное состояние.
