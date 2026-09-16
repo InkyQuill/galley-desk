@@ -98,11 +98,27 @@ function reviewPathFor(chapterPath: string): string {
   return `${chapterPath.slice(0, -'.md'.length)}.review.json`;
 }
 
-function resolveChapter(book: BookHandle, chapterId: string): { chapter: Chapter; sourceRel: string; reviewRel: string } {
+async function resolveChapter(book: BookHandle, chapterId: string): Promise<{ chapter: Chapter; sourceRel: string; reviewRel: string }> {
   const chapter = book.manifest.chapters.find((candidate) => candidate.id === chapterId);
   if (chapter === undefined) throw new UnknownChapterError(chapterId);
-  const reviewRel = reviewPathFor(chapter.path);
+  const candidates = [reviewPathFor(chapter.path), `${chapter.path}.review.json`];
+  const existing: string[] = [];
+  for (const candidate of candidates) {
+    if (await readOptionalFileBytes(path.join(book.root, candidate)) !== null) existing.push(candidate);
+  }
+  if (existing.length > 1) throw new Error(`Conflicting review filenames for ${chapter.path}; preserve both files and resolve the duplicate explicitly`);
+  const reviewRel = existing[0] ?? candidates[0]!;
+  assertReviewIdentity(book, chapter.path, reviewRel);
   return { chapter, sourceRel: chapter.path, reviewRel };
+}
+
+function assertReviewIdentity(book: BookHandle, sourceRel: string, reviewRel: string): void {
+  assertDirectChildName(reviewRel);
+  const matches = book.manifest.chapters.filter(chapter =>
+    reviewPathFor(chapter.path) === reviewRel || `${chapter.path}.review.json` === reviewRel);
+  if (matches.length !== 1 || matches[0]!.path !== sourceRel) {
+    throw new UnsafePathError(`Review filename has no unique source in the manifest: ${reviewRel}`);
+  }
 }
 
 /**
@@ -158,7 +174,7 @@ type RawPair = {
 };
 
 async function readRawPair(book: BookHandle, chapterId: string): Promise<RawPair> {
-  const { sourceRel, reviewRel } = resolveChapter(book, chapterId);
+  const { sourceRel, reviewRel } = await resolveChapter(book, chapterId);
   const sourceAbs = path.join(book.root, sourceRel);
   let source: Uint8Array;
   try {
@@ -243,7 +259,7 @@ export async function writePairImpl(
   if ((await readJournalsForRoot(appData, book.root)).some(record => record.chapter_id === chapterId && !record.complete)) {
     throw new Error('Unresolved chapter recovery');
   }
-  const { sourceRel, reviewRel } = resolveChapter(book, chapterId);
+  const { sourceRel, reviewRel } = await resolveChapter(book, chapterId);
   const sourceAbs = path.join(book.root, sourceRel);
   const reviewAbs = path.join(book.root, reviewRel);
   await assertWritableFileTarget(sourceAbs);
@@ -320,10 +336,11 @@ async function fileState(absPath: string, beforeHash: string | null, afterHash: 
  * version: recovery must then overwrite nothing.
  */
 async function planRecovery(book: BookHandle, record: JournalRecord): Promise<RecoveryPlan | null> {
-  const reviewRel = reviewPathFor(record.source_path);
-  assertDirectChildName(record.review_path);
-  if (reviewRel !== record.review_path) {
-    throw new UnsafePathError(`Journal sidecar path does not match its chapter: ${record.review_path}`);
+  assertReviewIdentity(book, record.source_path, record.review_path);
+  // The journal pins the original name, even when its sidecar was deleted.
+  const alternatives = [reviewPathFor(record.source_path), `${record.source_path}.review.json`];
+  for (const alternative of alternatives) {
+    if (alternative !== record.review_path && await readOptionalFileBytes(path.join(book.root, alternative)) !== null) return null;
   }
   const sourceState = await fileState(
     path.join(book.root, record.source_path),
@@ -401,8 +418,9 @@ export async function recoverBook(
 /** Preserve a recovery target in a fresh directory; never overwrite user files. */
 export async function preserveRecovery(record: JournalRecord, parent: string, book: BookHandle): Promise<string> {
   assertDirectChildName(record.source_path);
-  if (reviewPathFor(record.source_path) !== record.review_path) throw new UnsafePathError('Invalid recovery sidecar path');
-  const { chapter } = resolveChapter(book, record.chapter_id);
+  assertReviewIdentity(book, record.source_path, record.review_path);
+  const chapter = book.manifest.chapters.find(candidate => candidate.id === record.chapter_id);
+  if (chapter === undefined) throw new UnknownChapterError(record.chapter_id);
   if (record.root !== book.root || chapter.path !== record.source_path) throw new Error('Recovery journal changed');
   const directory = await mkdtemp(path.join(parent, 'galley-recovery-'));
   await replaceFileSynced(directory, record.source_path, decodeBytes(record.after.source));

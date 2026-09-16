@@ -655,3 +655,47 @@ test.each([reviewJson(ID1, '01.md'), '{ broken'])('audit: missing manifest with 
     expect(await readdir(root)).not.toContain('.pocket-editor.json');
   } finally { await cleanup(root); }
 });
+
+test('legacy Pocket sidecar keeps its filename through write, undo pair and recovery', async () => {
+  const root = await seedBook();
+  const appData = await tempDir('galley-app-');
+  try {
+    const legacy = path.join(root, '01.md.review.json');
+    const original = await readFile(path.join(root, '01.review.json'));
+    await unlink(path.join(root, '01.review.json'));
+    await writeFile(legacy, original);
+    const book = await openBook(root);
+    const before = await readPair(book, ID1);
+    expect(before.pair.review).toBe(original.toString());
+    const target = { source: NEXT_SOURCE, review: reviewJson(ID1, '01.md', 'Pocket legacy') };
+    const revision = await writePair(book, ID1, before.revision, target, appData);
+    expect(await readFile(legacy, 'utf8')).toBe(target.review);
+    await writePair(book, ID1, revision, before.pair, appData);
+    expect(await readFile(legacy)).toEqual(original);
+    expect(await bookBytes(root, '01.md')).toEqual(before.pair.source);
+    await expect(writePairImpl(book, ID1, before.revision, target, appData, step => {
+      if (step === 'source-written') throw new Error('simulated crash');
+    })).rejects.toThrow('simulated crash');
+    expect(await recoverBook(await openBook(root), appData)).toBe('recovered');
+    expect(await readFile(legacy, 'utf8')).toBe(target.review);
+    expect(await readdir(root)).not.toContain('01.review.json');
+  } finally { await cleanup(root, appData); }
+});
+
+test('dual canonical and legacy sidecars reject before changing either pair', async () => {
+  const root = await seedBook();
+  const appData = await tempDir('galley-app-');
+  try {
+    const book = await openBook(root);
+    const before = await readPair(book, ID1);
+    const legacy = reviewJson(ID1, '01.md', 'Separate legacy');
+    await writeFile(path.join(root, '01.md.review.json'), legacy);
+    await expect(readPair(book, ID1)).rejects.toThrow(/Conflicting review filenames/);
+    await expect(writePair(book, ID1, before.revision, { source: NEXT_SOURCE, review: null }, appData))
+      .rejects.toThrow(/Conflicting review filenames/);
+    expect(await bookBytes(root, '01.md')).toEqual(before.pair.source);
+    expect(await readFile(path.join(root, '01.review.json'), 'utf8')).toBe(before.pair.review);
+    expect(await readFile(path.join(root, '01.md.review.json'), 'utf8')).toBe(legacy);
+    expect(await readJournalsForRoot(appData, book.root)).toEqual([]);
+  } finally { await cleanup(root, appData); }
+});
