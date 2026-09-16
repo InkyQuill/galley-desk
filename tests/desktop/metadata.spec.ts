@@ -36,8 +36,10 @@ test('metadata display, protected body start, validation, save and title refresh
     await expect
       .poll(
         async () =>
-          JSON.parse(await readFile(path.join(root, '01.review.json'), 'utf8'))
-            .edits.length,
+          JSON.parse(await readFile(path.join(root, '01.review.json'), 'utf8').catch(error => {
+            if (error.code === 'ENOENT') return '{"edits":[]}';
+            throw error;
+          })).edits.length,
       )
       .toBe(1);
     await page.keyboard.press('ControlOrMeta+a');

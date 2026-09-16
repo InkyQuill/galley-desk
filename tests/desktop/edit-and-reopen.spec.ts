@@ -171,22 +171,26 @@ test('смена главы во время пачки ввода не пере�
     // B по позициям текста A). Открывающаяся глава B большая: окно живёт
     // заметно дольше кадра, проба успевает его увидеть.
     const sweep = await session.page.evaluate(async () => {
-      const seen: { count: number; head: string | null }[] = [];
-      const deadline = performance.now() + 400;
+      const seen: { count: number; head: string | null; chapter: string | null }[] = [];
+      const deadline = performance.now() + 10000;
       while (performance.now() < deadline) {
         const editors = document.querySelectorAll('.cm-content');
         const head = editors[0] ? (editors[0].textContent ?? '').slice(0, 24) : null;
-        seen.push({ count: editors.length, head });
+        const chapter = document.querySelector('.book__chapter--active .book__chapter-name')?.textContent ?? null;
+        seen.push({ count: editors.length, head, chapter });
+        if (chapter === 'Вторая' && head?.startsWith('пёс спит.')) break;
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
       return seen;
     });
-    // Каждый кадр окна: либо редактора ещё нет (снимок B не пришёл), либо
+    // Пока очередь A сохраняется, A ещё активна. После смены активной главы
+    // каждый кадр: либо редактора ещё нет (снимок B не пришёл), либо
     // он уже показывает B. Текст A под именем B запрещён.
     const stale = sweep.find(
-      (sample) => sample.count > 0 && (sample.head === null || !sample.head.startsWith('пёс спит.')),
+      (sample) => sample.chapter === 'Вторая' && sample.count > 0 && (sample.head === null || !sample.head.startsWith('пёс спит.')),
     );
     expect(stale).toBeUndefined();
+    expect(sweep.some(sample => sample.chapter === 'Вторая')).toBe(true);
     await expect(content).toContainText('пёс спит.');
 
     // Ввод в главе B работает поверх стабильного документа.
@@ -284,6 +288,7 @@ test('Chromium composition commit/cancel and multiline emoji CRLF insertion surv
     await expect(content).not.toContainText('cancel');
     await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
     const compositionReview = JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')) as Review;
     expect(openChapter(original, compositionReview).text).toBe('日本');
     expect(await readFile(path.join(bookRoot, 'Глава.md'))).toEqual(original);
@@ -297,6 +302,7 @@ test('Chromium composition commit/cancel and multiline emoji CRLF insertion surv
     await page.keyboard.insertText('line one\r\nemoji 🦊\r\nlast');
     await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
     const review = JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')) as Review;
     expect(openChapter(original, review).text).toBe('line one\nemoji 🦊\nlast');
     expect(await readFile(path.join(bookRoot, 'Глава.md'))).toEqual(original);

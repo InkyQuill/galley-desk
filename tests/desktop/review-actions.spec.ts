@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
@@ -279,14 +279,16 @@ test('заметка главы сохраняется в sidecar; при оши
     const sidecar = await waitSidecar(page, sidecarPath, (review) => review.chapter_note !== '');
     expect(sidecar.chapter_note).toBe('Глава требует вычитки');
 
-    // Ошибка сохранения: исходник исчезает, черновик заметки не сбрасывается.
+    // Запрет записи вызывает ошибку сохранения без гонки с наблюдателем
+    // удаления исходника: черновик заметки не сбрасывается.
     await page.getByRole('button', { name: 'Заметка главы' }).click();
     await note.fill('Глава требует вычитки и правки');
-    await rm(path.join(bookRoot, CHAPTER_PATH));
+    await chmod(bookRoot, 0o555);
     await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
     await expect(page.getByRole('alert')).toBeVisible();
     await expect(note).toHaveValue('Глава требует вычитки и правки');
   } finally {
+    await chmod(bookRoot, 0o755);
     await forceStop(session.app);
   }
 });
@@ -505,6 +507,10 @@ test('изменение существующего сигнала заменя�
   const bookRoot = await makeTempDir('galley-e2e-resignal-');
   await writeBook(bookRoot, emptyReview());
   const session = await launch(bookRoot);
+  // Slow rendering exposed Tab arriving before the visible flyout registered
+  // its focus callback. Keep the assertion native and the stress local to this test.
+  const cdp = await session.page.context().newCDPSession(session.page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
   try {
     const page = session.page;
     await openOwnBook(session);
@@ -529,6 +535,8 @@ test('изменение существующего сигнала заменя�
     expect(sidecar.signals[0]?.id).toBe(signalId);
     expect(sidecar.signals).toHaveLength(1);
   } finally {
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => undefined);
+    await cdp.detach();
     await session.app.close();
   }
 });
@@ -646,8 +654,7 @@ test('конфликтующие правки исключены из текст
     const sidecar = await waitSidecar(page, sidecarPath, (review) => review.edits.length === 1);
     expect(sidecar.edits[0]?.after).toBe('пёс ');
     // Маркер правки (✎) стоит на границе куска и виден в полученном тексте.
-    const restored = await content.innerText();
-    expect(restored.replace(/[✎⚡\n]/g, '')).toBe('пёс спит.');
+    await expect.poll(async () => (await content.innerText()).replace(/[✎⚡\n]/g, '')).toBe('пёс спит.');
     await expect(page.getByRole('button', { name: 'Правка', exact: true })).toBeVisible();
   } finally {
     await session.app.close();
