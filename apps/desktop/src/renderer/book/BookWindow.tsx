@@ -187,13 +187,19 @@ export function BookWindow({
    * (key={chapterId}) и заметка главы ремонтируются только по снимку новой
    * главы, набранный в промежутке текст не уходит в чужую сессию.
    */
-  const switchChapter = useCallback((next: string): void => {
+  const switchChapter = useCallback(async (next: string): Promise<void> => {
     if (next === chapterIdRef.current) return;
+    try {
+      await editorApi?.flushPending();
+    } catch (cause) {
+      setError(errorText(cause));
+      return;
+    }
     chapterIdRef.current = next;
     snapshotRef.current = null;
     setSnapshot(null);
     setChapterId(next);
-  }, []);
+  }, [editorApi]);
 
   // --- оформление ------------------------------------------------------------
 
@@ -459,6 +465,20 @@ export function BookWindow({
       .catch((cause: unknown) => setError(errorText(cause)));
   }, [book.bookId, chapterId, applySnapshot]);
 
+  useEffect(() => window.desk.onCloseRequest(async (closing) => {
+    const element = document.querySelector<HTMLElement>('.book');
+    if (element) element.inert = closing;
+    if (closing) {
+      try {
+        await editorApi?.flushPending();
+        if (saveError !== null) throw new Error(saveError);
+      } catch (cause) {
+        setError(errorText(cause));
+        throw cause;
+      }
+    }
+  }), [editorApi, saveError]);
+
   const closeBook = async (): Promise<void> => {
     try {
       await window.desk.closeBook(book.bookId);
@@ -470,12 +490,18 @@ export function BookWindow({
   };
 
   /** Смена вида закрывает всплывающие слои: flyout не бывает вне «Текста». */
-  const switchMode = useCallback((next: ViewMode): void => {
+  const switchMode = useCallback(async (next: ViewMode): Promise<void> => {
+    try {
+      await editorApi?.flushPending();
+    } catch (cause) {
+      setError(errorText(cause));
+      return;
+    }
     setMode(next);
     setFlyout(null);
     setPopup(null);
     setCardId(null);
-  }, []);
+  }, [editorApi]);
 
   /** Вход в Zen: панели рецензии скрыты, слои без якоря гасятся (попап живёт). */
   const enterZen = useCallback((): void => {

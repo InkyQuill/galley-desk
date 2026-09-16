@@ -2,7 +2,7 @@
 import { app, BrowserWindow, dialog, protocol, shell } from 'electron';
 import path from 'node:path';
 import { createBookService } from './book-service';
-import { isOwnRendererUrl, registerDeskIpc } from './ipc';
+import { flushRenderer, resumeRenderer, isOwnRendererUrl, registerDeskIpc } from './ipc';
 import { BOOK_RESOURCE_SCHEME, parseBookResourceUrl, resolveBookImage } from './resources';
 
 // Глобальные константы создаёт Forge Vite plugin на этапе сборки:
@@ -38,6 +38,8 @@ if (userDataOverride) {
 // Повторная проверка внешних изменений (фокус окна): сервис появляется
 // после whenReady, поэтому подписка идёт через инъекцию.
 let recheckExternal: (() => void) | null = null;
+let closeWindow: ((window: BrowserWindow) => void) | null = null;
+let quitFlushed = false;
 
 const createWindow = (): void => {
   const mainWindow = new BrowserWindow({
@@ -49,6 +51,12 @@ const createWindow = (): void => {
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+
+  mainWindow.on('close', (event) => {
+    if (quitFlushed) return;
+    event.preventDefault();
+    closeWindow?.(mainWindow);
   });
 
   // window.open и любое внешнее открытие запрещены.
@@ -146,25 +154,40 @@ if (!app.requestSingleInstanceLock()) {
       void service.recheckExternal();
     };
 
-    // Закрытие дожидается очереди сохранения каждой открытой книги; ошибка
-    // сохранения не маскируется и не оставляет приложение «зависать»: после
-    // сообщения выполняется повторный quit (без рекурсии обработки).
-    let quitFlushed = false;
+    let closing: Promise<void> | null = null;
+    const prepareClose = (): Promise<void> => {
+      if (closing !== null) return closing;
+      closing = (async () => {
+        const windows = BrowserWindow.getAllWindows();
+        try {
+          await Promise.all(windows.map(window => flushRenderer(window.webContents)));
+          await service.closeAll();
+        } catch (error) {
+          for (const window of windows) resumeRenderer(window.webContents);
+          console.error('[desk] close: code=SAVE_FAILED');
+          throw error;
+        } finally {
+          closing = null;
+        }
+      })();
+      return closing;
+    };
+    closeWindow = (window) => {
+      // Window close on macOS keeps the process alive; quit is a separate intent.
+      void prepareClose().then(() => {
+        if (!window.isDestroyed()) window.destroy();
+      }, () => undefined);
+    };
+    let quitting = false;
     app.on('before-quit', (event) => {
       if (quitFlushed) return;
       event.preventDefault();
-      service
-        .closeAll()
-        .then(() => {
-          quitFlushed = true;
-          app.quit();
-        })
-        .catch(() => {
-          console.error('[desk] before-quit: code=SAVE_FAILED');
-          dialog.showErrorBox('Galley Desk', 'Не удалось сохранить изменения при выходе. Черновики сохранены в профиле.');
-          quitFlushed = true;
-          app.quit();
-        });
+      if (quitting) return;
+      quitting = true;
+      void prepareClose().then(() => {
+        quitFlushed = true;
+        app.quit();
+      }, () => { quitting = false; });
     });
 
     createWindow();

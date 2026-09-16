@@ -351,22 +351,15 @@ export function createBookService(deps: BookServiceDeps): BookService {
   async function closeBookById(bookId: string): Promise<void> {
     const book = books.get(bookId);
     if (book === undefined) return;
+    await Promise.all([...book.chapters.values()].map(async (entry) => {
+      if (entry.kind === 'live') await entry.session.flushPending();
+    }));
+    for (const entry of book.chapters.values()) {
+      if (entry.kind === 'live') await entry.session.close();
+    }
     stopWatching(bookId);
     books.delete(bookId);
-    let failed = false;
-    for (const entry of book.chapters.values()) {
-      if (entry.kind !== 'live') continue;
-      try {
-        await entry.session.close();
-      } catch {
-        failed = true;
-        console.error('[desk] close-book: code=SAVE_FAILED');
-      }
-    }
     book.chapters.clear();
-    if (failed) {
-      throw new IpcError('SAVE_FAILED', 'При закрытии книги не удалось сохранить изменения');
-    }
   }
 
   function requireBook(bookId: string): BookEntry {
@@ -690,6 +683,9 @@ export function createBookService(deps: BookServiceDeps): BookService {
     },
 
     async closeAll(): Promise<void> {
+      await Promise.all([...books.values()].flatMap(book => [...book.chapters.values()].map(async entry => {
+        if (entry.kind === 'live') await entry.session.flushPending();
+      })));
       for (const bookId of [...books.keys()]) {
         await closeBookById(bookId);
       }

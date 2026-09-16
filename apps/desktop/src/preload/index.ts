@@ -22,7 +22,21 @@ async function call<T>(channel: string, ...args: unknown[]): Promise<T> {
   throw error;
 }
 
+const closeListeners = new Set<(closing: boolean) => Promise<void>>();
+ipcRenderer.on('desk:flush-request', async (_event, requestId: string | null) => {
+  try {
+    await Promise.all([...closeListeners].map(listener => listener(requestId !== null)));
+    if (requestId !== null) ipcRenderer.send('desk:flush-ack', requestId, true);
+  } catch {
+    if (requestId !== null) ipcRenderer.send('desk:flush-ack', requestId, false);
+  }
+});
+
 const desk: DeskApi = {
+  onCloseRequest: (listener) => {
+    closeListeners.add(listener);
+    return () => { closeListeners.delete(listener); };
+  },
   appearance: () => call<AppearanceSettings>('desk:appearance'),
   setAppearance: (value) => call<void>('desk:set-appearance', value),
   savePosition: (bookId, chapterId, anchor, scrollTop) =>

@@ -237,7 +237,7 @@ export class ChapterSession {
         this.adopt(target, nextModel, revision);
         this.state = 'saved';
       } catch (error) {
-        this.fail(error, target);
+        await this.fail(error, target);
         throw error;
       }
     });
@@ -260,7 +260,7 @@ export class ChapterSession {
         this.adopt(target, nextModel, revision);
         this.state = 'saved';
       } catch (error) {
-        this.fail(error, target);
+        await this.fail(error, target);
         throw error;
       }
     });
@@ -285,7 +285,7 @@ export class ChapterSession {
         this.adopt(target, nextModel, revision);
         this.state = 'saved';
       } catch (error) {
-        this.fail(error, target);
+        await this.fail(error, target);
         throw error;
       }
     });
@@ -304,7 +304,7 @@ export class ChapterSession {
         this.adopt(target, modelFromPair(target, this.chapterId, this.sourcePath), revision);
         this.state = 'saved';
       } catch (error) {
-        this.fail(error);
+        await this.fail(error, target);
         throw error;
       }
     });
@@ -323,7 +323,7 @@ export class ChapterSession {
         this.adopt(target, modelFromPair(target, this.chapterId, this.sourcePath), revision);
         this.state = 'saved';
       } catch (error) {
-        this.fail(error);
+        await this.fail(error, target);
         throw error;
       }
     });
@@ -343,7 +343,7 @@ export class ChapterSession {
       } catch (error) {
         // The write failed: put the popped snapshot back so no history moved.
         this.inputHistory.redo(restored);
-        this.fail(error);
+        await this.fail(error, target);
         throw error;
       }
     });
@@ -362,7 +362,7 @@ export class ChapterSession {
         this.state = 'saved';
       } catch (error) {
         this.inputHistory.undo(restored);
-        this.fail(error);
+        await this.fail(error, target);
         throw error;
       }
     });
@@ -416,15 +416,19 @@ export class ChapterSession {
   }
 
   /**
-   * Drains the save queue, then clears both histories. A persisted save error
-   * is rethrown — the model is never dropped silently — and the histories
-   * stay untouched in that case.
+   * Prepares to close without clearing either history. A failed save remains
+   * pending (and is retried as a local draft), and still rejects preparation.
    */
-  async close(): Promise<void> {
+  async flushPending(): Promise<void> {
     await this.queue.drain();
-    if (this.state === 'error') {
-      throw this.failure === null ? new Error(`The chapter session has a failed save: ${this.chapterId}`) : this.failure.error;
+    if (this.failure !== null) {
+      await writeDraft(this.appData, this.chapterId, this.pending ?? this.pair);
+      throw this.failure.error;
     }
+  }
+
+  async close(): Promise<void> {
+    await this.flushPending();
     this.applyHistory.clear();
     this.inputHistory.clear();
   }
@@ -439,9 +443,15 @@ export class ChapterSession {
   }
 
   /** Records a failed write; `pending` keeps the local work for the draft. */
-  private fail(error: unknown, pending?: Pair): void {
+  private async fail(error: unknown, pending: Pair): Promise<void> {
     this.state = 'error';
     this.failure = { error };
-    if (pending !== undefined) this.pending = pending;
+    this.pending = pending;
+    try {
+      await writeDraft(this.appData, this.chapterId, pending);
+    } catch {
+      // Keep the target in memory when the profile cannot hold a draft.
+      // The original save error still rejects the operation and close.
+    }
   }
 }

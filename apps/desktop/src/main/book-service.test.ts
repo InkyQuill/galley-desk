@@ -721,3 +721,29 @@ test('closeAll дожидается всех сессий и убирает кн
   expect(harness.getBookRoot(view.bookId)).toBeUndefined();
   expect(await readFile(path.join(harness.bookRoot, 'Глава.review.json'), 'utf8')).toContain('кит');
 });
+
+
+test('audit: failed close retains session and recoverable draft', async () => {
+  const h = await makeService({ '01.md': 'cat', '02.md': 'second' });
+  const v = (await h.chooseBook())!;
+  const c = v.entries[0]!.id;
+  const other = v.entries[1]!.id;
+  const s = await h.openChapter(v.bookId, c);
+  const o = await h.openChapter(v.bookId, other);
+  await h.command(v.bookId, other, o.revision, { type: 'note', text: 'keep history' });
+  await rename(h.appData, h.appData + '-moved');
+  tempDirs.push(h.appData + '-moved');
+  await writeFile(h.appData, 'blocked');
+  await expect(h.command(v.bookId, c, s.revision, {
+    type: 'text', changes: [{ from: 0, to: 3, insert: 'dog' }], selection: { anchor: 3, head: 3 },
+  })).rejects.toThrow();
+  await expect(h.closeBook(v.bookId)).rejects.toThrow();
+  expect(h.getBookRoot(v.bookId)).toBe(h.bookRoot);
+  expect((await h.openChapter(v.bookId, c)).saveState).toBe('error');
+  expect((await h.openChapter(v.bookId, other)).canUndoInput).toBe(true);
+  await rm(h.appData);
+  await rename(h.appData + '-moved', h.appData);
+  await expect(h.closeBook(v.bookId)).rejects.toThrow();
+  const { readDrafts } = await import('@galley-desk/book-storage');
+  expect((await readDrafts(h.appData)).find(draft => draft.id === c)?.pair.review).toContain('dog');
+});

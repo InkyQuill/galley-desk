@@ -37,6 +37,7 @@ installMarkerStyles();
 export type ReviewEditorApi = {
   /** Команда через общую FIFO (порядок с вводом сохраняется). */
   enqueue: (command: Command) => void;
+  flushPending: () => Promise<void>;
   focus: () => void;
   /** Скроллит к записи и выделяет её диапазон; false, если якоря нет. */
   reveal: (recordId: string) => boolean;
@@ -394,6 +395,10 @@ export function ReviewEditor({
   const apiRef = useRef<ReviewEditorApi | null>(null);
   if (apiRef.current === null) {
     apiRef.current = {
+      flushPending: async () => {
+        await queue.idle();
+        if (queue.blocked) throw new Error('Не удалось сохранить изменения; локальный текст остаётся в окне');
+      },
       enqueue: (command) => enqueueRef.current(command),
       focus: () => handleRef.current?.focus(),
       reveal: (recordId) => {

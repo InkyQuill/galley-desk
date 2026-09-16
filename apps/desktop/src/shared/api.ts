@@ -18,6 +18,7 @@ export type Command =
  | {type:'undo-input'|'redo-input'|'undo-apply'|'redo-apply'};
 export type AppearanceSettings = {themeId:string; fontFamily:string; fontSize:number; lineWidth:number};
 export interface DeskApi {
+  onCloseRequest(listener:(closing:boolean)=>Promise<void>):()=>void;
   appearance():Promise<AppearanceSettings>;
   setAppearance(value:AppearanceSettings):Promise<void>;
   savePosition(bookId:string,chapterId:string,anchor:number,scrollTop:number):Promise<void>;

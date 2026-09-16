@@ -4,6 +4,8 @@
 // (validateCommand). Errors carry a stable `code`; main logs code and
 // operation only — never manuscript content.
 import { ipcMain } from 'electron';
+import type { WebContents } from 'electron';
+import { randomUUID } from 'node:crypto';
 import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import type { Command } from '../shared/api';
@@ -203,6 +205,33 @@ export type DeskIpcDeps = {
   openExternal: (url: string) => Promise<void>;
 };
 
+/** Only a matching one-shot acknowledgement from the requested top frame counts. */
+export function flushRenderer(contents: WebContents): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const id = randomUUID();
+    const finish = (ok: boolean): void => {
+      clearTimeout(timeout);
+      ipcMain.removeListener('desk:flush-ack', ack);
+      contents.removeListener('destroyed', destroyed);
+      if (ok) resolve();
+      else reject(new IpcError('SAVE_FAILED', 'Не удалось сохранить изменения; окно остаётся открытым'));
+    };
+    const ack = (event: Electron.IpcMainEvent, requestId: unknown, ok: unknown): void => {
+      if (event.sender !== contents || requestId !== id || !senderIsTrusted(event)) return;
+      finish(ok === true);
+    };
+    const destroyed = (): void => finish(false);
+    const timeout = setTimeout(() => finish(false), 30_000);
+    ipcMain.on('desk:flush-ack', ack);
+    contents.once('destroyed', destroyed);
+    contents.send('desk:flush-request', id);
+  });
+}
+
+export function resumeRenderer(contents: WebContents): void {
+  if (!contents.isDestroyed()) contents.send('desk:flush-request', null);
+}
+
 /**
  * Wires the explicit desk channels to the book service. The preload exposes
  * exactly these channels; there is no arbitrary-channel escape hatch. Every
@@ -241,7 +270,14 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
   handle('desk:open-chapter', (_event, args) => service.openChapter(asStringArg(args[0]), asStringArg(args[1])));
   handle('desk:command', (_event, args) =>
     service.command(asStringArg(args[0]), asStringArg(args[1]), asNumberArg(args[2]), args[3]));
-  handle('desk:close-book', (_event, args) => service.closeBook(asStringArg(args[0])));
+  handle('desk:close-book', async (event, args) => {
+    try {
+      await flushRenderer(event.sender);
+      await service.closeBook(asStringArg(args[0]));
+    } finally {
+      resumeRenderer(event.sender);
+    }
+  });
   handle('desk:open-external', (_event, args) => openExternalVia(deps.openExternal, args[0]));
   handle('desk:resolve-external', (_event, args) => {
     const choice = args[2];

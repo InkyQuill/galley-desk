@@ -269,6 +269,7 @@ test('a failing draft write keeps the model and the error state', async () => {
   await externalWrite(root, 'abcd!');
   await expect(session.replaceReview(reviewFor(chapterId, [], 'reviewed'))).rejects.toThrow(WriteConflictError);
   expect(session.state).toBe('error');
+  await rm(path.join(appData, `${chapterId}.draft.json`), { force: true });
   await mkdir(path.join(appData, `${chapterId}.draft.json`));
 
   await expect(session.checkExternal()).rejects.toThrow();
@@ -451,4 +452,26 @@ test('adoptExternal returns the session to saved on the external base', async ()
   await session.edit([{ from: 5, to: 5, insert: '?' }], { anchor: 6, head: 6 });
   expect(session.model.text).toBe('abcd!?');
   await session.close();
+});
+
+test('failed save writes the pending draft without requiring a successful close', async () => {
+  const { book, chapterId, appData, root } = await makeBook();
+  const session = await ChapterSession.open(book, chapterId, appData);
+  await externalWrite(root, 'external');
+  await expect(session.edit([{ from: 0, to: 4, insert: 'local' }], { anchor: 5, head: 5 })).rejects.toThrow();
+  expect((await readDrafts(appData))[0]?.pair.review).toContain('local');
+  await expect(session.flushPending()).rejects.toThrow();
+});
+
+test('preparing close drains input without clearing history; closing clears both stacks', async () => {
+  const { book, chapterId, appData } = await makeBook();
+  const session = await ChapterSession.open(book, chapterId, appData);
+  const save = session.edit([{ from: 4, to: 4, insert: '!' }], { anchor: 5, head: 5 });
+  await session.flushPending();
+  await save;
+  expect(session.model.text).toBe('abcd!');
+  expect(session.canUndoInput).toBe(true);
+  await session.close();
+  expect(session.canUndoInput).toBe(false);
+  expect(session.canUndoApply).toBe(false);
 });
