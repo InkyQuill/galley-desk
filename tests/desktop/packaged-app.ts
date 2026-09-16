@@ -34,7 +34,11 @@ function waitForExit(child: ChildProcess): Promise<boolean> {
 
 /** Real executable + renderer CDP only; no Node inspector or fuse changes. */
 export async function launchPackaged(executable: string, profile: string): Promise<PackagedApp> {
-  const child = spawn(executable, ['--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1'], {
+  // Exercise the root-owned SUID fallback explicitly on CI. This selects the
+  // other Chromium sandbox implementation; it never disables sandboxing.
+  const sandboxArgs = process.platform === 'linux' && process.env.GALLEY_TEST_FORCE_SUID_SANDBOX === '1'
+    ? ['--disable-namespace-sandbox'] : [];
+  const child = spawn(executable, ['--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', ...sandboxArgs], {
     env: { ...process.env, GALLEY_DESK_USER_DATA: profile }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   // Drain both pipes so verbose Chromium diagnostics cannot block the child.

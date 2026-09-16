@@ -16,6 +16,9 @@ import path from 'node:path';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // Chromium's SUID wrapper splits an unquoted helper path on spaces.
+    // Keep Linux artifact paths shell-safe; productName remains Galley Desk.
+    ...(process.platform === 'linux' ? {name: 'galley-desk', executableName: 'galley-desk'} : {}),
     icon: path.resolve(
       'assets/branding/generated',
       process.platform === 'darwin' ? 'galley-desk-icon.icns' : 'galley-desk-icon.png',

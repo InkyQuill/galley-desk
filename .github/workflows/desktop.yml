@@ -49,7 +49,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb openbox xdotool x11-utils
       - name: Configure packaged Chromium sandbox
         run: |
-          sandbox="$PWD/apps/desktop/out/Galley Desk-linux-x64/chrome-sandbox"
+          sandbox="$PWD/apps/desktop/out/galley-desk-linux-x64/chrome-sandbox"
           sudo chown root:root "$sandbox"
           sudo chmod 4755 "$sandbox"
       - name: Electron tests (Xvfb and Openbox)
@@ -62,7 +62,8 @@ jobs:
           '
         env:
           CI: true
-          GALLEY_PACKAGED_EXECUTABLE: ${{ github.workspace }}/apps/desktop/out/Galley Desk-linux-x64/Galley Desk
+          GALLEY_PACKAGED_EXECUTABLE: ${{ github.workspace }}/apps/desktop/out/galley-desk-linux-x64/galley-desk
+          GALLEY_TEST_FORCE_SUID_SANDBOX: "1"
       - name: Save failed desktop test evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

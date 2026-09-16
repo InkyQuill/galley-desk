@@ -21,7 +21,7 @@
 
 ```bash
 npm run package
-"./apps/desktop/out/Galley Desk-linux-x64/Galley Desk"
+"./apps/desktop/out/galley-desk-linux-x64/galley-desk"
 ```
 
 Примечание: на Node 26 (и Node 24.16+) зависимость `extract-zip` из `@electron/packager` перестаёт работать; в корневом `package.json` она явно закреплена dev-зависимостью и override на официальный форк `@electron-internal/extract-zip`.

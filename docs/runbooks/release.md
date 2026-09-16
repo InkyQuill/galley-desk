@@ -28,7 +28,7 @@ GALLEY_PERF=1 npx playwright test tests/desktop/performance.spec.ts --workers=1
 ```
 
 Дополнительно запустить собранный исполняемый файл вручную
-(`apps/desktop/out/Galley Desk-linux-x64/Galley Desk`) и проверить открытие
+(`apps/desktop/out/galley-desk-linux-x64/galley-desk`) и проверить открытие
 книги, поиск, оформление, Zen и закрытие с сохранением. Результаты
 зафиксировать в `docs/verification.md`.
 
@@ -87,7 +87,7 @@ macOS-джоба в `.github/workflows/desktop.yml` выполняет `npm ci �
 
 ```bash
 # Linux
-export GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/Galley Desk-linux-x64/Galley Desk"
+export GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/galley-desk-linux-x64/galley-desk"
 # macOS: заменить arm64 на x64 для Intel
 export GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/Galley Desk-darwin-arm64/Galley Desk.app/Contents/MacOS/Galley Desk"
 npx playwright test tests/desktop/packaged-smoke.spec.ts --workers=1
@@ -161,7 +161,7 @@ npm run make --workspace @galley-desk/desktop -- --skip-package --targets=@elect
 изолированного дисплея; рабочую KDE-сессию менять не требуется:
 
 ```bash
-export GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/Galley Desk-linux-x64/Galley Desk"
+export GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/galley-desk-linux-x64/galley-desk"
 xvfb-run -a sh -c '
   openbox >/tmp/galley-test-openbox.log 2>&1 &
   galley_wm_pid=$!
@@ -178,3 +178,34 @@ xvfb-run -a sh -c '
 перенос из `/tmp` на внутреннем tmpfs может быть запрещён системным gio.
 Передача `GALLEY_PACKAGED_EXECUTABLE` включает проверки настоящего
 упакованного приложения; Linux X11-проверки не заменяют ручные Mac-пункты.
+
+### Linux: SUID sandbox и пробелы в пути установки
+
+Linux-пакет называется `galley-desk-linux-x64`, executable — `galley-desk`.
+Название приложения в интерфейсе остаётся **Galley Desk**; macOS-пакет не переименован.
+Если система использует SUID fallback Chromium вместо user namespaces, путь
+установки приложения (включая родительские каталоги) должен быть без пробелов.
+Это ограничение не относится к каталогам книг.
+
+Причина в Chromium: [SetuidSandboxHost::PrependWrapper](https://chromium.googlesource.com/chromium/src/+/main/sandbox/linux/suid/client/setuid_sandbox_host.cc)
+передаёт путь helper без кавычек, а [CommandLine::PrependWrapper](https://chromium.googlesource.com/chromium/src/+/main/base/command_line.cc)
+разбивает его по пробелам. На Electron 44.4.0 воспроизведено с временной копией
+приложения и корректным root:root/4755 helper: каталог `with space` даёт
+`execvp: .../with` и exit 133; переименование только каталога в `no-spaces`
+позволяет запустить sandbox и получить CDP endpoint.
+
+В CI packaged-тесты явно выбирают SUID fallback, не отключая sandbox:
+
+```sh
+sandbox="$PWD/apps/desktop/out/galley-desk-linux-x64/chrome-sandbox"
+sudo chown root:root "$sandbox"
+sudo chmod 4755 "$sandbox"
+export GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/galley-desk-linux-x64/galley-desk"
+export GALLEY_TEST_FORCE_SUID_SANDBOX=1
+# Затем обычный headless-прогон с Xvfb/Openbox, описанный выше.
+```
+
+`GALLEY_TEST_FORCE_SUID_SANDBOX` читается только тестовым launcher и передаёт
+`--disable-namespace-sandbox`, заставляя Chromium использовать SUID sandbox.
+Ни `--no-sandbox`, ни отключение renderer sandbox не используются. Для локальной
+проверки лучше делать отдельную временную копию пакета и удалять её после теста.

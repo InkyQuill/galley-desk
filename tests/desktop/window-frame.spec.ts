@@ -22,7 +22,7 @@ test.afterEach(async () => {
 test('packaged Linux window has custom accessible chrome and native controls work', async ({}, testInfo) => {
   profile = await mkdtemp(path.join(tmpdir(), 'desk-window-'));
   const executable = process.env.GALLEY_PACKAGED_EXECUTABLE
-    ?? path.resolve('apps/desktop/out/Galley Desk-linux-x64/Galley Desk');
+    ?? path.resolve('apps/desktop/out/galley-desk-linux-x64/galley-desk');
   app = await launchPackaged(executable, profile);
   const page = app.page;
   await expect(page.getByRole('img', { name: 'Galley Desk' })).toBeVisible();
@@ -54,7 +54,7 @@ test('compact welcome keeps every recent book reachable below the fixed title ba
   }));
   await writeFile(path.join(profile, 'recent-books.json'), JSON.stringify(recents));
   const executable = process.env.GALLEY_PACKAGED_EXECUTABLE
-    ?? path.resolve('apps/desktop/out/Galley Desk-linux-x64/Galley Desk');
+    ?? path.resolve('apps/desktop/out/galley-desk-linux-x64/galley-desk');
   app = await launchPackaged(executable, profile);
   const page = app.page;
   const windowId = (await run('xdotool', ['search', '--onlyvisible', '--pid', String(app.pid)])).stdout.trim().split('\n')[0]!;
