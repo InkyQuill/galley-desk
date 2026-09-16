@@ -76,7 +76,7 @@ export function ChapterNote({ value, onCommand }: Props) {
             }}
           />
           {error !== null && (
-            <p role="alert" style={{ color: '#b00020', margin: 0 }}>
+            <p role="alert" style={{ color: 'var(--app-error-text)', margin: 0 }}>
               {error}
             </p>
           )}

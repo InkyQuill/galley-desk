@@ -1,10 +1,27 @@
 :root {
   color-scheme: light dark;
   font-family: system-ui, -apple-system, sans-serif;
+  /* Локальный токен предупреждения: в galley-themes нет warning-переменной.
+     Светлое значение по умолчанию; тёмный вариант — по data-scheme
+     тематического контейнера App (.app-root). */
+  --desk-warning: #a06000;
+}
+
+[data-scheme='dark'] {
+  --desk-warning: #d9a34a;
 }
 
 body {
   margin: 0;
+  /* Пока настройки оформления не загружены (первый кадр App) — нейтральная
+     системная подложка вместо вспышки чужой темы. */
+  background: Canvas;
+}
+
+/* Тематический контейнер приложения: переменные темы из windowContainerStyle
+   красят и экран недавних, и окно книги. */
+.app-root {
+  min-height: 100vh;
 }
 
 .app {
@@ -26,7 +43,7 @@ body {
 }
 
 .app__error {
-  color: #b00020;
+  color: var(--app-error-text);
   margin: 0;
   max-width: 42rem;
   overflow-wrap: anywhere;
@@ -68,7 +85,7 @@ body {
 }
 
 .recent-list__missing {
-  color: #b00020;
+  color: var(--app-error-text);
   font-size: 0.85rem;
 }
 
@@ -108,12 +125,12 @@ body {
 }
 
 .book__save-state--error {
-  color: #b00020;
+  color: var(--app-error-text);
   opacity: 1;
 }
 
 .book__save-state--external {
-  color: #a06000;
+  color: var(--desk-warning);
   opacity: 1;
 }
 
@@ -261,7 +278,7 @@ body {
 }
 
 .book__record--conflicting {
-  color: #b00020;
+  color: var(--app-error-text);
 }
 
 .book__image {
@@ -358,5 +375,5 @@ body {
   background: Canvas;
   color: CanvasText;
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--app-dialog-shadow);
 }

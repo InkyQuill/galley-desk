@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { AppearanceSettings, BookView, Command, RecordView, Snapshot } from '../../shared/api';
+import type { ThemeDefinition } from '@inkyquill/galley-themes';
 import { comparisonSegments, ComparisonView } from '../editor/ComparisonView';
 import type { ReviewEditorApi } from '../editor/ReviewEditor';
 import { ReviewEditor } from '../editor/ReviewEditor';
 import { setActiveScheme } from '../editor/markers';
 import type { SignalTypeName } from '../editor/markers';
-import { Appearance, contentWidthStyle, resolveTheme, windowContainerStyle } from '../appearance/Appearance';
+import { Appearance, contentWidthStyle } from '../appearance/Appearance';
 import { derivedRangeToDisplayRange } from '../search/search';
 import type { SearchRange } from '../search/search';
 import { ChapterSearch } from '../search/ChapterSearch';
@@ -21,6 +22,14 @@ type Props = {
   /** Сохранённая позиция из записи недавних (восстановление после перезапуска). */
   restore?: ReadingRestore | null;
   onClose: () => void;
+  /** Настройки оформления: источник — App (один тематический контейнер). */
+  appearance: AppearanceSettings;
+  /** Резолв темы в App («Системная» уже развёрнута по схеме ОС). */
+  appearanceTheme: ThemeDefinition;
+  /** Ошибка применения настроек (сбой загрузки/отказ main) — панель показывает. */
+  appearanceError: string | null;
+  /** Изменение из панели: App применяет на контейнере и сохраняет в appData. */
+  onAppearanceChange: (next: AppearanceSettings) => void;
 };
 
 /** Позиция чтения для восстановления при открытии книги. */
@@ -95,9 +104,18 @@ type PopupState =
  * Плюс: поиск по главе (область зависит от вида), фильтр оглавления
  * (только отображение, манифест не меняется), режим Zen (панели и topbar
  * скрыты, постоянная кнопка выхода; Escape сначала закрывает popup) и
- * настройки оформления (тема/шрифт на контейнере окна, в книгах не живут).
+ * настройки оформления (панель в окне; тема/шрифт живут на контейнере App,
+ * в книгах не пишут).
  */
-export function BookWindow({ book, restore = null, onClose }: Props) {
+export function BookWindow({
+  book,
+  restore = null,
+  onClose,
+  appearance,
+  appearanceTheme,
+  appearanceError,
+  onAppearanceChange,
+}: Props) {
   const cached = positionCache.get(book.bookId);
   // Сохранённая позиция из записи недавних сильнее внутрисессионного кэша;
   // глава могла исчезнуть из манифеста — тогда восстановление игнорируется.
@@ -134,11 +152,10 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
   const [popup, setPopup] = useState<PopupState>(null);
   const [cardId, setCardId] = useState<string | null>(null);
   const [editorApi, setEditorApi] = useState<ReviewEditorApi | null>(null);
-  // Оформление: загрузка из appData при открытии окна; схема темы едет в
-  // маркеры (набор Pocket-палитры), переменные темы — на контейнер окна.
-  const [appearance, setAppearance] = useState<AppearanceSettings | null>(null);
+  // Панель оформления открыта локально; сами настройки живут в App — их
+  // изменение доезжает до тематического контейнера мгновенно и сохраняется
+  // там же через DeskApi.
   const [appearanceOpen, setAppearanceOpen] = useState(false);
-  const [appearanceError, setAppearanceError] = useState<string | null>(null);
   // Zen: панели и topbar скрыты; выход — постоянная кнопка или Escape
   // (сначала закрываются popup/flyout/карточка, затем сам Zen).
   const [zen, setZen] = useState(false);
@@ -180,38 +197,12 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
 
   // --- оформление ------------------------------------------------------------
 
-  useEffect(() => {
-    let cancelled = false;
-    window.desk
-      .appearance()
-      .then((value) => {
-        if (!cancelled) setAppearance(value);
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setAppearanceError(errorText(cause));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const appearanceTheme = appearance !== null ? resolveTheme(appearance.themeId) : null;
-
   // Схема темы — маркерам (светлый/тёмный набор Pocket-палитры); реактивность
-  // обеспечивают подписки useMarkerTheme/subscribeScheme (markers.ts).
+  // обеспечивают подписки useMarkerTheme/subscribeScheme (markers.ts). Резолв
+  // темы происходит в App, живая смена системной схемы доезжает через проп.
   useEffect(() => {
-    setActiveScheme(appearanceTheme?.scheme ?? null);
+    setActiveScheme(appearanceTheme.scheme);
   }, [appearanceTheme]);
-
-  /** Пользовательское изменение: применяется локально и сохраняется в appData. */
-  const updateAppearance = useCallback((next: AppearanceSettings): void => {
-    setAppearance(next);
-    setAppearanceError(null);
-    void window.desk.setAppearance(next).catch((cause: unknown) => {
-      // main отверг значение (границы/неизвестная тема) — состояние показано.
-      setAppearanceError(errorText(cause));
-    });
-  }, []);
 
   // --- Zen и порядок Escape ---------------------------------------------------
 
@@ -556,12 +547,12 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
       : book.entries.filter((entry) =>
           (entry.title !== '' ? entry.title : entry.path).toLowerCase().includes(normalizedFilter),
         );
-  const containerStyle: CSSProperties | undefined =
-    appearance !== null && appearanceTheme !== null ? windowContainerStyle(appearanceTheme, appearance) : undefined;
-  const widthStyle: CSSProperties | undefined = appearance !== null ? contentWidthStyle(appearance.lineWidth) : undefined;
+  // Переменные темы, шрифт и подложка живут на контейнере App (.app-root);
+  // здесь остаётся только ширина колонки чтения из настройки.
+  const widthStyle: CSSProperties = contentWidthStyle(appearance.lineWidth);
 
   return (
-    <div className={zen ? 'book book--zen' : 'book'} style={containerStyle}>
+    <div className={zen ? 'book book--zen' : 'book'}>
       {!zen && (
         <header className="book__header">
           <h1 className="book__title">{book.title}</h1>
@@ -598,9 +589,9 @@ export function BookWindow({ book, restore = null, onClose }: Props) {
           </button>
         </header>
       )}
-      {appearanceOpen && appearance !== null && (
+      {appearanceOpen && (
         <div className="book__appearance-panel">
-          <Appearance value={appearance} onChange={updateAppearance} />
+          <Appearance value={appearance} onChange={onAppearanceChange} />
           {appearanceError !== null && (
             <p className="app__error" role="alert">
               {appearanceError}

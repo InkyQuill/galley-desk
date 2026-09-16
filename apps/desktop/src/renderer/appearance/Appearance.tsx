@@ -24,6 +24,15 @@ export const SYSTEM_THEME_ID = 'auto';
 export const FONT_SIZE_BOUNDS = { min: 10, max: 48 } as const;
 export const LINE_WIDTH_BOUNDS = { min: 320, max: 1600 } as const;
 
+/** Значения по умолчанию — зеркально main (settings.ts): сбой загрузки
+ * настроек не оставляет приложение без оформления. */
+export const DEFAULT_APPEARANCE: AppearanceSettings = {
+  themeId: SYSTEM_THEME_ID,
+  fontFamily: 'system-ui',
+  fontSize: 16,
+  lineWidth: 720,
+};
+
 /** Идентификаторы тем для селекта: «auto» + весь встроенный каталог. */
 export function themeOptions(): { id: string; label: string }[] {
   return [
@@ -32,14 +41,46 @@ export function themeOptions(): { id: string; label: string }[] {
   ];
 }
 
-/** Резолв идентификатора темы: неизвестный/«auto» → светлый или тёмный базовая. */
-export function resolveTheme(themeId: string): ThemeDefinition {
+/**
+ * Чистый резолв по уже известной системной схеме: «Системная» («auto») и
+ * неизвестные идентификаторы дают базовую тему схемы, явные — саму тему.
+ */
+export function resolveThemeForScheme(themeId: string, systemDark: boolean): ThemeDefinition {
   if (isThemeId(themeId)) return getTheme(themeId)!;
-  const dark =
+  return getTheme(systemDark ? DEFAULT_DARK_THEME_ID : DEFAULT_LIGHT_THEME_ID)!;
+}
+
+/** Текущая системная схема (одиночный опрос matchMedia); без окна — светлая. */
+export function systemSchemeDark(): boolean {
+  return (
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-color-scheme: dark)').matches;
-  return getTheme(dark ? DEFAULT_DARK_THEME_ID : DEFAULT_LIGHT_THEME_ID)!;
+    window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
+}
+
+/** Резолв идентификатора темы: неизвестный/«auto» → светлый или тёмный базовая. */
+export function resolveTheme(themeId: string): ThemeDefinition {
+  return resolveThemeForScheme(themeId, systemSchemeDark());
+}
+
+/**
+ * Подписка на живую смену системной схемы («Системная» тема следует за ОС
+ * без перезапуска). Возвращает функцию отписки; без окна подписки нет.
+ */
+export function subscribeSystemScheme(onChange: (dark: boolean) => void): () => void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return () => undefined;
+  }
+  const query = window.matchMedia('(prefers-color-scheme: dark)');
+  const handler = (event: MediaQueryListEvent): void => onChange(event.matches);
+  // Стандартный addEventListener; старым движкам остаётся addListener.
+  if (typeof query.addEventListener === 'function') {
+    query.addEventListener('change', handler);
+    return () => query.removeEventListener('change', handler);
+  }
+  query.addListener(handler);
+  return () => query.removeListener(handler);
 }
 
 function clamp(value: number, bounds: { min: number; max: number }): number {
