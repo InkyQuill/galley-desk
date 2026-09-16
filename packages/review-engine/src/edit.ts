@@ -37,8 +37,16 @@ export function changeText(
     coverTo = Math.max(coverTo, span.end);
   }
 
-  const sourceFrom = byteOffsetAt(model.pieces, model.source, coverFrom, 'from');
-  const sourceTo = byteOffsetAt(model.pieces, model.source, coverTo, 'to');
+  let sourceFrom = byteOffsetAt(model.pieces, model.source, coverFrom, 'from');
+  let sourceTo = byteOffsetAt(model.pieces, model.source, coverTo, 'to');
+  // Several source boundaries can share one derived position after deletion.
+  // Boundary mapping alone may stop before an absorbed zero-width piece, so
+  // include every absorbed record's bytes before replacing those records.
+  for (const index of affected) {
+    const { source } = (spans[index] as PieceSpan).piece;
+    sourceFrom = Math.min(sourceFrom, source.from);
+    sourceTo = Math.max(sourceTo, source.to);
+  }
 
   let derived = model.text;
   for (let index = prepared.length - 1; index >= 0; index--) {
