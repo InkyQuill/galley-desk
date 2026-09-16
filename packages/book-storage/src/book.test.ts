@@ -27,7 +27,7 @@ function reviewJson(chapterId: string, sourcePath: string, note = ''): string {
 }
 
 async function tempDir(prefix: string): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), prefix));
+  return realpath(await mkdtemp(path.join(tmpdir(), prefix)));
 }
 
 async function seedBook(): Promise<string> {

@@ -15,7 +15,8 @@ const tempDirs: string[] = [];
 async function tempRoot(): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), 'galley-res-'));
   tempDirs.push(dir);
-  return dir;
+  // Production receives the canonical root returned by openBook.
+  return realpath(dir);
 }
 
 afterEach(async () => {

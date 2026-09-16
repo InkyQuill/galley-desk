@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import * as files from './files';
 import {
   mkdtemp,
+  realpath,
   readFile,
   writeFile,
   rm,
@@ -19,7 +20,7 @@ afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
 });
 async function fixture(version = 1) {
-  const root = await mkdtemp(path.join(tmpdir(), 'desk-management-'));
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'desk-management-')));
   dirs.push(root);
   await writeFile(path.join(root, 'a.md'), '# Alpha\n');
   const book = await openBook(root);

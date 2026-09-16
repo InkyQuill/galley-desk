@@ -102,7 +102,11 @@ test('forget removes only the requested entry and never touches files', async ()
     [entry({ path: '/books/other', bookId: 'id-2', title: 'Другая' })],
     { path: await canonicalPath(bookDir), bookId: 'id-1', title: 'Книга' },
   );
-  const kept = forgetRecent(books, bookDir);
+  const alias = path.join(base, 'book-alias');
+  await symlink(bookDir, alias);
+  const requested = await findRecentByCanonicalPath(books, alias);
+  expect(requested?.bookId).toBe('id-1');
+  const kept = forgetRecent(books, alias, requested!.path);
   expect(kept).toHaveLength(1);
   expect(kept[0]?.bookId).toBe('id-2');
   expect(existsSync(chapter)).toBe(true);
