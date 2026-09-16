@@ -4,11 +4,11 @@
     "branch": "galley-desk-tolerant-reviews"
   },
   "galley-editor": {
-    "sha": "e5769b6b161af5275f7c2b490707aad5f3a5af09",
+    "sha": "4da44fcc1290381a8c9bbfdffcdb349dd68494cf",
     "branch": "feat/galley-themes-workspace"
   },
   "galley-pad": {
-    "sha": "16065357c6993b58d7e7262c41a8fac9e35729a9",
-    "branch": "main"
+    "sha": "b78f22f27f00a98479369c6a18170e5d12aeb5c1",
+    "branch": "feat/shared-themes"
   }
 }

@@ -8,6 +8,48 @@
 
 Дата последнего прогона: **2026-09-15/16** (коммиты фиксируются в git).
 
+## Companion-проверка A6 (2026-09-16)
+
+Изолированные исходники Editor `4da44fcc1290381a8c9bbfdffcdb349dd68494cf`
+(база `e5769b6`) и Pad `b78f22f27f00a98479369c6a18170e5d12aeb5c1`
+(база `6f8cfff`) проверены следующими командами:
+
+| Команда | Результат |
+| --- | --- |
+| Editor `npm test` | 526 passed |
+| Editor `npm run test --workspace @inkyquill/galley-themes` | 11 passed |
+| Editor `npm run lint` | PASS |
+| Editor `npm run test:package-consumer` | 1 passed; реальные tarballs, runtime/types/CSS |
+| Editor `npm run docs:build` | PASS, 19 страниц |
+| Editor `npm run build-storybook` | PASS |
+| Pad `mise run verify` | PASS: audit `{}`, 275 unit, 20 scripts, 19 integration, frontend build, Rust fmt, 40 Rust tests, Tauri info и debug build |
+| npm `0.14.0`, отдельный consumer-прогон | 1 passed; тот же consumer test с `npm pack <package>@0.14.0` вместо `--workspace` |
+
+Editor: два обычных baseline-прогона прошли; воспроизведение истечения
+20ms бюджета начального парсинга через управляемый `Date.now` вернуло
+525 pass / 1 fail в полном suite и 14 pass / 1 fail в focused-файле.
+`forceParsing` в test helper обеспечивает готовое дерево: исходные ожидания
+`normalizeTable === true` и точный Markdown сохранены, production-команда
+не менялась. С детерминированным сценарием итоговый suite зелёный.
+
+Pad: window capture намеренно отменяет `mousedown`/`auxclick` с button=1
+во всём окне, включая tabstrip, чтобы отпускание после сдвига табов не
+вставляло Linux primary selection. Исправлено устаревшее ожидание теста;
+реальные middle-close сценарии также прошли. Production handler сохранён.
+Audit исправлен patch-обновлениями Vitest/mocker `4.1.11`, js-yaml `4.3.2`,
+nanoid `3.3.19`, postcss `8.5.28`, undici `6.28.1`/`7.29.1` в существующих
+совместимых диапазонах; audit не отключался.
+
+Ограничения: после успешного полного gate один запуск pre-commit Pad выявил
+интермиттирующий тест Save As (`document.title` ещё `* Untitled.md` вместо
+`new.md`); focused-повтор и полный pre-commit под `mise exec` прошли.
+Этот тест не менялся; единичный сбой сохранён как риск стабильности suite.
+Есть предупреждения Node experimental localStorage, Playwright color env и
+Vite/Storybook о размере bundle; ошибок сборки нет. Это Linux-проверка,
+macOS и бинарные релизы companion-приложений здесь не запускались.
+Проверено не означает слито/выпущено: точные source pins и отдельный
+статус опубликованных артефактов — в [compatibility.md](compatibility.md).
+
 ## Окружение (Linux, локальная машина)
 
 | Параметр | Значение |
