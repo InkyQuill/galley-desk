@@ -1,0 +1,9 @@
+
+Running 2 tests using 1 worker
+
+(node:2891556) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/desktop/packaged-app.spec.ts:7:1 › packaged launcher reports a missing executable without an unhandled spawn error (9ms)
+  ✓  2 tests/desktop/packaged-app.spec.ts:16:1 › packaged launcher bounds endpoint discovery and kills a child that ignores SIGTERM (33.1s)
+
+  2 passed (33.5s)

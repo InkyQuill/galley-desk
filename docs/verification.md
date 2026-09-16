@@ -1,6 +1,6 @@
 # Протокол верификации настольного приложения
 
-> **A7, 2026-09-16:** Linux executable и performance проверены на свежей сборке. Android folder roundtrip выявил blocker sidecar discovery. Реальный Mac и системная IME не проверены. Общий platform gate открыт; исторический аудит не заменяет результаты ниже.
+> **A7, 2026-09-16:** Linux executable, performance и Android app-layer roundtrip PASS; найденный blocker sidecar discovery исправлен и повторно проверен. Реальный Mac и системная IME не проверены. Общий platform gate открыт; исторический RED сохранён ниже.
 
 Фактические результаты финальной проверки задачи D5 (поиск, оформление,
 итоговая проверка packaged-приложений). Принцип: записывается только то,

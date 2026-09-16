@@ -1,8 +1,8 @@
-import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtemp, readFile, writeFile, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { test, expect, chromium, type Browser } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { launchPackaged } from './packaged-app';
 
 // Real exported Pocket result, opened in the production packaged Desk renderer.
 // Legacy is a separate fixture variant; the canonical return is always tested unchanged.
@@ -25,25 +25,10 @@ for (const sidecar of ['chapter.review.json', 'chapter.md.review.json']) {
       path: root, bookId: book.book_id, title: book.title, lastChapterId: null, anchor: null,
       scrollTop: null, lastOpenedAt: Date.now(),
     }]));
-    let child: ChildProcess | undefined;
-    let browser: Browser | undefined;
+    let session: Awaited<ReturnType<typeof launchPackaged>> | undefined;
     try {
-      child = spawn(executable!, ['--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1'], {
-        env: { ...process.env, GALLEY_DESK_USER_DATA: profile }, stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      const endpoint = await new Promise<string>((resolve, reject) => {
-        let log = '';
-        const timer = setTimeout(() => reject(new Error(`No packaged CDP endpoint: ${log}`)), 30_000);
-        child!.stderr!.on('data', chunk => {
-          log += chunk.toString();
-          const match = log.match(/DevTools listening on (ws:\/\/[^\s]+)/);
-          if (match) { clearTimeout(timer); resolve(match[1]!); }
-        });
-        child!.once('exit', code => { clearTimeout(timer); reject(new Error(`Process exited ${code}: ${log}`)); });
-      });
-      browser = await chromium.connectOverCDP(endpoint);
-      const context = browser.contexts()[0]!;
-      const page = context.pages()[0] ?? await context.waitForEvent('page');
+      session = await launchPackaged(executable!, profile);
+      const { page } = session;
       await page.getByRole('button', { name: 'Открыть', exact: true }).click();
       await expect(page.locator('.cm-content')).toBeVisible();
       await expect(page.locator('.book__record')).toHaveCount(6);
@@ -66,14 +51,12 @@ for (const sidecar of ['chapter.review.json', 'chapter.md.review.json']) {
       expect((await readdir(root)).filter(name => name.endsWith('.review.json'))).toEqual([sidecar]);
       await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     } finally {
-      await browser?.close();
-      if (child && child.exitCode === null) {
-        const exited = new Promise<void>(resolve => child!.once('exit', () => resolve()));
-        child.kill('SIGTERM');
-        await exited;
+      try {
+        await session?.stop();
+      } finally {
+        await rm(root, { recursive: true, force: true });
+        await rm(profile, { recursive: true, force: true });
       }
-      await rm(root, { recursive: true, force: true });
-      await rm(profile, { recursive: true, force: true });
     }
   });
 }

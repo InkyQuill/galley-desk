@@ -276,6 +276,16 @@ test('Chromium composition commit/cancel and multiline emoji CRLF insertion surv
     await cdp.send('Input.imeSetComposition', { text: 'cancel', selectionStart: 6, selectionEnd: 6 });
     await cdp.send('Input.imeSetComposition', { text: '', selectionStart: 0, selectionEnd: 0 });
     await expect(content).not.toContainText('cancel');
+    await page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    const compositionReview = JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')) as Review;
+    expect(openChapter(original, compositionReview).text).toBe('日本');
+    expect(await readFile(path.join(bookRoot, 'Глава.md'))).toEqual(original);
+    await page.getByRole('button', { name: 'Открыть', exact: true }).click();
+    await expect(content).toHaveText('日本');
+    await expect(content).not.toContainText('cancel');
+    // Exercise paste separately, after proving committed/canceled composition
+    // survived the save queue and a fresh chapter load.
+    await content.click();
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.insertText('line one\r\nemoji 🦊\r\nlast');
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();

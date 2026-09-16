@@ -1,9 +1,9 @@
-import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { test, expect, chromium, type Browser } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { launchPackaged } from './packaged-app';
 
 // Chromium CDP attaches only to the renderer. No Node inspector, RunAsNode,
 // fuse changes, production test hooks, or replacement Electron executable.
@@ -20,30 +20,12 @@ test('packaged executable: save, restart, apply and byte-exact undo', async () =
   await writeFile(sourcePath, source);
   await writeFile(path.join(root, '.pocket-editor.json'), JSON.stringify({ schema_version: 1, book_id: bookId, title: 'Artifact acceptance', chapters: [{ id: chapterId, path: 'chapter.md', title: 'Chapter' }] }));
   await writeFile(path.join(profile, 'recent-books.json'), JSON.stringify([{ path: root, bookId, title: 'Artifact acceptance', lastChapterId: null, anchor: null, scrollTop: null, lastOpenedAt: Date.now() }]));
-  let child: ChildProcess | undefined;
-  let browser: Browser | undefined;
+  let session: Awaited<ReturnType<typeof launchPackaged>> | undefined;
   const launch = async () => {
-    child = spawn(executable!, ['--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1'], { env: { ...process.env, GALLEY_DESK_USER_DATA: profile }, stdio: ['ignore', 'pipe', 'pipe'] });
-    const endpoint = await new Promise<string>((resolve, reject) => {
-      let log = '';
-      const timer = setTimeout(() => reject(new Error(`No packaged CDP endpoint: ${log}`)), 30_000);
-      child!.stderr!.on('data', chunk => { log += chunk.toString(); const match = log.match(/DevTools listening on (ws:\/\/[^\s]+)/); if (match) { clearTimeout(timer); resolve(match[1]!); } });
-      child!.once('exit', code => { clearTimeout(timer); reject(new Error(`Packaged process exited ${code}: ${log}`)); });
-    });
-    browser = await chromium.connectOverCDP(endpoint);
-    const context = browser.contexts()[0]!;
-    const page = context.pages()[0] ?? await context.waitForEvent('page');
-    await page.getByRole('button', { name: 'Открыть', exact: true }).click();
-    await expect(page.locator('.cm-content')).toBeVisible();
-    return page;
-  };
-  const stop = async () => {
-    await browser?.close(); // disconnect CDP; no Electron Node-inspector dependency
-    if (child && child.exitCode === null) {
-      const exited = new Promise<void>(resolve => child!.once('exit', () => resolve()));
-      child.kill('SIGTERM');
-      await exited;
-    }
+    session = await launchPackaged(executable!, profile);
+    await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
+    await expect(session.page.locator('.cm-content')).toBeVisible();
+    return session.page;
   };
   try {
     let page = await launch();
@@ -56,7 +38,7 @@ test('packaged executable: save, restart, apply and byte-exact undo', async () =
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
     const review = await readFile(reviewPath);
     expect(await readFile(sourcePath)).toEqual(source);
-    await stop();
+    await session?.stop();
     page = await launch();
     await expect(page.locator('.cm-content')).toContainText('кит');
     await page.getByRole('button', { name: 'Сравнение', exact: true }).click();
@@ -70,8 +52,11 @@ test('packaged executable: save, restart, apply and byte-exact undo', async () =
     expect(await readFile(reviewPath)).toEqual(review);
     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
   } finally {
-    await stop();
-    await rm(root, { recursive: true, force: true });
-    await rm(profile, { recursive: true, force: true });
+    try {
+      await session?.stop();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(profile, { recursive: true, force: true });
+    }
   }
 });
