@@ -7,6 +7,7 @@ import { ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import type { Command } from '../shared/api';
+import { isHttpHttpsUrl } from './resources';
 
 /** Stable IPC error codes of the contract (never renamed). */
 export const IPC_ERROR_CODES = ['STALE_REVISION', 'SAVE_FAILED', 'EMPTY_SOURCE', 'UNAVAILABLE_RECORD', 'BOOK_MISSING'] as const;
@@ -198,6 +199,8 @@ export type SnapshotBroadcaster = (snapshot: import('../shared/api').Snapshot) =
 export type DeskIpcDeps = {
   service: import('./book-service').BookService;
   broadcast: SnapshotBroadcaster;
+  /** Внешнее открытие ссылок (main передаёт shell.openExternal); инъекция — для тестов. */
+  openExternal: (url: string) => Promise<void>;
 };
 
 /**
@@ -239,6 +242,7 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
   handle('desk:command', (_event, args) =>
     service.command(asStringArg(args[0]), asStringArg(args[1]), asNumberArg(args[2]), args[3]));
   handle('desk:close-book', (_event, args) => service.closeBook(asStringArg(args[0])));
+  handle('desk:open-external', (_event, args) => openExternalVia(deps.openExternal, args[0]));
   handle('desk:resolve-external', (_event, args) => {
     const choice = args[2];
     if (choice !== 'open-external' && choice !== 'export-local') {
@@ -260,6 +264,25 @@ function asNumberArg(value: unknown): number {
     throw new IpcError('SAVE_FAILED', 'Некорректное числовое значение');
   }
   return value;
+}
+
+/** Безопасная константа отказа внешней ссылки: содержимое URL не отражается. */
+export const EXTERNAL_LINK_REJECTED_MESSAGE = 'Открытие ссылки отклонено: поддерживаются только http(s)-адреса';
+
+/**
+ * Валидирует недоверенный URL для desk:open-external и передаёт его
+ * инъецированному opener (в main — shell.openExternal). Проходят только
+ * http(s); всё остальное отвергается со стабильным кодом и константным
+ * сообщением без эха содержимого.
+ */
+export async function openExternalVia(
+  openExternal: (url: string) => Promise<void>,
+  url: unknown,
+): Promise<void> {
+  if (typeof url !== 'string' || !isHttpHttpsUrl(url)) {
+    throw new IpcError('SAVE_FAILED', EXTERNAL_LINK_REJECTED_MESSAGE);
+  }
+  await openExternal(url);
 }
 
 // Forge Vite plugin defines these at build time (dev server URL in dev).

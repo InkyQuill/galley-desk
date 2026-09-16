@@ -25,7 +25,7 @@ import type { GalleyHandle, GalleyImageInfo } from '@inkyquill/galley-editor';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { Command, Snapshot } from '../../shared/api';
-import { bookResourceUrl, isLocalImagePath } from '../book/bookres';
+import { bookResourceUrl, isHttpHttpsUrl, isLocalImagePath } from '../book/bookres';
 import { dispatchRecordMarkers, installMarkerStyles, recordMarkers, subscribeScheme } from './markers';
 import { CommandQueue, TypingGroups, fromSnapshot, isHistoryCommand, toTextChanges } from './transaction-adapter';
 import '@inkyquill/galley-editor/style.css';
@@ -361,6 +361,17 @@ export function ReviewEditor({
     onSelectionWindowRef.current?.(null);
   }, []);
 
+  // Ссылки: http(s) уходят во внешний браузер через typed IPC (отказ
+  // глотается — открытие не критично для рукописи); прочие схемы и
+  // относительные якоря остаются инертными. true всегда гасит навигацию
+  // внутри окна (will-navigate в main страхует независимо).
+  const handleLinkClick = useCallback((url: string): boolean => {
+    if (isHttpHttpsUrl(url)) {
+      void window.desk.openExternal(url).catch(() => undefined);
+    }
+    return true;
+  }, []);
+
   // Клик по маркеру правки/сигнала или подстроке комментария (делегирование).
   const handleHostClick = useCallback((event: React.MouseEvent<HTMLDivElement>): void => {
     const target = event.target as HTMLElement | null;
@@ -467,6 +478,7 @@ export function ReviewEditor({
         footer={false}
         extensions={extensionsRef.current ?? undefined}
         imageRenderer={imageRenderer}
+        onLinkClick={handleLinkClick}
         onSelectionChange={handleSelection}
         onScroll={handleScroll}
       />

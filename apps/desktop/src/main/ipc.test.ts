@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { validateCommand } from './ipc';
+import { openExternalVia, validateCommand } from './ipc';
 test('rejects path-bearing arbitrary writes', () => {
   expect(() => validateCommand({type:'writeFile',path:'/tmp/x',text:'bad'})).toThrow();
   expect(() => validateCommand({type:'text',changes:[{from:-1,to:0,insert:'x'}],
@@ -74,4 +74,27 @@ test('maps storage errors to stable ipc codes without content', () => {
 test('validateCommand returns the Command union for valid payloads', () => {
   const command: Command = validateCommand({ type: 'note', text: 'x' });
   expect(command.type).toBe('note');
+});
+
+// desk:open-external: валидация ссылки на границе main.
+test('open-external: http(s) доходит до opener, прочие схемы отвергаются', async () => {
+  const opened: string[] = [];
+  const opener = async (url: string): Promise<void> => {
+    opened.push(url);
+  };
+  await openExternalVia(opener, 'https://example.com/рукопись?a=1');
+  await openExternalVia(opener, 'http://localhost:8080/x');
+  expect(opened).toEqual(['https://example.com/рукопись?a=1', 'http://localhost:8080/x']);
+  for (const bad of ['file:///etc/passwd', 'javascript:alert(1)', 'ftp://example.com/x', '//example.com/a', 'не ссылка', '', 42, null, undefined]) {
+    const cause = await openExternalVia(opener, bad).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect((cause as Error).name).toBe('IpcError');
+    expect((cause as { code?: string }).code).toBe('SAVE_FAILED');
+    // Сообщение — безопасная константа: содержимое отвергнутого значения не отражается.
+    const echoed = typeof bad === 'string' ? bad : String(bad ?? '');
+    if (echoed !== '') expect((cause as Error).message).not.toContain(echoed);
+  }
+  expect(opened).toHaveLength(2);
 });

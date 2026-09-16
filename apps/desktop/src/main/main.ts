@@ -1,5 +1,5 @@
 /// <reference types="@electron-forge/plugin-vite/forge-vite-env" />
-import { app, BrowserWindow, dialog, protocol } from 'electron';
+import { app, BrowserWindow, dialog, protocol, shell } from 'electron';
 import path from 'node:path';
 import { createBookService } from './book-service';
 import { isOwnRendererUrl, registerDeskIpc } from './ipc';
@@ -133,6 +133,9 @@ if (!app.requestSingleInstanceLock()) {
 
     registerDeskIpc({
       service,
+      // Обёртка (а не ссылка на метод): подмена shell.openExternal в тестах
+      // перехватывается, так как свойство читается в момент вызова.
+      openExternal: (url) => shell.openExternal(url),
       broadcast: (snapshot) => {
         for (const window of BrowserWindow.getAllWindows()) {
           window.webContents.send('desk:snapshot', snapshot);

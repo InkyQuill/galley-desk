@@ -28,6 +28,7 @@ export interface DeskApi {
   openChapter(bookId:string,chapterId:string):Promise<Snapshot>;
   command(bookId:string,chapterId:string,expectedRevision:number,command:Command):Promise<Snapshot>;
   closeBook(bookId:string):Promise<void>;
+  openExternal(url:string):Promise<void>;
   onSnapshot(listener:(snapshot:Snapshot)=>void):()=>void;
   resolveExternal(bookId:string,chapterId:string,choice:'open-external'|'export-local'):Promise<Snapshot>;
 }

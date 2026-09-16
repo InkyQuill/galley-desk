@@ -22,3 +22,14 @@ export function bookResourceUrl(bookId: string, target: string): string {
   const encoded = target.split('/').map((segment) => encodeURIComponent(segment)).join('/');
   return `${'bookres:'}//${bookId}/${encoded}`;
 }
+
+// Внешняя ссылка: во внешний браузер уходит только http(s) (зеркало правила
+// isHttpHttpsUrl в main/resources.ts — фильтр desk:open-external страхует).
+export function isHttpHttpsUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}

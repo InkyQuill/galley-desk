@@ -35,6 +35,7 @@ const desk: DeskApi = {
   command: (bookId, chapterId, expectedRevision, command) =>
     call<Snapshot>('desk:command', bookId, chapterId, expectedRevision, command),
   closeBook: (bookId) => call<void>('desk:close-book', bookId),
+  openExternal: (url) => call<void>('desk:open-external', url),
   resolveExternal: (bookId, chapterId, choice) =>
     call<Snapshot>('desk:resolve-external', bookId, chapterId, choice),
   onSnapshot: (listener) => {
