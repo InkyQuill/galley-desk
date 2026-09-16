@@ -112,6 +112,8 @@ export function windowContainerStyle(
     ...custom,
     // Типографика редактора Galley управляется переменными, наследование
     // rem-значений из root не отражает настройку пользователя.
+    '--desk-ui-font': `${appearance.uiFontFamily}, system-ui, sans-serif`,
+    '--desk-ui-size': `${appearance.uiFontSize}px`,
     '--desk-book-font': `${appearance.fontFamily}, Georgia, serif`,
     '--desk-book-size': `${appearance.fontSize}px`,
     '--ge-font-size': `${appearance.fontSize}px`,

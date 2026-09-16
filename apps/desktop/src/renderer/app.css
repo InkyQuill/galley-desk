@@ -128,6 +128,6 @@ body { margin: 0; background: Canvas; }
 .review-editor .gd-review-gutter .cm-gutterElement { position: relative; padding: 0; }
 .gd-gutter-records { position: relative; }
 .app-root .gd-gutter-records .gd-record-marker { position: absolute; width: 24px; height: 24px; padding: 3px; border-radius: 4px; }
-.review-editor .cm-tooltip.gd-before-preview { font: 13px/1.5 var(--desk-ui-font, Geist, system-ui, sans-serif); color: var(--app-text); background: var(--app-panel); border: 0; border-radius: 8px; padding: 12px 16px; box-shadow: var(--app-dialog-shadow); max-width: min(420px, 80vw); max-height: 200px; overflow: hidden; pointer-events: none; }
-.gd-before-preview strong { display: block; color: var(--app-text-muted); font-size: 11px; font-weight: 500; margin-bottom: 5px; }
+.review-editor .cm-tooltip.gd-before-preview { font: var(--desk-ui-size)/1.5 var(--desk-ui-font); color: var(--app-text); background: var(--app-panel); border: 0; border-radius: 8px; padding: 12px 16px; box-shadow: var(--app-dialog-shadow); max-width: min(420px, 80vw); max-height: 200px; overflow: hidden; pointer-events: none; }
+.gd-before-preview strong { display: block; color: var(--app-text-muted); font-size: .85em; font-weight: 500; margin-bottom: 5px; }
 .gd-before-preview p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

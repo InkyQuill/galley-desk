@@ -297,6 +297,23 @@ test('оформление: тема красит контейнер, настр
       })
       .toEqual({ themeId: 'gruvbox-dark', fontSize: 20 });
 
+    // The passive editor preview uses interface typography, independently of book text.
+    await page.getByLabel('Шрифт интерфейса', { exact: true }).fill('Georgia');
+    await page.getByLabel('Размер интерфейса (10–24)').fill('18');
+    await page.getByRole('button', { name: 'Закрыть оформление' }).click();
+    const content = page.locator('.cm-content');
+    await content.click({ position: { x: 5, y: 8 } });
+    await page.keyboard.press('ControlOrMeta+Home');
+    for (let i = 0; i < 5; i++) await page.keyboard.press('Shift+ArrowRight');
+    await page.keyboard.type('правка');
+    await expect(content).toContainText('правка');
+    const preview = page.getByRole('tooltip', { name: 'До правки' });
+    await expect(preview).toContainText('текст');
+    await expect(preview).toHaveCSS('font-size', '18px');
+    await expect.poll(() => preview.evaluate((element) => getComputedStyle(element).fontFamily)).toContain('Georgia');
+    await expect(content).toHaveCSS('font-size', '20px');
+    await expect(content).toBeFocused();
+
     // Границы проверяет main: неизвестная тема и fontSize вне 10–48 отвергаются.
     const unknownTheme = await page.evaluate(async () => {
       try {
