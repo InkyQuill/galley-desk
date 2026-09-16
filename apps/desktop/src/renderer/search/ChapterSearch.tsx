@@ -46,7 +46,14 @@ export function ChapterSearch({ area, searchText, onReveal, onClose }: Props) {
   };
 
   return (
-    <div className="book__search" role="search" aria-label={`Поиск по главе (${AREA_LABELS[area]})`}>
+    <div className="book__search" role="search" aria-label={`Поиск по главе (${AREA_LABELS[area]})`}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        event.stopPropagation();
+        if (query) setQuery('');
+        else onClose();
+      }}
+    >
       <span className="book__search-area">{AREA_LABELS[area]}</span>
       <input
         type="text"
@@ -56,7 +63,6 @@ export function ChapterSearch({ area, searchText, onReveal, onClose }: Props) {
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === 'Escape') { event.stopPropagation(); if (query) setQuery(''); else onClose(); }
           if (event.key === 'Enter') goTo(event.shiftKey ? active - 1 : active + 1);
         }}
       />

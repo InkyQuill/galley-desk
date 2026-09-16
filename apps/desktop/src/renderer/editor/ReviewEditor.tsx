@@ -48,6 +48,7 @@ export type ReviewEditorApi = {
 
 type Props = {
   snapshot: Snapshot;
+  theme: 'light' | 'dark';
   onCommand: (c: Command) => Promise<Snapshot>;
   /** Реальный якорь выделения — уходит в savePosition (контракт Recent). */
   onSelectionChange?: (anchor: number) => void;
@@ -73,6 +74,7 @@ function errorText(error: unknown): string {
 
 export function ReviewEditor({
   snapshot,
+  theme,
   onCommand,
   onSelectionChange,
   onScrollChange,
@@ -487,6 +489,7 @@ export function ReviewEditor({
       )}
       <GalleyEditor
         ref={handleRef}
+        theme={theme}
         value={doc.text}
         docKey="galley-desk-review"
         ariaLabel="Текст главы"

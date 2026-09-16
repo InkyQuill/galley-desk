@@ -169,3 +169,24 @@ test('ошибки следуют теме: «папка не найдена» �
     await relaunch.close();
   }
 });
+
+
+test('явная тёмная тема передаёт текст, каретку и Markdown-палитру редактору при светлой ОС', async () => {
+  const session = await launchWithSettings({ themeId: 'gruvbox-dark' });
+  try {
+    const { page } = session;
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.getByRole('button', { name: 'Открыть папку…' }).click();
+    const content = page.locator('.cm-content');
+    await expect(content).toBeVisible();
+    await expect(content).toHaveCSS('color', themeTokenRgb('gruvbox-dark', '--ge-color-text'));
+    // drawSelection hides the native caret; verify the visible CM cursor.
+    await content.click();
+    await expect(page.locator('.cm-cursor').first()).toHaveCSS('border-left-color', themeTokenRgb('gruvbox-dark', '--ge-color-text'));
+    const tokenNames = ['--ge-color-link', '--ge-color-code-fg', '--ge-color-token-keyword', '--ge-color-token-string', '--ge-color-selection'];
+    const actual = await content.evaluate((element, names) => names.map(name => getComputedStyle(element).getPropertyValue(name).trim()), tokenNames);
+    const expected = themeToCssVariables(getTheme('gruvbox-dark'));
+    expect(actual).toEqual(tokenNames.map(name => expected[name]));
+    await expect(page.locator('.review-editor > [data-theme]')).toHaveAttribute('data-theme', 'dark');
+  } finally { await session.app.close(); }
+});

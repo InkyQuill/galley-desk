@@ -763,6 +763,7 @@ export function BookWindow({
                 <ReviewEditor
                   key={`${chapterId}:${editorEpoch}`}
                   snapshot={snapshot}
+                  theme={appearanceTheme.scheme}
                   onCommand={handleCommand}
                   onSelectionChange={rememberAnchor}
                   onScrollChange={rememberScroll}

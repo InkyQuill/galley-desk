@@ -83,3 +83,41 @@ body { margin: 0; background: Canvas; }
 }
 
 .book__text .ge-editor-shell { border: 0; border-radius: 0; box-shadow: none; backdrop-filter: none; background: transparent; }
+
+/* Galley sets defaults on its data-theme wrapper. In Desk the resolved
+   application theme owns the entire editor palette, including Markdown. */
+.review-editor > [data-theme] {
+  --ge-color-text: inherit;
+  --ge-color-text-muted: inherit;
+  --ge-color-bg: inherit;
+  --ge-color-surface: inherit;
+  --ge-color-surface-elevated: inherit;
+  --ge-color-border: inherit;
+  --ge-color-link: inherit;
+  --ge-color-link-hover: inherit;
+  --ge-color-selection: inherit;
+  --ge-color-caret: inherit;
+  --ge-color-focus-ring: inherit;
+  --ge-color-scrollbar-thumb: inherit;
+  --ge-color-scrollbar-thumb-hover: inherit;
+  --ge-color-code-fg: inherit;
+  --ge-color-code-bg: inherit;
+  --ge-color-code-fence-bg: inherit;
+  --ge-color-code-header-bg: inherit;
+  --ge-color-blockquote-border: inherit;
+  --ge-color-blockquote-fg: inherit;
+  --ge-color-divider: inherit;
+  --ge-color-table-border: inherit;
+  --ge-color-checkbox-accent: inherit;
+  --ge-color-token-keyword: inherit;
+  --ge-color-token-string: inherit;
+  --ge-color-token-number: inherit;
+  --ge-color-token-comment: inherit;
+  --ge-color-token-variable: inherit;
+  --ge-color-token-type: inherit;
+  --ge-color-token-function: inherit;
+  --ge-color-token-operator: inherit;
+  --ge-color-token-punctuation: inherit;
+  --ge-shadow-editor: inherit;
+  --ge-content-padding: inherit;
+}

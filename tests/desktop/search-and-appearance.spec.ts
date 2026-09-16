@@ -415,3 +415,26 @@ test('размер книги не меняет интерфейс; оба ло�
     expect(loaded).toEqual([true, true]);
   } finally { await closeApp(session); }
 });
+
+
+test('Escape на кнопках поиска очищает запрос, закрывает поиск и лишь затем выходит из Zen', async () => {
+  const session = await launchWithBook({ 'Глава.md': 'кот спит\n' });
+  try {
+    await session.openByDialog();
+    const { page } = session;
+    await expect(page.locator('.cm-content')).toBeVisible();
+    await page.getByRole('button', { name: 'Режим Zen' }).click();
+    await page.keyboard.press('Control+f');
+    const field = page.getByRole('textbox', { name: 'Поиск по главе' });
+    await field.fill('кот');
+    await page.getByRole('button', { name: 'Следующее совпадение' }).focus();
+    await page.keyboard.press('Escape');
+    await expect(field).toHaveValue('');
+    await page.getByRole('button', { name: 'Закрыть поиск' }).focus();
+    await page.keyboard.press('Escape');
+    await expect(field).toHaveCount(0);
+    await expect(page.locator('.book__zen-exit')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.book__header')).toBeVisible();
+  } finally { await closeApp(session); }
+});

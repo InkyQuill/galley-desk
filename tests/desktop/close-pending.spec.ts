@@ -38,6 +38,9 @@ async function forceStop(app: ElectronApplication) {
 }
 
 async function burst(page: Page, char: string, closeBook = false): Promise<void> {
+  // Open the menu before the burst. The 50 transactions and close click
+  // below still execute synchronously, without any intervening IPC ack.
+  if (closeBook) await page.getByRole('button', { name: 'Меню книги' }).click();
   await page.evaluate(({ char, closeBook }) => {
     // The same view lookup used by EditorView.findFromDOM. Dispatch all 50
     // real editor transactions in one turn: IPC acks cannot drain between them.
