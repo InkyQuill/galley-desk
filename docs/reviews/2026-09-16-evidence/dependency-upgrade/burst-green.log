@@ -1,0 +1,8 @@
+
+Running 3 tests using 1 worker
+
+  ✓  1 tests/desktop/edit-and-reopen.spec.ts:231:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы (1.3s)
+  ✓  2 tests/desktop/edit-and-reopen.spec.ts:231:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы (2.7s)
+  ✓  3 tests/desktop/edit-and-reopen.spec.ts:231:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы (1.6s)
+
+  3 passed (7.7s)

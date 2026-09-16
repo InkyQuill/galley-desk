@@ -1,0 +1,25 @@
+
+> @galley-desk/desktop@0.1.0 make
+> electron-forge make --skip-package --targets=@electron-forge/maker-zip
+
+❯ Checking your system
+❯ Checking package manager version
+✔ Found npm@11.13.0
+✔ Checking your system
+[?25h❯ Loading configuration
+✔ Loading configuration
+❯ Resolving make targets
+› Making for the following targets:
+✔ Resolving make targets
+❯ Running package command
+› ⚠ Skipping could result in an out of date build
+❯ Running preMake hook
+✔ Running preMake hook
+❯ Making distributables
+❯ Making a zip distributable for linux/x64
+✔ Making a zip distributable for linux/x64
+✔ Making distributables
+❯ Running postMake hook
+› Artifacts available at: /home/inky/Development/galley-desk/apps/desktop/out/make
+✔ Running postMake hook
+[?25h

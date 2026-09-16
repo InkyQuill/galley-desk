@@ -8,6 +8,13 @@
 
 Дата последнего прогона: **2026-09-15/16** (коммиты фиксируются в git).
 
+## Обновление React/Vite и статический анализ, 2026-09-16
+
+Код `0ec6250`: React19.3.0, Forge/Vite7.3.6. 314unit / 54desktop,
+typecheck, prototype build, Forge package/dev и штатный ZIP PASS.
+Performance:970ms / DOMp95 29.4ms. Добавлены отчёты Electronegativity;
+[результаты и ограничения](reviews/2026-09-16-dependency-upgrade.md).
+
 ## Перенос оформления, 2026-09-16
 
 Ветка `codex/desk-visual-redesign`, код `1f75a5e`: 314 unit, 54 desktop,
