@@ -1,14 +1,14 @@
 {
   "pocket-editor": {
-    "sha": "002f609818b913db66680320da198d7eb7c972c6",
-    "branch": "galley-desk-tolerant-reviews"
+    "sha": "f4aa28e2c3f4035502ba4f51cd9b668a867b1527",
+    "branch": "main"
   },
   "galley-editor": {
-    "sha": "4da44fcc1290381a8c9bbfdffcdb349dd68494cf",
-    "branch": "feat/galley-themes-workspace"
+    "sha": "89a424fea51a026c9fcc5d8d45ea7390d96fc2a1",
+    "branch": "main"
   },
   "galley-pad": {
-    "sha": "b78f22f27f00a98479369c6a18170e5d12aeb5c1",
-    "branch": "feat/shared-themes"
+    "sha": "dcc6bedb233e35493dc6d7c15ad280307fa1bef5",
+    "branch": "main"
   }
 }

@@ -1,0 +1,40 @@
+
+> test:desktop
+> playwright test --workers=1
+
+
+Running 49 tests using 1 worker
+
+  ✓   1 tests/desktop/close-pending.spec.ts:54:1 › 50 inputs immediately followed by Close persist the complete text and reset both undo stacks (1.8s)
+  ✓   2 tests/desktop/close-pending.spec.ts:71:1 › failed profile write refuses book close, window close and repeated quit while retaining local text (4.0s)
+  ✓   3 tests/desktop/close-pending.spec.ts:103:1 › native window close flushes pending text before destroying the window (1.2s)
+  ✓   4 tests/desktop/close-pending.spec.ts:127:1 › successful close stays inert until delayed response unmounts the book and clears populated apply history (909ms)
+  ✓   5 tests/desktop/edit-and-reopen.spec.ts:83:1 › ввод кот→кит пишет sidecar, исходник цел, после открытия — кит и пустой Undo (1.2s)
+  ✓   6 tests/desktop/edit-and-reopen.spec.ts:132:1 › смена главы во время пачки ввода не переносит правки между главами (3.4s)
+[main] [desk] desk:command: code=STALE_REVISION
+[main] [desk] close: code=SAVE_FAILED
+  ✘   7 tests/desktop/edit-and-reopen.spec.ts:229:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы (2.0m)
+[main] [desk] watcher: code=SAVE_FAILED
+Worker teardown timeout of 120000ms exceeded.
+
+Failed worker ran 7 tests:
+tests/desktop/close-pending.spec.ts:54:1 › 50 inputs immediately followed by Close persist the complete text and reset both undo stacks
+tests/desktop/close-pending.spec.ts:71:1 › failed profile write refuses book close, window close and repeated quit while retaining local text
+tests/desktop/close-pending.spec.ts:103:1 › native window close flushes pending text before destroying the window
+tests/desktop/close-pending.spec.ts:127:1 › successful close stays inert until delayed response unmounts the book and clears populated apply history
+tests/desktop/edit-and-reopen.spec.ts:83:1 › ввод кот→кит пишет sidecar, исходник цел, после открытия — кит и пустой Undo
+tests/desktop/edit-and-reopen.spec.ts:132:1 › смена главы во время пачки ввода не переносит правки между главами
+tests/desktop/edit-and-reopen.spec.ts:229:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы
+
+
+  1) tests/desktop/edit-and-reopen.spec.ts:229:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы
+
+    Test timeout of 120000ms exceeded.
+
+    Error Context: test-results/edit-and-reopen-быстрый-вв-40cf6-ряет-и-не-дублирует-символы/error-context.md
+
+  1 failed
+    tests/desktop/edit-and-reopen.spec.ts:229:1 › быстрый ввод 50 транзакций не теряет и не дублирует символы
+  42 did not run
+  6 passed (4.2m)
+  1 error was not a part of any test, see above for details

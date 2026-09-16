@@ -9,16 +9,18 @@ Galley Desk хранит правки в формате sidecar-файлов Poc
 ## Проверенные редакции
 
 Проверки A6 и A7 выполнены 2026-09-16 в изолированных feature-worktrees.
+Затем изменения слиты в локальные main и повторно проверены; таблица ниже
+указывает редакции после слияния. Исходные результаты A6/A7 сохранены в отчётах.
 Проверенная исходная редакция и опубликованный npm-артефакт — отдельные
 объекты проверки; номера npm-пакетов не присваиваются source-коммитам.
 
 | Компонент | Версия/релиз | Проверенная редакция | Ветка |
 | --- | --- | --- | --- |
-| Galley Desk | `apps/desktop` 0.1.0 | текущая приёмочная ветка; итоговые проверки — `docs/verification.md` | `codex/v0.1-acceptance` |
-| Pocket Editor | source с filename compatibility fix; пока не опубликован | `002f609818b913db66680320da198d7eb7c972c6` | `galley-desk-tolerant-reviews` |
-| Galley Editor / themes, исходники | package.json обоих пакетов `0.13.0` | `4da44fcc1290381a8c9bbfdffcdb349dd68494cf` (база `e5769b6b161af5275f7c2b490707aad5f3a5af09`) | `feat/galley-themes-workspace` |
+| Galley Desk | `apps/desktop` 0.1.0 | локальная main; итоговые проверки — `docs/verification.md` | `main` |
+| Pocket Editor | source с filename compatibility fix; пока не опубликован | `f4aa28e2c3f4035502ba4f51cd9b668a867b1527` (включает `002f609`) | `main` |
+| Galley Editor / themes, исходники | package.json обоих пакетов `0.14.0` | `89a424fea51a026c9fcc5d8d45ea7390d96fc2a1` (включает `4da44fc`, сохраняет релиз `0f538d7`) | `main` |
 | Galley Editor / themes, npm | оба пакета `0.14.0` | отдельные registry tarballs; npm `gitHead` обоих: `0f538d72e7e6ee53b1e6e237eec0b6a237610735` | опубликованные артефакты, не source pin |
-| Galley Pad | package.json `1.6.0`; миграция проверена в feature-ветке | `b78f22f27f00a98479369c6a18170e5d12aeb5c1` (база `6f8cfff5175e423d19458571fc71c42b791f30b1`) | `feat/shared-themes` |
+| Galley Pad | package.json `1.6.1`; релизная версия сохранена | `dcc6bedb233e35493dc6d7c15ad280307fa1bef5` (включает `b78f22f`) | `main` |
 
 Editor: 526 unit + 11 themes, lint, настоящий package-consumer, docs и
 Storybook прошли. Отдельный consumer-прогон опубликованных tarballs `0.14.0`
@@ -27,13 +29,13 @@ Pad: полный `mise run verify` прошёл (audit, 275 unit, 20 scripts,
 19 browser integration, build, Rust fmt/40 tests, Tauri info/debug build).
 Pad использует editor `0.13.0` и themes `0.14.0`; Desk — оба `0.14.0`.
 
-Статус merge/release на момент проверки: локальные main Editor и Pad не
-содержат проверенные feature-коммиты; новые исправления A6 не слиты и не
-опубликованы. Наличие npm `0.14.0` не доказывает публикацию этих исправлений.
-Исторический Pocket pin `f3012aa` входит в локальный main и tag `v0.6.0`.
-Новый проверенный filename compatibility fix из таблицы ещё не слит/опубликован;
-публичный релиз v0.6.0 не содержит этот fix. Бинарный артефакт релиза Pocket
-в A6/A7 не проверялся. В этом workflow merge/push/publish не выполнялись.
+Статус после локального слияния: исправления Desk, Pocket, Editor и Pad
+включены в соответствующие `main`. Push и публикация не выполнялись.
+Релизные версии Editor/themes `0.14.0`, Pad `1.6.1` и Pocket `0.6.0`
+сохранены; новые исправления не считаются опубликованными только из-за
+совпадения номера package.json. Публичный Pocket v0.6.0 не содержит
+filename compatibility fix; бинарный артефакт этого релиза в A6/A7 не проверялся.
+Исходные feature-пины и исторические статусы сохранены в отчётах A6/A7.
 
 Desktop → Pocket → Desktop folder roundtrip **PASS**: неизменённый canonical
 fixture открыт production ReaderRepository на Android 15/API35; SaveNote

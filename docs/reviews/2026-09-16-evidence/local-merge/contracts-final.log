@@ -1,0 +1,64 @@
+
+> test:contracts
+> node scripts/check-contracts.mjs
+
+[contracts] generate input: /home/inky/Development/galley-desk/node_modules/.bin/tsx /home/inky/Development/galley-desk/tests/contracts/generate.ts
+exchange input: /home/inky/Development/galley-desk/.cache/contracts/exchange/input.json
+cases: exchange-note-comment, exchange-corrupted-hash; anchors: 5; discovery: 2
+[contracts] kotlin exchange test: ./gradlew testDebugUnitTest --tests *DesktopExchangeTest --rerun-tasks
+Reusing configuration cache.
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug
+> Task :app:generateDebugResources
+> Task :app:mapDebugSourceSetPaths
+> Task :app:javaPreCompileDebugUnitTest
+> Task :app:generateDebugBuildConfig
+> Task :app:processDebugNavigationResources
+> Task :app:javaPreCompileDebug
+> Task :app:compileDebugNavigationResources
+> Task :app:checkDebugAarMetadata
+> Task :app:packageDebugResources
+> Task :app:parseDebugLocalResources
+> Task :app:generateDebugRFile
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :app:mergeDebugResources
+> Task :app:processDebugResources
+> Task :app:kspDebugKotlin
+> Task :app:compileDebugKotlin
+> Task :app:processDebugJavaRes
+> Task :app:compileDebugJavaWithJavac
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:kspDebugUnitTestKotlin SKIPPED
+
+> Task :app:compileDebugUnitTestKotlin
+w: file:///home/inky/Development/pocket-editor/app/src/test/java/net/inkyquill/pocketeditor/reader/ReviewProjectorTest.kt:280:38 Unnecessary safe call on a non-null receiver of type 'Anchor'.
+w: file:///home/inky/Development/pocket-editor/app/src/test/java/net/inkyquill/pocketeditor/reader/ReviewProjectorTest.kt:281:39 Unnecessary safe call on a non-null receiver of type 'Anchor'.
+
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes
+> Task :app:testDebugUnitTest
+
+BUILD SUCCESSFUL in 19s
+27 actionable tasks: 27 executed
+Configuration cache entry reused.
+[contracts] typescript exchange tests: npm test -- tests/contracts/exchange.test.ts
+
+> test
+> vitest run tests/contracts/exchange.test.ts
+
+
+ RUN  v5.0.1 /home/inky/Development/galley-desk
+
+
+ Test Files  1 passed (1)
+      Tests  21 passed (21)
+   Start at  13:47:36
+   Duration  215ms (import 65%, transform 26%, tests 7%, worker 2%)
+
+[contracts] OK
