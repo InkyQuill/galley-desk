@@ -10,6 +10,7 @@ import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
   ChapterSession,
+  SaveQueue,
   acceptRecoveryExternal,
   preserveRecovery,
   readJournalsForRoot,
@@ -286,6 +287,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
   const { appData } = deps;
   const watchRoot = deps.watchRoot ?? defaultWatchRoot;
   const books = new Map<string, BookEntry>();
+  const resolutionQueues = new Map<string, SaveQueue>();
   const listeners = new Set<SnapshotListener>();
   const watchers = new Map<string, () => void>();
   const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -662,50 +664,67 @@ export function createBookService(deps: BookServiceDeps): BookService {
     ): Promise<Snapshot> {
       const book = requireBook(bookId);
       const entry = book.chapters.get(chapterId);
-      if (entry?.kind === 'recovery') {
-        try {
-          if (choice === 'export-local') {
-            const parent = await deps.chooseDirectory();
-            if (parent === null) return snapshotOf(bookId, chapterId, entry);
-            // A fresh child directory avoids replacing any existing pair.
-            await preserveRecovery(entry.record, parent);
-          }
-          await acceptRecoveryExternal(book.handle, chapterId, appData);
-          const chapter = book.handle.manifest.chapters.find(chapter => chapter.id === chapterId)!;
-          const next = await createChapterEntry(book.handle, chapterId, chapter.path);
-          next.revision = entry.revision + 1;
-          book.chapters.set(chapterId, next);
-          const snapshot = snapshotOf(bookId, chapterId, next);
-          notify(snapshot);
-          return snapshot;
-        } catch (error) { throw toIpcError(error); }
+      const key = `${bookId}\n${chapterId}`;
+      let queue = resolutionQueues.get(key);
+      if (queue === undefined) {
+        queue = new SaveQueue();
+        resolutionQueues.set(key, queue);
       }
-      if (entry === undefined || entry.kind !== 'live') {
-        throw new IpcError('UNAVAILABLE_RECORD', 'Глава недоступна для разрешения внешнего изменения');
-      }
-      // checkExternal сохраняет локальный черновик в appData при необходимости.
-      try {
-        await entry.session.checkExternal();
-        if (choice === 'export-local') {
-          const chapter = book.handle.manifest.chapters.find((candidate) => candidate.id === chapterId);
-          const suggested = `${chapter === undefined ? chapterId : path.basename(chapter.path, '.md')}.review.json`;
-          const destination = await deps.chooseExportDestination(suggested);
-          if (destination === null) {
-            // Выбор отменён: черновик остаётся в appData, глава остаётся
-            // приостановленной — никакого авто-затирания и авто-принятия.
-            return snapshotOf(bookId, chapterId, entry);
-          }
-          await exportDraft(appData, chapterId, destination);
+      const assertCurrentEntry = () => {
+        if (books.get(bookId) !== book || book.chapters.get(chapterId) !== entry) {
+          throw new IpcError('STALE_REVISION', 'Состояние восстановления изменилось; перечитайте главу');
         }
-        // Внешняя версия становится рабочей базой; истории движка пусты.
-        await entry.session.adoptExternal();
-      } catch (error) {
-        throw toIpcError(error);
-      }
-      entry.revision += 1;
-      const snapshot = snapshotOf(bookId, chapterId, entry);
-      notify(snapshot);
-      return snapshot;
+      };
+      return queue.enqueue(async () => {
+        assertCurrentEntry();
+        if (entry?.kind === 'recovery') {
+          try {
+            if (choice === 'export-local') {
+              const parent = await deps.chooseDirectory();
+              assertCurrentEntry();
+              if (parent === null) return snapshotOf(bookId, chapterId, entry);
+              // A fresh child directory avoids replacing any existing pair.
+              await preserveRecovery(entry.record, parent, book.handle);
+            }
+            assertCurrentEntry();
+            await acceptRecoveryExternal(book.handle, chapterId, appData, entry.record);
+            const chapter = book.handle.manifest.chapters.find(chapter => chapter.id === chapterId)!;
+            const next = await createChapterEntry(book.handle, chapterId, chapter.path);
+            assertCurrentEntry();
+            next.revision = entry.revision + 1;
+            book.chapters.set(chapterId, next);
+            const snapshot = snapshotOf(bookId, chapterId, next);
+            notify(snapshot);
+            return snapshot;
+          } catch (error) { throw toIpcError(error); }
+        }
+        if (entry === undefined || entry.kind !== 'live') {
+          throw new IpcError('UNAVAILABLE_RECORD', 'Глава недоступна для разрешения внешнего изменения');
+        }
+        // checkExternal сохраняет локальный черновик в appData при необходимости.
+        try {
+          await entry.session.checkExternal();
+          if (choice === 'export-local') {
+            const chapter = book.handle.manifest.chapters.find((candidate) => candidate.id === chapterId);
+            const suggested = `${chapter === undefined ? chapterId : path.basename(chapter.path, '.md')}.review.json`;
+            const destination = await deps.chooseExportDestination(suggested);
+            if (destination === null) {
+              // Выбор отменён: черновик остаётся в appData, глава остаётся
+              // приостановленной — никакого авто-затирания и авто-принятия.
+              return snapshotOf(bookId, chapterId, entry);
+            }
+            await exportDraft(appData, chapterId, destination);
+          }
+          // Внешняя версия становится рабочей базой; истории движка пусты.
+          await entry.session.adoptExternal();
+        } catch (error) {
+          throw toIpcError(error);
+        }
+        entry.revision += 1;
+        const snapshot = snapshotOf(bookId, chapterId, entry);
+        notify(snapshot);
+        return snapshot;
+      });
     },
 
     async recheckExternal(): Promise<void> {

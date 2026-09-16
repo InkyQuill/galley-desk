@@ -25,6 +25,7 @@ type Harness = ReturnType<typeof createBookService> & {
   bookRoot: string;
   appData: string;
   setPicker: (value: string | null) => void;
+  setPickerHandler: (handler: () => Promise<string | null>) => void;
   setExportPicker: (value: string | null) => void;
   fireWatcher: () => void;
 };
@@ -39,12 +40,13 @@ async function makeService(bookFiles: Record<string, string> = {}): Promise<Harn
   const appData = await tempDir('galley-appdata-');
   let picked: string | null = bookRoot;
   let exportPicked: string | null = null;
+  let pickerHandler = async () => picked;
   // Наблюдатель подменяется ручным триггером: тест сам решает, когда корень
   // «изменился», и не держит открытых файловых дескрипторов.
   const watcherEvents = new Map<string, () => void>();
   const service = createBookService({
     appData,
-    chooseDirectory: async () => picked,
+    chooseDirectory: () => pickerHandler(),
     chooseExportDestination: async () => exportPicked,
     watchRoot: (root, onEvent) => {
       watcherEvents.set(root, onEvent);
@@ -54,6 +56,7 @@ async function makeService(bookFiles: Record<string, string> = {}): Promise<Harn
   return Object.assign(service, {
     bookRoot,
     appData,
+    setPickerHandler(handler: () => Promise<string | null>) { pickerHandler = handler; },
     setPicker(value: string | null) {
       picked = value;
     },
@@ -749,7 +752,7 @@ test('audit: failed close retains session and recoverable draft', async () => {
 });
 
 
-import { openBook, readPair, writePair, recoverBook, readJournalsForRoot } from '@galley-desk/book-storage';
+import { openBook, readPair, writePair, recoverBook, readJournalsForRoot, ChapterSession, acceptRecoveryExternal } from '@galley-desk/book-storage';
 import { createHash } from 'node:crypto';
 import { readdir } from 'node:fs/promises';
 
@@ -758,7 +761,7 @@ async function seedRecovery(h: Harness) {
   const c = book.manifest.chapters[0]!.id;
   const bytes = (s: string) => ({ base64: Buffer.from(s).toString('base64'), sha256: createHash('sha256').update(s).digest('hex') });
   const review = encodeReview({ schema_version: 1, chapter_id: c, source_path: '01.md', chapter_note: 'local note', edits: [], signals: [] });
-  const record = { version: 1, root: book.root, chapter_id: c, source_path: '01.md', review_path: '01.review.json', complete: false, before: { source: bytes('cat'), review: null }, after: { source: bytes('dog'), review: bytes(review) } };
+  const record = { version: 1 as const, root: book.root, chapter_id: c, source_path: '01.md', review_path: '01.review.json', complete: false, before: { source: bytes('cat'), review: null }, after: { source: bytes('dog'), review: bytes(review) } };
   const name = 'galley-journal-' + createHash('sha256').update(book.root + '\n' + c).digest('hex').slice(0, 32) + '.json';
   await writeFile(path.join(h.appData, name), JSON.stringify(record));
   return { book, c, record, review };
@@ -805,6 +808,13 @@ test.each(['open-external', 'export-local'] as const)('recovery %s preserves the
   expect(JSON.parse(await readFile(path.join(backup, 'recovery-journal.json'), 'utf8'))).toEqual(record);
   if (choice === 'export-local') {
     const directory = (await readdir(destination)).find(name => name.startsWith('galley-recovery-'))!;
+    const copy = await openBook(path.join(destination, directory));
+    expect(copy.id).toBe(v.bookId);
+    expect(copy.manifest.chapters).toEqual((await openBook(h.bookRoot)).manifest.chapters);
+    const session = await ChapterSession.open(copy, c, await tempDir('galley-copy-data-'));
+    expect(session.model.text).toBe('dog');
+    expect(session.model.review.chapter_note).toBe('local note');
+    await session.close();
     expect(await readFile(path.join(destination, directory, '01.md'), 'utf8')).toBe('dog');
     expect(await readFile(path.join(destination, directory, '01.review.json'), 'utf8')).toBe(review);
     expect(JSON.parse(await readFile(path.join(destination, directory, 'recovery-journal.json'), 'utf8'))).toEqual(record);
@@ -837,4 +847,35 @@ test.each(['cancel', 'export-failed', 'backup-failed'])('recovery %s keeps pendi
   const snapshot = await h.openChapter(v.bookId, c);
   expect(snapshot.recoveryConflict).toBe(true);
   await expect(h.command(v.bookId, c, snapshot.revision, { type: 'note', text: 'blocked' })).rejects.toMatchObject({ code: 'SAVE_FAILED' });
+});
+
+
+test('deferred recovery picker cannot replace a newer session or reset its history', async () => {
+  const h = await makeService({ '01.md': 'cat' });
+  const { c, book, record } = await seedRecovery(h);
+  await writeFile(path.join(h.bookRoot, '01.md'), 'fox');
+  const v = (await h.chooseBook())!;
+  await h.openChapter(v.bookId, c);
+  let release!: (value: string) => void;
+  let entered!: () => void;
+  const enteredPicker = new Promise<void>(resolve => { entered = resolve; });
+  h.setPickerHandler(() => { entered(); return new Promise(resolve => { release = resolve; }); });
+  const first = h.resolveExternal(v.bookId, c, 'export-local');
+  await enteredPicker;
+  const second = h.resolveExternal(v.bookId, c, 'open-external').then(value => ({ value }), error => ({ error }));
+  // Another owner resolves the original journal while this picker is pending.
+  await acceptRecoveryExternal(book, c, h.appData, record);
+  // Closing and reopening creates a newer live session with its own history.
+  await h.closeBook(v.bookId);
+  h.setPickerHandler(async () => h.bookRoot);
+  await h.chooseBook();
+  const live = await h.openChapter(v.bookId, c);
+  const newer = await h.command(v.bookId, c, live.revision, { type: 'text', changes: [{ from: 0, to: 3, insert: 'wolf' }], selection: { anchor: 4, head: 4 } });
+  expect(newer.canUndoInput).toBe(true);
+  release(await tempDir('galley-late-export-'));
+  await expect(first).rejects.toMatchObject({ code: 'STALE_REVISION' });
+  expect(await second).toMatchObject({ error: { code: 'STALE_REVISION' } });
+  expect(await h.openChapter(v.bookId, c)).toEqual(newer);
+  const undone = await h.command(v.bookId, c, newer.revision, { type: 'undo-input' });
+  expect(undone.text).toBe('fox');
 });

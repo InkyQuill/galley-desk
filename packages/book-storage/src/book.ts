@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { mkdir, mkdtemp, realpath } from 'node:fs/promises';
 import * as path from 'node:path';
 import { decodeManifest, discover, encodeManifest } from '@galley-desk/pocket-format';
@@ -393,26 +394,31 @@ export async function recoverBook(
 
 
 /** Preserve a recovery target in a fresh directory; never overwrite user files. */
-export async function preserveRecovery(record: JournalRecord, parent: string): Promise<string> {
+export async function preserveRecovery(record: JournalRecord, parent: string, book: BookHandle): Promise<string> {
   assertDirectChildName(record.source_path);
   if (reviewPathFor(record.source_path) !== record.review_path) throw new UnsafePathError('Invalid recovery sidecar path');
+  const { chapter } = resolveChapter(book, record.chapter_id);
+  if (record.root !== book.root || chapter.path !== record.source_path) throw new Error('Recovery journal changed');
   const directory = await mkdtemp(path.join(parent, 'galley-recovery-'));
   await replaceFileSynced(directory, record.source_path, decodeBytes(record.after.source));
   if (record.after.review !== null) await replaceFileSynced(directory, record.review_path, decodeBytes(record.after.review));
   await replaceFileSynced(directory, 'recovery-journal.json', utf8Bytes(JSON.stringify(record)));
+  await replaceManifest(directory, { schema_version: 1, book_id: book.id, title: book.manifest.title, chapters: [chapter], ignored_files: [] });
   await fsyncDir(parent);
   return directory;
 }
 
 /** Explicit acceptance only: back up before retiring the pending operation. */
-export function acceptRecoveryExternal(book: BookHandle, chapterId: string, appData: string): Promise<void> {
+export function acceptRecoveryExternal(book: BookHandle, chapterId: string, appData: string, expected: JournalRecord): Promise<void> {
   return queueFor(book, chapterId).enqueue(async () => {
     const record = (await readJournalsForRoot(appData, book.root)).find(record => record.chapter_id === chapterId && !record.complete);
-    if (record === undefined) return;
+    if (record === undefined || !isDeepStrictEqual(record, expected)) throw new Error('Recovery journal changed');
     const backups = path.join(appData, 'recovery-backups');
     await mkdir(backups, { recursive: true });
-    await preserveRecovery(record, backups);
+    await preserveRecovery(record, backups, book);
     await fsyncDir(appData);
+    const current = (await readJournalsForRoot(appData, book.root)).find(record => record.chapter_id === chapterId && !record.complete);
+    if (!isDeepStrictEqual(current, expected)) throw new Error('Recovery journal changed');
     await removeJournal(appData, book.root, chapterId);
     await fsyncDir(appData);
   });

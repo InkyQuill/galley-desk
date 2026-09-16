@@ -4,9 +4,10 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { decodeManifest, encodeManifest, encodeReview } from '@galley-desk/pocket-format';
 import type { BookHandle, Pair, Revision } from './book';
-import { ManifestError, UnknownChapterError, WriteConflictError, openBook, readPair, recoverBook, writePair, writePairImpl } from './book';
+import { acceptRecoveryExternal, preserveRecovery, ManifestError, UnknownChapterError, WriteConflictError, openBook, readPair, recoverBook, writePair, writePairImpl } from './book';
 import { sha256Hex, utf8Bytes, UnsafePathError } from './files';
 import { readJournalsForRoot } from './journal';
+import { ChapterSession } from './session';
 
 const ID1 = '11111111-1111-4111-8111-111111111111';
 const ID2 = '22222222-2222-4222-8222-222222222222';
@@ -593,3 +594,52 @@ test.each(['prepared', 'source-written', 'review-written'] as const)(
     } finally { await cleanup(root, appData); }
   },
 );
+
+
+test('acceptance of an older recovery cannot retire a newer journal', async () => {
+  const root = await seedBook();
+  const appData = await tempDir('galley-recovery-identity-');
+  try {
+    const book = await openBook(root);
+    const before = await readPair(book, ID1);
+    const crash = () => { throw new Error('crash'); };
+    await expect(writePairImpl(book, ID1, before.revision, { source: NEXT_SOURCE, review: null }, appData, crash)).rejects.toThrow();
+    const [old] = await readJournalsForRoot(appData, root);
+    await recoverBook(book, appData);
+    const next = await readPair(book, ID1);
+    await expect(writePairImpl(book, ID1, next.revision, before.pair, appData, crash)).rejects.toThrow();
+    const newer = await readJournalsForRoot(appData, root);
+    await expect(acceptRecoveryExternal(book, ID1, appData, old!)).rejects.toThrow('Recovery journal changed');
+    expect(await readJournalsForRoot(appData, root)).toEqual(newer);
+    expect(await readPair(book, ID1)).toEqual(next);
+  } finally { await cleanup(root, appData); }
+});
+
+
+test('exported recovery is a usable single-chapter copy with exact source/review and preserved identity', async () => {
+  const root = await seedBook();
+  const appData = await tempDir('galley-export-recovery-');
+  const destination = await tempDir('galley-export-destination-');
+  try {
+    const manifestBytes = await readFile(path.join(root, '.pocket-editor.json'));
+    const book = await openBook(root);
+    const before = await readPair(book, ID1);
+    const target = { source: NEXT_SOURCE, review: reviewJson(ID1, '01.md', 'preserved') };
+    await expect(writePairImpl(book, ID1, before.revision, target, appData, () => { throw new Error('crash'); })).rejects.toThrow();
+    const [record] = await readJournalsForRoot(appData, root);
+    const directory = await preserveRecovery(record!, destination, book);
+    const copy = await openBook(directory);
+    expect(copy.id).toBe(book.id);
+    expect(copy.manifest.title).toBe(book.manifest.title);
+    expect(copy.manifest.chapters).toEqual([book.manifest.chapters[0]]);
+    expect((await readPair(copy, ID1)).pair).toEqual(target);
+    const session = await ChapterSession.open(copy, ID1, appData);
+    expect(session.model.source).toEqual(NEXT_SOURCE);
+    expect(session.model.review.chapter_note).toBe('preserved');
+    await session.close();
+    expect((await readPair(copy, ID1)).pair).toEqual(target);
+    expect(await readFile(path.join(root, '.pocket-editor.json'))).toEqual(manifestBytes);
+    expect(await readJournalsForRoot(appData, root)).toEqual([record]);
+    expect(await readJournalsForRoot(appData, directory)).toEqual([]);
+  } finally { await cleanup(root, appData, destination); }
+});

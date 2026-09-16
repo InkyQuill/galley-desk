@@ -592,12 +592,12 @@ export function BookWindow({
           )}
           {snapshot !== null && snapshot.saveState === 'external' && (
             <span className="book__external-actions">
-              {snapshot.recoveryConflict && <span role="alert">Восстановление приостановлено. Локальная пара сохранена в журнале. Открытие внешней версии сохранит резервную копию; экспорт сохранит пару в новую папку и откроет внешнюю версию.</span>}
+              {snapshot.recoveryConflict && <span role="alert">Восстановление приостановлено. Локальная пара сохранена в журнале. Открытие внешней версии сохранит резервную копию; экспорт сохранит копию главы в новую папку и откроет внешнюю версию.</span>}
               <button type="button" onClick={() => void resolveExternal('open-external')}>
                 Открыть внешнюю версию
               </button>
               <button type="button" onClick={() => void resolveExternal('export-local')}>
-                Экспортировать черновик…
+                {snapshot.recoveryConflict ? 'Экспортировать копию главы…' : 'Экспортировать черновик…'}
               </button>
             </span>
           )}
