@@ -5,6 +5,7 @@
 // причина и удаление, без фиктивного перехода к якорю. Esc закрывает попап,
 // не создавая сигнал, и возвращает фокус туда, где он был.
 import { useEffect, useRef, useState } from 'react';
+import { EditorView } from '@codemirror/view';
 import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react';
 import type { Command, RecordView } from '../../shared/api';
 import { SIGNAL_TYPES, useMarkerTheme, signalColor } from '../editor/markers';
@@ -71,7 +72,13 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
       if (!(active === null || active === document.body)) return;
       const restore = restoreRef.current;
       if (restore !== null && restore.isConnected) restore.focus();
-      else document.querySelector<HTMLElement>('.cm-content')?.focus();
+      else {
+        const content = document.querySelector<HTMLElement>('.cm-content');
+        // Native contenteditable.focus() can move the browser selection to
+        // offset zero. CodeMirror.focus() restores its saved editor selection
+        // while suppressing that intermediate DOM selection observation.
+        if (content !== null) EditorView.findFromDOM(content)?.focus();
+      }
     };
   }, []);
 
