@@ -1,0 +1,7 @@
+[
+  {
+    "contextIsolation": true,
+    "sandbox": true,
+    "nodeIntegration": false
+  }
+]

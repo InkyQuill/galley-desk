@@ -21,3 +21,18 @@
 | OPEN_EXTERNAL_JS_CHECK ×2 (Medium) | Renderer вызывает typed IPC; main проверяет sender и пропускает только http(s) через openExternalVia. Исполняемые/локальные протоколы отклоняются. Существующие unit/Electron tests проверяют эти ограничения. |
 
 npm audit — отдельная проверка дерева зависимостей. Оно не объявляется чистым: остаются advisory в цепочках инструментов Forge и старого сканера, включая tar. Принудительное понижение Forge или замена major транзитивных пакетов без проверки в это обновление не входят.
+
+## После исправлений реальных книг, 2026-09-16
+
+На `21ce42d` сканер завершил 36 atomic/6 global проверок без ошибок разбора
+и выдал **6 находок**, включая High `CONTEXT_ISOLATION_JS_CHECK` и Medium
+`SANDBOX_JS_CHECK`. Это отличается от исторического набора из пяти выше:
+параметры BrowserWindow перенесены в `buildMainWindowOptions`, вызов которой
+старый анализатор не раскрывает. `PRELOAD_JS_CHECK` больше не появляется.
+
+Проверены и код функции, и фактические `webContents.getLastWebPreferences()`
+созданного Electron-окна: `contextIsolation: true`, `sandbox: true`,
+`nodeIntegration: false`. Нативные тесты также проверяют отсутствие `require`,
+отказ разрешений и блокировку навигации. Правила не подавлялись. Оставшиеся
+CSP/AUXCLICK/два OPEN_EXTERNAL имеют тот же разбор, что выше.
+[JSON/SARIF и runtime evidence](docs/reviews/evidence/real-book-fixes/).

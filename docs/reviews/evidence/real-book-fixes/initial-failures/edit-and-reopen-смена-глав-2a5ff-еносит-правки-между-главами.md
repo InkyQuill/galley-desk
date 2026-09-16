@@ -1,0 +1,211 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: edit-and-reopen.spec.ts >> смена главы во время пачки ввода не переносит правки между главами
+- Location: tests/desktop/edit-and-reopen.spec.ts:133:1
+
+# Error details
+
+```
+TimeoutError: locator.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for getByRole('button', { name: 'Глава', exact: true })
+
+```
+
+# Test source
+
+```ts
+  122 |     await expect(session.page.locator('.cm-content')).toContainText('кит');
+  123 |     const sidecarBeforeUndo = await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8');
+  124 |     await session.page.locator('.cm-content').click();
+  125 |     await session.page.keyboard.press('ControlOrMeta+z');
+  126 |     await expect(session.page.locator('.cm-content')).toContainText('кит');
+  127 |     expect(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')).toBe(sidecarBeforeUndo);
+  128 |   } finally {
+  129 |     await session.app.close();
+  130 |   }
+  131 | });
+  132 | 
+  133 | test('смена главы во время пачки ввода не переносит правки между главами', async () => {
+  134 |   const bookRoot = await makeTempDir('galley-e2e-switch-race-');
+  135 |   // Большая глава B: её открытие перестраивает движок заметно дольше кадра —
+  136 |   // это «окно смены главы», в котором защищённое окно не показывает ни
+  137 |   // одного редактора, а незащищённое показывает текст прежней главы.
+  138 |   const bigB = 'пёс спит.\n' + 'текст '.repeat(180000);
+  139 |   const manifest = {
+  140 |     schema_version: 1,
+  141 |     book_id: randomUUID(),
+  142 |     title: 'Две главы',
+  143 |     chapters: [
+  144 |       { id: randomUUID(), path: 'Глава.md', title: 'Глава' },
+  145 |       { id: randomUUID(), path: 'Вторая.md', title: 'Вторая' },
+  146 |     ],
+  147 |     ignored_files: [],
+  148 |   };
+  149 |   await writeFile(path.join(bookRoot, '.pocket-editor.json'), JSON.stringify(manifest, null, 2));
+  150 |   const session = await launch(bookRoot, { 'Глава.md': 'кот спит.\n', 'Вторая.md': bigB });
+  151 |   try {
+  152 |     await openOwnBook(session);
+  153 |     const content = session.page.locator('.cm-content');
+  154 |     await expect(content).toContainText('кот спит.');
+  155 | 
+  156 |     // Пачка в главе A и немедленная смена главы: подтверждения продолжают
+  157 |     // приходить уже после переключения — окно обязано их игнорировать.
+  158 |     const burstA = 'abc'.repeat(10);
+  159 |     await content.click();
+  160 |     await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
+  161 |     // insertText — одна атомарная вставка: одна команда с одним тяжёлым
+  162 |     // сохранением двухмегабайтной главы — её ack живёт дольше смены главы.
+  163 |     await session.page.keyboard.insertText(burstA);
+  164 |     // CM виртуализирует строки большой главы: видимость хвоста пачки не
+  165 |     // проверяем через innerText — точность докажет sidecar-проверка движком.
+  166 |     await session.page.getByRole('button', { name: 'Вторая' }).click();
+  167 | 
+  168 |     // «Окно смены главы»: пока снимок B не пришёл, области ввода быть не
+  169 |     // должно, а появившийся редактор обязан показывать только текст B —
+  170 |     // текст прежней главы в окне B недопустим (иначе ввод ушёл бы в сессию
+  171 |     // B по позициям текста A). Открывающаяся глава B большая: окно живёт
+  172 |     // заметно дольше кадра, проба успевает его увидеть.
+  173 |     const sweep = await session.page.evaluate(async () => {
+  174 |       const seen: { count: number; head: string | null }[] = [];
+  175 |       const deadline = performance.now() + 400;
+  176 |       while (performance.now() < deadline) {
+  177 |         const editors = document.querySelectorAll('.cm-content');
+  178 |         const head = editors[0] ? (editors[0].textContent ?? '').slice(0, 24) : null;
+  179 |         seen.push({ count: editors.length, head });
+  180 |         await new Promise((resolve) => setTimeout(resolve, 10));
+  181 |       }
+  182 |       return seen;
+  183 |     });
+  184 |     // Каждый кадр окна: либо редактора ещё нет (снимок B не пришёл), либо
+  185 |     // он уже показывает B. Текст A под именем B запрещён.
+  186 |     const stale = sweep.find(
+  187 |       (sample) => sample.count > 0 && (sample.head === null || !sample.head.startsWith('пёс спит.')),
+  188 |     );
+  189 |     expect(stale).toBeUndefined();
+  190 |     await expect(content).toContainText('пёс спит.');
+  191 | 
+  192 |     // Ввод в главе B работает поверх стабильного документа.
+  193 |     const burstB = 'xyzxyzxyzxyzx';
+  194 |     await content.click();
+  195 |     await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
+  196 |     await session.page.keyboard.insertText(burstB);
+  197 |     await expect(content).toContainText(burstB);
+  198 | 
+  199 |     // Тишина на диске по обоим sidecar.
+  200 |     await waitSaveDrained(session.page, path.join(bookRoot, 'Глава.review.json'));
+  201 |     await waitSaveDrained(session.page, path.join(bookRoot, 'Вторая.review.json'));
+  202 | 
+  203 |     // Основная истина на диске: закрытие дожидается очередей сохранения.
+  204 |     await session.page.getByRole('button', { name: 'Меню книги' }).click();
+  205 |     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+  206 |     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+  207 | 
+  208 |     // Sidecar каждой главы содержит ровно правки своей главы: точный текст
+  209 |     // движком (никакого переноса/смещения якорей и чужих символов).
+  210 |     const sourceA = await readFile(path.join(bookRoot, 'Глава.md'));
+  211 |     const sourceB = await readFile(path.join(bookRoot, 'Вторая.md'));
+  212 |     const reviewA = JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')) as Review;
+  213 |     expect(openChapter(sourceA, reviewA).text).toBe(`кот спит.\n${burstA}`);
+  214 |     const reviewB = JSON.parse(await readFile(path.join(bookRoot, 'Вторая.review.json'), 'utf8')) as Review;
+  215 |     expect(openChapter(sourceB, reviewB).text).toBe(`${bigB}${burstB}`);
+  216 | 
+  217 |     // Повторное открытие: в каждой главе ровно её собственный текст
+  218 |     // (открывается последняя глава B — переходим в A явно; у большой главы
+  219 |     // CM показывает только начало, точность хвостов проверена движком выше).
+  220 |     await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
+  221 |     await expect(session.page.locator('.cm-content')).toBeVisible();
+> 222 |     await session.page.getByRole('button', { name: 'Глава', exact: true }).click();
+      |                                                                            ^ TimeoutError: locator.click: Timeout 30000ms exceeded.
+  223 |     await expect(content).toContainText(`кот спит.${burstA}`);
+  224 |     await session.page.getByRole('button', { name: 'Вторая' }).click();
+  225 |     await expect(content).toContainText('пёс спит.');
+  226 |   } finally {
+  227 |     await session.app.close();
+  228 |   }
+  229 | });
+  230 | 
+  231 | test('быстрый ввод 50 транзакций не теряет и не дублирует символы', async () => {
+  232 |   const bookRoot = await makeTempDir('galley-e2e-burst-');
+  233 |   const session = await launch(bookRoot, { 'Глава.md': 'Текст\n' });
+  234 |   try {
+  235 |     await openOwnBook(session);
+  236 |     const content = session.page.locator('.cm-content');
+  237 |     await expect(content).toContainText('Текст');
+  238 | 
+  239 |     // 50 быстрых нажатий — 50 транзакций и команд в FIFO при задержанных ack.
+  240 |     const burst = 'qwertyuiopasdfghjklzxcvbnmqwertyuiopasdfghjklzxc';
+  241 |     await content.click();
+  242 |     await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
+  243 |     await session.page.keyboard.type(burst, { delay: 5 });
+  244 |     await expect(content).toContainText(burst);
+  245 | 
+  246 |     const sidecar = await waitSaveDrained(session.page, path.join(bookRoot, 'Глава.review.json'));
+  247 |     expect(sidecar.length).toBeGreaterThan(0);
+  248 | 
+  249 |     // Основная истина на диске: закрытие и повторное открытие книги.
+  250 |     await session.page.getByRole('button', { name: 'Меню книги' }).click();
+  251 |     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+  252 |     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+  253 |     await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
+  254 |     await expect(session.page.locator('.cm-content')).toContainText(`Текст${burst}`);
+  255 |     const restored = await session.page.locator('.cm-content').innerText();
+  256 |     // Ровно один хвост пачки: ничего не потеряно и не задублировано.
+  257 |     expect(restored.replace(/\n/g, '')).toBe(`Текст${burst}`);
+  258 |   } finally {
+  259 |     await session.app.close();
+  260 |   }
+  261 | });
+  262 | 
+  263 | // Chromium's native composition pipeline via CDP (not dispatchEvent).
+  264 | // This deliberately does not claim OS input-method / candidate-window coverage.
+  265 | test('Chromium composition commit/cancel and multiline emoji CRLF insertion survive reopen', async () => {
+  266 |   const bookRoot = await makeTempDir('galley-e2e-composition-');
+  267 |   const original = Buffer.from('original\r\n🦊\r\n');
+  268 |   const session = await launch(bookRoot, { 'Глава.md': original });
+  269 |   try {
+  270 |     await openOwnBook(session);
+  271 |     const page = session.page;
+  272 |     const content = page.locator('.cm-content');
+  273 |     const cdp = await page.context().newCDPSession(page);
+  274 |     await content.click();
+  275 |     await page.keyboard.press('ControlOrMeta+a');
+  276 |     await cdp.send('Input.imeSetComposition', { text: 'にほん', selectionStart: 3, selectionEnd: 3 });
+  277 |     await cdp.send('Input.insertText', { text: '日本' });
+  278 |     await expect(content).toContainText('日本');
+  279 |     await cdp.send('Input.imeSetComposition', { text: 'cancel', selectionStart: 6, selectionEnd: 6 });
+  280 |     await cdp.send('Input.imeSetComposition', { text: '', selectionStart: 0, selectionEnd: 0 });
+  281 |     await expect(content).not.toContainText('cancel');
+  282 |     await page.getByRole('button', { name: 'Меню книги' }).click();
+  283 |     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
+  284 |     const compositionReview = JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')) as Review;
+  285 |     expect(openChapter(original, compositionReview).text).toBe('日本');
+  286 |     expect(await readFile(path.join(bookRoot, 'Глава.md'))).toEqual(original);
+  287 |     await page.getByRole('button', { name: 'Открыть', exact: true }).click();
+  288 |     await expect(content).toHaveText('日本');
+  289 |     await expect(content).not.toContainText('cancel');
+  290 |     // Exercise paste separately, after proving committed/canceled composition
+  291 |     // survived the save queue and a fresh chapter load.
+  292 |     await content.click();
+  293 |     await page.keyboard.press('ControlOrMeta+a');
+  294 |     await page.keyboard.insertText('line one\r\nemoji 🦊\r\nlast');
+  295 |     await page.getByRole('button', { name: 'Меню книги' }).click();
+  296 |     await page.getByRole('button', { name: 'Закрыть книгу' }).click();
+  297 |     const review = JSON.parse(await readFile(path.join(bookRoot, 'Глава.review.json'), 'utf8')) as Review;
+  298 |     expect(openChapter(original, review).text).toBe('line one\nemoji 🦊\nlast');
+  299 |     expect(await readFile(path.join(bookRoot, 'Глава.md'))).toEqual(original);
+  300 |     await page.getByRole('button', { name: 'Открыть', exact: true }).click();
+  301 |     await expect(content).toContainText('emoji 🦊');
+  302 |     await cdp.detach();
+  303 |   } finally {
+  304 |     await session.app.close();
+  305 |   }
+  306 | });
+  307 | 
+```

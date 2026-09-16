@@ -1,0 +1,162 @@
+{
+  "globalChecks": 6,
+  "atomicChecks": 36,
+  "errors": [],
+  "issues": [
+    {
+      "file": "apps/desktop/index.html",
+      "location": {
+        "line": 9,
+        "column": 0
+      },
+      "id": "CSP_GLOBAL_CHECK",
+      "description": "One or more CSP directives detected seems to be vulnerable",
+      "shortenedURL": "https://git.io/JeuMe",
+      "severity": {
+        "value": 1,
+        "name": "LOW"
+      },
+      "confidence": {
+        "value": 1,
+        "name": "FIRM"
+      },
+      "sample": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'",
+      "manualReview": true
+    },
+    {
+      "file": "apps/desktop/src/main/main.ts",
+      "sample": "const mainWindow = new BrowserWindow(buildMainWindowOptions(process.platform, path.join(__dirname, 'preload.js'), icon));",
+      "location": {
+        "line": 49,
+        "column": 21
+      },
+      "id": "AUXCLICK_JS_CHECK",
+      "description": "Limit navigation flows to untrusted origins. Middle-click may cause Electron to open a link within a new window",
+      "severity": {
+        "value": 2,
+        "name": "MEDIUM"
+      },
+      "confidence": {
+        "value": 1,
+        "name": "FIRM"
+      },
+      "manualReview": false,
+      "shortenedURL": "https://git.io/Jeu1K",
+      "visibility": {
+        "excludesGlobal": [],
+        "inlineDisabled": false,
+        "globalCheckDisabled": false
+      },
+      "constructorName": "AuxclickJSCheck",
+      "processed": false
+    },
+    {
+      "file": "apps/desktop/src/main/main.ts",
+      "sample": "const mainWindow = new BrowserWindow(buildMainWindowOptions(process.platform, path.join(__dirname, 'preload.js'), icon));",
+      "location": {
+        "line": 49,
+        "column": 21
+      },
+      "id": "CONTEXT_ISOLATION_JS_CHECK",
+      "description": "Review the use of the contextIsolation option",
+      "severity": {
+        "value": 3,
+        "name": "HIGH"
+      },
+      "confidence": {
+        "value": 1,
+        "name": "FIRM"
+      },
+      "manualReview": false,
+      "shortenedURL": "https://git.io/Jeu1p",
+      "visibility": {
+        "excludesGlobal": [],
+        "inlineDisabled": false,
+        "globalCheckDisabled": false
+      },
+      "constructorName": "ContextIsolationJSCheck",
+      "processed": false
+    },
+    {
+      "file": "apps/desktop/src/main/main.ts",
+      "sample": "const mainWindow = new BrowserWindow(buildMainWindowOptions(process.platform, path.join(__dirname, 'preload.js'), icon));",
+      "location": {
+        "line": 49,
+        "column": 21
+      },
+      "id": "SANDBOX_JS_CHECK",
+      "description": "Use sandbox for untrusted origins",
+      "severity": {
+        "value": 2,
+        "name": "MEDIUM"
+      },
+      "confidence": {
+        "value": 1,
+        "name": "FIRM"
+      },
+      "manualReview": false,
+      "shortenedURL": "https://git.io/JeuM2",
+      "visibility": {
+        "excludesGlobal": [],
+        "inlineDisabled": false,
+        "globalCheckDisabled": false
+      },
+      "constructorName": "SandboxJSCheck",
+      "processed": false
+    },
+    {
+      "file": "apps/desktop/src/main/main.ts",
+      "sample": "openExternal: (url) => shell.openExternal(url),",
+      "location": {
+        "line": 158,
+        "column": 29
+      },
+      "id": "OPEN_EXTERNAL_JS_CHECK",
+      "description": "Review the use of openExternal",
+      "severity": {
+        "value": 2,
+        "name": "MEDIUM"
+      },
+      "confidence": {
+        "value": 0,
+        "name": "TENTATIVE"
+      },
+      "manualReview": true,
+      "shortenedURL": "https://git.io/JeuMC",
+      "visibility": {
+        "excludesGlobal": [],
+        "inlineDisabled": false,
+        "globalCheckDisabled": false
+      },
+      "constructorName": "OpenExternalJSCheck",
+      "processed": false
+    },
+    {
+      "file": "apps/desktop/src/renderer/editor/ReviewEditor.tsx",
+      "sample": "void window.desk.openExternal(url).catch(() => undefined);",
+      "location": {
+        "line": 402,
+        "column": 11
+      },
+      "id": "OPEN_EXTERNAL_JS_CHECK",
+      "description": "Review the use of openExternal",
+      "severity": {
+        "value": 2,
+        "name": "MEDIUM"
+      },
+      "confidence": {
+        "value": 0,
+        "name": "TENTATIVE"
+      },
+      "manualReview": true,
+      "shortenedURL": "https://git.io/JeuMC",
+      "visibility": {
+        "excludesGlobal": [],
+        "inlineDisabled": false,
+        "globalCheckDisabled": false
+      },
+      "constructorName": "OpenExternalJSCheck",
+      "processed": false
+    }
+  ]
+}

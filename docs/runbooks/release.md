@@ -126,6 +126,12 @@ CachyOS/KDE в A7 требовалось унаследовать
 4. Вставить из настоящего clipboard multiline, emoji и CRLF; проверить
    нормализованный ввод, неизменные исходные MD bytes до Apply и точный Undo.
 5. Выполнить Apply/Undo и сравнить SHA256 обеих файлов до/после Undo.
+6. Проверить новую рамку: traffic lights не перекрывают содержимое;
+   перетаскивание, полноэкранный режим и выход из него, системное меню
+   и Cmd+Z/Cmd+Shift+Z работают. Иконка видна в Dock и пакете приложения.
+7. Проверить метаданные и управление главами на временной книге: изменение
+   title, создание, добавление существующего файла, удаление из оглавления
+   и повторное добавление с сохранёнными сигналами, перенос файлов в корзину.
 
 `ControlOrMeta` в desktop-тестах использует Cmd на Mac; начало/конец
 документа используют Meta+ArrowUp/Down. Chromium CDP composition test
@@ -133,10 +139,16 @@ CachyOS/KDE в A7 требовалось унаследовать
 Linux native IME также остаётся not-run: ibus/fcitx5 на проверенной машине нет.
 Без фактического Mac и Android roundtrip PASS весь platform gate открыт.
 
-### ZIP без системного zip
+### Linux ZIP
 
-В этой среде Forge ZIP maker завершился `spawn zip ENOENT`; deb/rpm tools
-тоже отсутствуют. Допустим локальный portable ZIP каталога `out`, созданный
-Python `zipfile` с UNIX permission bits и сохранением symlink entry. Это
-**ручной portable ZIP**, а не успешный Forge make. Проверить `ZipFile.testzip`,
-исполняемый бит бинарника и SHA256; подписанный релиз так не заявляется.
+Для штатного ZIP maker нужен системный `zip` (на Arch/CachyOS: `sudo pacman -S zip`).
+После успешного `npm run package`:
+
+```bash
+npm run make --workspace @galley-desk/desktop -- --skip-package --targets=@electron-forge/maker-zip
+```
+
+Артефакт появляется в `apps/desktop/out/make/zip/linux/x64/`.
+Ранее отсутствие `zip` приводило к `spawn zip ENOENT`; теперь пакет установлен,
+и используется штатный Forge maker. deb/rpm требуют собственных системных
+инструментов и не входят в эту команду.
