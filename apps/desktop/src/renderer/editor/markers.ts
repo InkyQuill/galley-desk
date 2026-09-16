@@ -138,6 +138,23 @@ export const mappedRecords = StateField.define<RecordView[]>({
   },
 });
 
+/** Trim on authoritative snapshots only; pending input maps the presentation range itself. */
+export const mappedVisualRecords = StateField.define<RecordView[]>({
+  create: () => [],
+  update(records, tr) {
+    if (tr.effects.some((effect) => effect.is(setRecordMarkers))) {
+      return tr.state.field(mappedRecords).map(visualRecord);
+    }
+    if (!tr.docChanged) return records;
+    return records.map((record) => {
+      if (record.from === null || record.to === null) return record;
+      const from = tr.changes.mapPos(record.from, 1);
+      const to = tr.changes.mapPos(record.to, record.from === record.to ? 1 : -1);
+      return { ...record, from: Math.min(from, to), to: Math.max(from, to) };
+    });
+  },
+});
+
 class AnnotationWidget extends WidgetType {
   constructor(readonly record: RecordView, readonly theme: ThemeName) { super(); }
   eq(other: AnnotationWidget): boolean {
@@ -175,16 +192,21 @@ class AnnotationWidget extends WidgetType {
 
 /** Widgets never alter the document, storage coordinates or CM clipboard text. */
 export function buildDecorations(records: RecordView[], doc: Text, theme: ThemeName = currentTheme()): DecorationSet {
+  return decorateVisualRecords(records.map(visualRecord), doc, theme);
+}
+
+function decorateVisualRecords(records: RecordView[], doc: Text, theme: ThemeName): DecorationSet {
   const ranges: Range<Decoration>[] = [];
-  for (const stored of recordsInReadingOrder(records)) {
-    const record = visualRecord(stored);
+  for (const record of recordsInReadingOrder(records)) {
     if (record.status !== 'active' || record.from === null || record.to === null ||
         record.from < 0 || record.from > record.to || record.to > doc.length) continue;
     if (record.kind === 'edit' && record.from === record.to && record.before !== '') {
       ranges.push(Decoration.widget({ widget: new AnnotationWidget(record, theme), side: 1 }).range(record.from));
     }
     if (record.kind === 'signal' && record.comment !== '') {
-      let line = doc.lineAt(record.to);
+      let line = doc.lineAt(record.to > record.from ? record.to - 1 : record.to);
+      // A selected separator belongs to the paragraph before it, not the next one.
+      while (line.number > 1 && line.text.trim() === '') line = doc.line(line.number - 1);
       while (line.number < doc.lines && doc.line(line.number + 1).text.trim() !== '') line = doc.line(line.number + 1);
       ranges.push(Decoration.widget({ widget: new AnnotationWidget(record, theme), block: true, side: 1 }).range(line.to));
     }
@@ -206,7 +228,7 @@ const recordMarkersField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(decorations, tr) {
     if (tr.effects.some((effect) => effect.is(setRecordMarkers))) {
-      return buildDecorations(tr.state.field(mappedRecords), tr.state.doc);
+      return decorateVisualRecords(tr.state.field(mappedVisualRecords), tr.state.doc, currentTheme());
     }
     return decorations.map(tr.changes);
   },
@@ -284,15 +306,15 @@ const gutterGeometry = ViewPlugin.fromClass(class {
 
 /** CM6 extensions appended after Galley internals. */
 export function recordMarkers(): Extension {
-  return [mappedRecords, recordMarkersField, gutter({
+  return [mappedRecords, mappedVisualRecords, recordMarkersField, gutter({
     class: 'gd-review-gutter',
     lineMarker: (view, line) => {
-      const records = view.state.field(mappedRecords).map(visualRecord).filter((record) =>
+      const records = view.state.field(mappedVisualRecords).filter((record) =>
         record.from !== null && record.from >= line.from && record.from <= line.to)
         .sort((a, b) => a.from! - b.from! || a.to! - b.to! || a.id.localeCompare(b.id));
       return records.length ? new RecordGutterMarker(records, currentTheme()) : null;
     },
-    lineMarkerChange: (update) => update.startState.field(mappedRecords) !== update.state.field(mappedRecords),
+    lineMarkerChange: (update) => update.startState.field(mappedVisualRecords) !== update.state.field(mappedVisualRecords),
   }), gutterGeometry];
 }
 

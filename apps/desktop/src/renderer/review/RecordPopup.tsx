@@ -5,7 +5,7 @@
 // причина и удаление, без фиктивного перехода к якорю. Esc закрывает попап,
 // не создавая сигнал, и возвращает фокус туда, где он был.
 import { signalLabels, signalIcons } from './signal-types';
-import { visualRecord } from '../editor/visual-range';
+import { mappedVisualRecords } from '../editor/markers';
 import { useEffect, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
 import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react';
@@ -115,9 +115,9 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
       const content = document.activeElement;
       if (!(content instanceof HTMLElement) || !content.matches('.cm-content')) return;
       const view = EditorView.findFromDOM(content);
-      const range = visualRecord(record);
+      const range = view?.state.field(mappedVisualRecords, false)?.find((candidate) => candidate.id === record.id);
       const head = view?.state.selection.main.head;
-      if (head !== undefined && range.from !== null && range.to !== null &&
+      if (range !== undefined && head !== undefined && range.from !== null && range.to !== null &&
           (head < range.from || head > range.to)) closeRef.current();
     };
     document.addEventListener('pointerdown', down, true);

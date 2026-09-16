@@ -1,7 +1,7 @@
 import { EditorState } from '@codemirror/state';
 import { expect, test } from 'vitest';
 import type { RecordView } from '../../shared/api';
-import { buildDecorations, mappedRecords, setRecordMarkers } from './markers';
+import { buildDecorations, mappedVisualRecords, mappedRecords, setRecordMarkers } from './markers';
 
 function record(id: string, from: number, to: number): RecordView {
   return { id, from, to, kind: 'edit', status: 'active', reason: '', before: 'before', after: 'after', comment: '', signalType: null };
@@ -40,4 +40,28 @@ test('comments and deletion placeholders decorate without changing manuscript co
     { from: 4, to: 7, widget: false }, { from: 7, to: 7, widget: true },
   ]);
   expect(doc.toString()).toBe('one two');
+});
+
+test.each([4, 5])('a selection ending at %i keeps its comment with the preceding paragraph', (to) => {
+  const doc = EditorState.create({ doc: 'one\n\nTwo' }).doc;
+  const decorations = buildDecorations([{ ...record('signal', 0, to), kind: 'signal', comment: 'first paragraph' }], doc);
+  const positions: number[] = [];
+  decorations.between(0, doc.length, (from, _to, value) => { if (value.spec.widget) positions.push(from); });
+  expect(positions).toEqual([3]);
+});
+
+
+test('pending support-prefix typing maps visual endpoints instead of trimming stale strings again', () => {
+  let state = EditorState.create({ doc: 'abXc', extensions: [mappedRecords, mappedVisualRecords] });
+  state = state.update({ effects: setRecordMarkers.of([{ ...record('edit', 0, 4), before: 'abc', after: 'abXc' }]) }).state;
+  const decorations = buildDecorations(state.field(mappedRecords), state.doc);
+  const tr = state.update({ changes: { from: 1, insert: 'Y' } });
+  state = tr.state;
+  expect(state.field(mappedRecords)[0]).toMatchObject({ from: 0, to: 5 });
+  expect(state.field(mappedVisualRecords)[0]).toMatchObject({ from: 3, to: 4, before: '', after: 'X' });
+  const decorated: number[][] = [];
+  decorations.map(tr.changes).between(0, state.doc.length, (from, to) => { decorated.push([from, to]); });
+  expect(decorated).toEqual([[3, 4]]);
+  state = state.update({ effects: setRecordMarkers.of([{ ...record('edit', 0, 5), before: 'abc', after: 'aYbXc' }]) }).state;
+  expect(state.field(mappedVisualRecords)[0]).toMatchObject({ from: 1, to: 4, before: 'b', after: 'YbX' });
 });

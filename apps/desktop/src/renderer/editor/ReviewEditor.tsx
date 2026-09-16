@@ -26,10 +26,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { Command, Snapshot } from '../../shared/api';
 import { bookResourceUrl, isHttpHttpsUrl, isLocalImagePath } from '../book/bookres';
-import { dispatchRecordMarkers, mappedRecords, recordMarkers, subscribeScheme } from './markers';
+import { dispatchRecordMarkers, mappedVisualRecords, recordMarkers, subscribeScheme } from './markers';
 import { CommandQueue, TypingGroups, fromSnapshot, isHistoryCommand, toTextChanges } from './transaction-adapter';
 import { dismissRecordPreview, recordPreview, setRecordPreviewBlocked } from './record-preview';
-import { visualRecord } from './visual-range';
 import { snapshotChange } from './snapshot-change';
 import '@inkyquill/galley-editor/style.css';
 
@@ -435,7 +434,7 @@ export function ReviewEditor({
       dismissPreview: () => handleRef.current?.view ? dismissRecordPreview(handleRef.current.view) : false,
       reveal: (recordId) => {
         const view = handleRef.current?.view ?? null;
-        const record = view?.state.field(mappedRecords).map(visualRecord).find((candidate) => candidate.id === recordId);
+        const record = view?.state.field(mappedVisualRecords).find((candidate) => candidate.id === recordId);
         if (record === undefined || record.from === null || record.to === null || view === null) return false;
         const from = Math.max(0, Math.min(record.from, view.state.doc.length));
         const to = Math.max(0, Math.min(record.to, view.state.doc.length));

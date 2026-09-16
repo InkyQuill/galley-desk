@@ -965,3 +965,109 @@ test('review annotation content, support ranges, safe comments and popup dismiss
     await expect(signalPreview).toHaveCount(0);
   } finally { await session.app.close(); }
 });
+
+async function holdReviewCommands(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>> })._invokeHandlers;
+    const original = handlers.get('desk:command')!;
+    const state = globalThis as unknown as { releaseReview: () => void; reviewHeld: boolean };
+    state.reviewHeld = false;
+    const gate = new Promise<void>((resolve) => { state.releaseReview = resolve; });
+    ipcMain.removeHandler('desk:command');
+    ipcMain.handle('desk:command', async (...args) => {
+      state.reviewHeld = true;
+      await gate;
+      return original(...args);
+    });
+  });
+}
+async function releaseReviewCommands(app: ElectronApplication): Promise<void> {
+  await app.evaluate(() => (globalThis as unknown as { releaseReview?: () => void }).releaseReview?.());
+}
+
+test('delayed ACK maps highlighted support-prefix edit, gutter, preview and reveal together', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-mapped-visual-');
+  const id = randomUUID();
+  const sourceText = 'abc trailing';
+  await writeBook(bookRoot, { ...emptyReview(), edits: [{ id, before: 'abc', after: 'abXc', anchor: makeAnchor(Buffer.from(sourceText), { from: 0, to: 3 }) }] });
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const session = await launch(bookRoot);
+  try {
+    const { page, app } = session;
+    await openOwnBook(session);
+    await holdReviewCommands(app);
+    await selectFromStart(page, 1, 0);
+    await page.keyboard.insertText('Y');
+    await expect.poll(() => app.evaluate(() => (globalThis as unknown as { reviewHeld: boolean }).reviewHeld)).toBe(true);
+    const marker = page.locator(`.gd-review-gutter [data-record-id="${id}"]`);
+    await expect(page.locator('.gd-edit-range')).toHaveText('X');
+    await expect(marker).toHaveAttribute('data-record-pos', '3');
+    await expect(page.getByRole('tooltip', { name: 'До правки' })).toHaveCount(0);
+    await page.keyboard.press('ArrowRight'); // caret reaches the actual X at 3
+    await expect(page.getByRole('tooltip', { name: 'До правки' })).toContainText('Добавление');
+    await page.getByRole('button', { name: /^Правка: abc/ }).click();
+    const selected = () => page.locator('.cm-content').evaluate((element) => {
+      const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+      const selection = view.state.selection.main;
+      return { from: selection.from, to: selection.to, text: view.state.sliceDoc(selection.from, selection.to) };
+    });
+    expect(await selected()).toEqual({ from: 3, to: 4, text: 'X' });
+    await page.keyboard.press('Escape');
+    await releaseReviewCommands(app);
+    await expect(page.locator('.gd-edit-range')).toHaveText('YbX');
+    await expect(marker).toHaveAttribute('data-record-pos', '1');
+    await selectFromStart(page, 1, 0);
+    await expect(page.getByRole('tooltip', { name: 'До правки' }).locator('p')).toHaveText('b');
+    await page.getByRole('button', { name: /^Правка: abc/ }).click();
+    expect(await selected()).toEqual({ from: 1, to: 4, text: 'YbX' });
+  } finally { await releaseReviewCommands(session.app); await session.app.close(); }
+});
+
+test('delayed ACK keeps edit popup open for typing inside its live mapped range', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-live-popup-');
+  const sourceText = 'abc trailing';
+  await writeBook(bookRoot, { ...emptyReview(), edits: [{ id: randomUUID(), before: 'abc', after: 'abXYZc', anchor: makeAnchor(Buffer.from(sourceText), { from: 0, to: 3 }) }] });
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const session = await launch(bookRoot);
+  try {
+    const { page, app } = session;
+    await openOwnBook(session);
+    await holdReviewCommands(app);
+    await selectFromStart(page, 3, 0);
+    // Use the gutter to keep the insertion caret inside the visual range.
+    await page.locator('.gd-review-gutter .gd-record-marker').click();
+    const popup = page.getByRole('dialog', { name: 'Правка', exact: true });
+    await expect(popup).toBeVisible();
+    await page.locator('.cm-content').focus();
+    await page.keyboard.insertText('QQQQ');
+    await expect.poll(() => app.evaluate(() => (globalThis as unknown as { reviewHeld: boolean }).reviewHeld)).toBe(true);
+    await expect(page.locator('.gd-edit-range')).toHaveText('XQQQQYZ');
+    await page.waitForTimeout(100);
+    await expect(popup).toBeVisible();
+    await releaseReviewCommands(app);
+    await waitSaveDrained(page, path.join(bookRoot, SIDECAR_PATH));
+    await expect(popup).toBeVisible();
+    await page.keyboard.press('ControlOrMeta+End');
+    await expect(popup).toHaveCount(0);
+  } finally { await releaseReviewCommands(session.app); await session.app.close(); }
+});
+
+for (const to of [4, 5]) {
+  test(`paragraph annotation stays before the next paragraph when selection ends at ${to}`, async () => {
+    const bookRoot = await makeTempDir('galley-e2e-paragraph-comment-');
+    const sourceText = 'one\n\nTwo';
+    await writeBook(bookRoot, { ...emptyReview(), signals: [{ id: randomUUID(), type: 'note', selected_text: sourceText.slice(0, to), comment: 'First paragraph note', anchor: makeAnchor(Buffer.from(sourceText), { from: 0, to }) }] });
+    await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+    const session = await launch(bookRoot);
+    try {
+      const { page } = session;
+      await openOwnBook(session);
+      const first = await page.locator('.cm-line').filter({ hasText: /^one$/ }).boundingBox();
+      const next = await page.locator('.cm-line').filter({ hasText: /^Two$/ }).boundingBox();
+      const comment = await page.locator('.gd-signal-comment').boundingBox();
+      expect(comment!.y).toBeGreaterThan(first!.y);
+      expect(comment!.y + comment!.height).toBeLessThanOrEqual(next!.y);
+      expect(await readFile(path.join(bookRoot, CHAPTER_PATH), 'utf8')).toBe(sourceText);
+    } finally { await session.app.close(); }
+  });
+}

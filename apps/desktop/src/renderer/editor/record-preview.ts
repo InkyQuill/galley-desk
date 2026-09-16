@@ -3,8 +3,7 @@ import type { Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin, showTooltip } from '@codemirror/view';
 import type { Tooltip } from '@codemirror/view';
 import type { RecordView } from '../../shared/api';
-import { visualRecord } from './visual-range';
-import { currentTheme, signalColor, mappedRecords, setRecordMarkers } from './markers';
+import { currentTheme, signalColor, mappedVisualRecords, setRecordMarkers } from './markers';
 
 const previewTarget = StateEffect.define<string | null>();
 const editorFocus = StateEffect.define<boolean>();
@@ -53,7 +52,7 @@ const previewField = StateField.define<PreviewState>({
     const selection = tr.state.selection.main;
     if (target === null) dismissed = true;
     if (blocked || dismissed || !selection.empty) return { focused, blocked, dismissed, tooltip: null };
-    const records = tr.state.field(mappedRecords).map(visualRecord);
+    const records = tr.state.field(mappedVisualRecords);
     if (target !== undefined) {
       const record = records.find((record) => record.id === target);
       return { focused, blocked, dismissed, tooltip: record ? beforeTooltip(record, record.from!) : null };
