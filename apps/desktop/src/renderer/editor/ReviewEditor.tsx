@@ -116,8 +116,9 @@ export function ReviewEditor({
   const flyoutFocusPropRef = useRef(flyoutFocusRef);
   flyoutFocusPropRef.current = flyoutFocusRef;
   // Свежие записи для диспетчера украшений и reveal из панели.
-  const recordsRef = useRef(snapshot.records);
-  recordsRef.current = snapshot.records;
+  // Initial mount is an explicit acceptance path. Later renders may be older
+  // than a completed command ACK, so only the synchronization effect accepts them.
+  const recordsRef = useRef({ chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records });
 
   const setDocRef = useRef<((value: { chapterId: string; text: string }) => void) | null>(null);
   const setCommandErrorRef = useRef<((value: string | null) => void) | null>(null);
@@ -266,6 +267,7 @@ export function ReviewEditor({
       state.chapterId = snapshot.chapterId;
       state.expectedRevision = snapshot.revision;
       state.mounted = true;
+      recordsRef.current = { chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records };
       queue.unblock();
       setCommandError(null);
       groupsRef.current.reset();
@@ -275,6 +277,7 @@ export function ReviewEditor({
     if (!state.mounted) {
       state.mounted = true;
       state.expectedRevision = snapshot.revision;
+      recordsRef.current = { chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records };
       return;
     }
     // React may commit an older render after the command queue has already
@@ -293,6 +296,7 @@ export function ReviewEditor({
       queue.unblock();
       setCommandError(null);
     }
+    if (!queue.blocked) recordsRef.current = { chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records };
     // Авторитетный текст main расходится с локальным документом после команд,
     // меняющих производный текст на main (применение, отклонение/снятие
     // конфликта записи): при пустой очереди документ заменяется снимком.
@@ -467,6 +471,17 @@ export function ReviewEditor({
     };
   }, []);
 
+  function publishAcceptedMarkers(view: EditorView): void {
+    const accepted = recordsRef.current;
+    const current = stateRef.current;
+    if (queue.blocked || queue.inFlight > 0 || accepted.chapterId !== current.chapterId || accepted.revision !== current.expectedRevision) return;
+    // An IME-deferred replacement must install its document before its markers.
+    if (pendingRef.current !== null) return;
+    dispatchRecordMarkers(view, accepted.records);
+  }
+  const publishMarkersRef = useRef(publishAcceptedMarkers);
+  publishMarkersRef.current = publishAcceptedMarkers;
+
   // Украшения маркеров перестраиваются по записям снапшота; пока команды в
   // полёте, существующий набор мапится через изменения документа (в поле).
   useEffect(() => {
@@ -479,13 +494,13 @@ export function ReviewEditor({
         if (++attempts < 120) requestAnimationFrame(push);
         return;
       }
-      if (!queue.blocked && queue.inFlight === 0) dispatchRecordMarkers(view, recordsRef.current);
+      publishMarkersRef.current(view);
     };
     push();
     return () => {
       cancelled = true;
     };
-  }, [snapshot.records, queue]);
+  }, [snapshot, doc.text, queue]);
 
   // Смена схемы темы оформления (светлый/тёмный набор Pocket-палитры) требует
   // перестроения украшений: подписка перекидывает свежие записи в поле.
@@ -494,7 +509,7 @@ export function ReviewEditor({
       subscribeScheme(() => {
         const view = handleRef.current?.view ?? null;
         if (view === null || queue.blocked || queue.inFlight > 0) return;
-        dispatchRecordMarkers(view, recordsRef.current);
+        publishMarkersRef.current(view);
       }),
     [queue],
   );

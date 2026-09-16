@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -15,7 +15,8 @@ const tempDirs: string[] = [];
 async function tempDir(prefix: string): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), prefix));
   tempDirs.push(dir);
-  return dir;
+  // Match openBook roots even when tmpdir has a symlinked ancestor (macOS).
+  return realpath(dir);
 }
 
 afterEach(async () => {
@@ -1195,4 +1196,45 @@ test('snapshot source title refreshes on apply and undo while suggestions retain
   expect(undone.title).toBe('Original');
   expect(undone.sourceText).toBe('# Original\nBody');
   await h.closeAll();
+});
+
+test.each(['\n', '\r\n'])('source metadata remains protected when a Pocket edit hides its opening delimiter (%j)', async eol => {
+  const source = '\uFEFF' + ['---', 'title: Книга 🐈', '---', 'Body'].join(eol);
+  const h = await makeService({'01.md': source});
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  await writeSidecar(h, '01.md', {chapter_note: '', signals: [], edits: [{
+    id: ID_EDIT_ACTIVE, before: '---', after: 'Hidden',
+    anchor: makeAnchor(utf8.encode(source), {from: 3, to: 6}),
+  }]});
+  await h.closeBook(book.bookId);
+  const reopened = await h.openRecent(h.bookRoot);
+  const initial = await h.openChapter(reopened.bookId, id);
+  expect(initial.text).toMatch(/^Hidden/);
+  const metadata = initial.text.indexOf('title');
+  await expect(h.command(book.bookId, id, initial.revision, {type: 'text', changes: [{from: metadata, to: metadata + 1, insert: 'X'}], selection: {anchor: metadata, head: metadata}})).rejects.toMatchObject({code: 'UNAVAILABLE_RECORD'});
+  const body = initial.text.indexOf('Body');
+  const edited = await h.command(book.bookId, id, initial.revision, {type: 'text', changes: [{from: body, to: body + 4, insert: 'Better'}], selection: {anchor: body + 6, head: body + 6}});
+  expect(edited.text).toContain('Better');
+  expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe(source);
+  await h.closeAll();
+});
+
+test('committed book management succeeds even when recent-list persistence fails', async () => {
+  const h = await makeService({'01.md': 'Body'});
+  const book = (await h.chooseBook())!;
+  const recentPath = path.join(h.appData, 'recent-books.json');
+  await rm(recentPath);
+  await mkdir(recentPath); // Atomic recent-file rename fails, while book storage remains writable.
+  const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  try {
+    const renamed = await h.manageBook(book.bookId, {type: 'rename', title: 'Committed title'});
+    expect(renamed.title).toBe('Committed title');
+    expect(JSON.parse(await readFile(path.join(h.bookRoot, '.pocket-editor.json'), 'utf8')).title).toBe('Committed title');
+    expect(log).toHaveBeenCalledWith('[desk] manage-book: recent update failed');
+  } finally {
+    log.mockRestore();
+    await rm(recentPath, {recursive: true});
+    await h.closeAll();
+  }
 });

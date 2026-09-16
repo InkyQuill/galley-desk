@@ -27,7 +27,7 @@ import {
 import type { BookHandle, ChapterSessionState, JournalRecord } from '@galley-desk/book-storage';
 import { classifyReview, decodeReview } from '@galley-desk/pocket-format';
 import type { Resolution } from '@galley-desk/pocket-format';
-import { addSignal, openChapter as openChapterModel, removeRecord, setChapterNote } from '@galley-desk/review-engine';
+import { addSignal, openChapter as openChapterModel, removeRecord, setChapterNote, sourceRange } from '@galley-desk/review-engine';
 import type { ChapterModel, Piece } from '@galley-desk/review-engine';
 import type {
   AppearanceSettings,
@@ -496,6 +496,8 @@ export function createBookService(deps: BookServiceDeps): BookService {
     };
   }
 
+  const metadataEnds = new WeakMap<Uint8Array, number>();
+
   /**
    * Applies one validated command through the session. Undo/redo availability
    * is engine truth (the session's own history stacks) — grouped typing bursts
@@ -514,10 +516,18 @@ export function createBookService(deps: BookServiceDeps): BookService {
         catch (error) { if (error instanceof Error && error.message.includes('overlap')) throw new IpcError('UNAVAILABLE_RECORD','Сначала разрешите записи рецензии внутри метаданных'); throw error; }
         return;
       }
-      case 'text':
-        if (command.changes.some(change => change.from < (frontmatter(session.model.text)?.end ?? 0))) throw new IpcError('UNAVAILABLE_RECORD','Используйте изменение метаданных');
+      case 'text': {
+        // Imported suggestions may hide the delimiter in derived text. Protect
+        // the original source bytes, mapping UTF-16 positions through pieces.
+        let metadataEnd = metadataEnds.get(session.model.source);
+        if (metadataEnd === undefined) {
+          metadataEnd = frontmatter(sourceUtf8.decode(session.model.source))?.byteEnd ?? 0;
+          metadataEnds.set(session.model.source, metadataEnd);
+        }
+        if (metadataEnd > 0 && command.changes.some(change => sourceRange(session.model, change.from, change.to).from < metadataEnd)) throw new IpcError('UNAVAILABLE_RECORD','Используйте изменение метаданных');
         await session.edit(command.changes, command.selection, command.group);
         return;
+      }
       case 'signal': {
         if (command.id !== undefined) {
           const isCurrentSignal = session.model.review.signals.some((signal) => signal.id === command.id);
@@ -595,9 +605,16 @@ export function createBookService(deps: BookServiceDeps): BookService {
           if (entry?.kind === 'live') await entry.session.close();
           book.chapters.delete(change.chapterId);
         }
-        const stored = await loadRecentBooks(appData);
-        await saveRecentBooks(appData, upsertRecent(stored, { path: book.handle.root, bookId, title: book.handle.manifest.title }));
-        return await bookView(book.handle);
+        const view = await bookView(book.handle);
+        // The book operation is already committed; failure to update this local
+        // convenience list must not invite repeating a successful file action.
+        try {
+          const stored = await loadRecentBooks(appData);
+          await saveRecentBooks(appData, upsertRecent(stored, { path: book.handle.root, bookId, title: book.handle.manifest.title }));
+        } catch {
+          console.error('[desk] manage-book: recent update failed');
+        }
+        return view;
       } catch (error) { throw toIpcError(error); }
       finally { managing.delete(bookId); }
     },

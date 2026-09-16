@@ -1071,3 +1071,41 @@ for (const to of [4, 5]) {
     } finally { await session.app.close(); }
   });
 }
+
+test('older snapshot cannot replace accepted marker positions, including after theme changes', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-stale-markers-');
+  const id = randomUUID();
+  const sourceText = 'abc trailing';
+  await writeBook(bookRoot, {...emptyReview(), edits: [{id, before: 'abc', after: 'abXc', anchor: makeAnchor(Buffer.from(sourceText), {from: 0, to: 3})}]});
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const manifest = JSON.parse(await readFile(path.join(bookRoot, '.pocket-editor.json'), 'utf8'));
+  const session = await launch(bookRoot);
+  try {
+    const {page, app} = session;
+    await openOwnBook(session);
+    const old = await page.evaluate(async ({bookId, chapterId}) => window.desk.openChapter(bookId, chapterId), {bookId: manifest.book_id, chapterId: CHAPTER_ID});
+    await selectFromStart(page, 1, 0);
+    await page.keyboard.insertText('Y');
+    await expect(page.locator('.gd-edit-range')).toHaveText('YbX');
+    // Deliver an older render after the command ACK has raised expectedRevision.
+    await app.evaluate(({BrowserWindow}, snapshot) => BrowserWindow.getAllWindows()[0]!.webContents.send('desk:snapshot', snapshot), old);
+    await page.waitForTimeout(100);
+    await expect(page.locator('.cm-content')).toContainText('aYbXc trailing');
+    await expect(page.locator('.gd-edit-range')).toHaveText('YbX');
+    const scheme = await page.locator('.book').evaluate(element => getComputedStyle(element).colorScheme);
+    const nextScheme = scheme === 'dark' ? 'light' : 'dark';
+    await page.getByRole('button', {name: 'Меню книги'}).click();
+    await page.getByRole('button', {name: 'Оформление', exact: true}).click();
+    await page.getByLabel('Тема', {exact: true}).selectOption(`gruvbox-${nextScheme}`);
+    await expect.poll(() => page.locator('.book').evaluate(element => getComputedStyle(element).colorScheme)).toBe(nextScheme);
+    await page.getByRole('button', {name: 'Закрыть оформление'}).click();
+    await expect(page.locator('.gd-edit-range')).toHaveText('YbX');
+    await page.getByRole('button', {name: /^Правка: abc/}).click();
+    const selected = await page.locator('.cm-content').evaluate(element => {
+      const view = (element as HTMLElement & {cmTile: {root: {view: EditorView}}}).cmTile.root.view;
+      const {from, to} = view.state.selection.main;
+      return view.state.sliceDoc(from, to);
+    });
+    expect(selected).toBe('YbX');
+  } finally { await session.app.close(); }
+});
