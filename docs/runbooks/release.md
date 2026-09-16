@@ -22,6 +22,9 @@ npm test               # модульные тесты (Vitest)
 npm run test:contracts # Kotlin ↔ TypeScript контракты
 npm run package        # сборка пакета в apps/desktop/out
 npm run test:desktop   # Electron-тесты по собранному приложению
+# Производительность — отдельно и изолированно (в test:desktop он
+# пропускается; бюджеты честны для железа выпуска):
+GALLEY_PERF=1 npx playwright test tests/desktop/performance.spec.ts --workers=1
 ```
 
 Дополнительно запустить собранный исполняемый файл вручную

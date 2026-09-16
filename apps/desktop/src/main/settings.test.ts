@@ -1,8 +1,12 @@
 // Bounds and theme-id validation of the appearance settings block (main-side
 // validation of untrusted renderer values; the renderer UI clamps too, but
-// the contract lives here).
+// the contract lives here). The load path validates the stored block the
+// same way: a hand-edited or partially corrupt file falls back to defaults.
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { DEFAULT_APPEARANCE, validateAppearance } from './settings';
+import { DEFAULT_APPEARANCE, loadSettings, validateAppearance } from './settings';
 
 const valid = { ...DEFAULT_APPEARANCE, themeId: 'galley-dark' };
 
@@ -38,5 +42,35 @@ describe('validateAppearance', () => {
     expect(() => validateAppearance({ ...valid, themeId: 'night' })).toThrow(/темы/);
     expect(() => validateAppearance({ ...valid, themeId: '' })).toThrow(/темы/);
     expect(() => validateAppearance({ ...valid, themeId: 'galley-dark ' })).toThrow(/темы/);
+  });
+
+  test('loadSettings отбрасывает невалидный сохранённый блок к значениям по умолчанию', async () => {
+    const appData = await mkdtemp(path.join(tmpdir(), 'galley-settings-'));
+    // Руками отредактированный файл: fontSize вне границ — блок целиком
+    // заменяется на дефолты, а не применяется «как есть».
+    await writeFile(
+      path.join(appData, 'settings.json'),
+      JSON.stringify({
+        appearance: { themeId: 'galley-dark', fontFamily: 'Lora', fontSize: 999, lineWidth: 720 },
+        positions: {},
+      }),
+      'utf8',
+    );
+    const settings = await loadSettings(appData);
+    expect(settings.appearance).toEqual(DEFAULT_APPEARANCE);
+
+    // Неизвестная тема в хранилище — тот же откат.
+    await writeFile(
+      path.join(appData, 'settings.json'),
+      JSON.stringify({
+        appearance: { themeId: 'night', fontFamily: 'Lora', fontSize: 16, lineWidth: 720 },
+        positions: { book: { chapter: { anchor: 1, scrollTop: 2 } } },
+      }),
+      'utf8',
+    );
+    const after = await loadSettings(appData);
+    expect(after.appearance).toEqual(DEFAULT_APPEARANCE);
+    // Позиции чтения при этом сохраняются: отбрасывается только блок оформления.
+    expect(after.positions.book?.chapter).toEqual({ anchor: 1, scrollTop: 2 });
   });
 });

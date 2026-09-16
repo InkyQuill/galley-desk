@@ -76,7 +76,15 @@ export async function loadSettings(appData: string): Promise<DeskSettings> {
       return { appearance: { ...DEFAULT_APPEARANCE }, positions: {} };
     }
     const record = parsed as Partial<DeskSettings>;
-    const appearance = isAppearance(record.appearance) ? record.appearance : { ...DEFAULT_APPEARANCE };
+    // Загруженный блок оформления проходит ту же валидацию, что и set:
+    // руками отредактированный или повреждённый файл откатывает блок целиком
+    // к значениям по умолчанию (позиции чтения при этом сохраняются).
+    let appearance: AppearanceSettings;
+    try {
+      appearance = validateAppearance(record.appearance);
+    } catch {
+      appearance = { ...DEFAULT_APPEARANCE };
+    }
     const positions = positionsFrom(record.positions);
     return { appearance, positions };
   } catch {
@@ -110,17 +118,6 @@ async function writeSettings(appData: string, settings: DeskSettings): Promise<v
   const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(temp, JSON.stringify(settings, null, 2), 'utf8');
   await rename(temp, target);
-}
-
-function isAppearance(value: unknown): value is AppearanceSettings {
-  if (typeof value !== 'object' || value === null) return false;
-  const record = value as Partial<AppearanceSettings>;
-  return (
-    typeof record.themeId === 'string' &&
-    typeof record.fontFamily === 'string' &&
-    typeof record.fontSize === 'number' &&
-    typeof record.lineWidth === 'number'
-  );
 }
 
 function positionsFrom(value: unknown): DeskSettings['positions'] {

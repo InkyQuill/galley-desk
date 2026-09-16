@@ -33,6 +33,9 @@ jobs:
         run: npm run package
       # Electron-тесты запускаются против собранного приложения (Forge .vite
       # build entry), а не dev-сервера; Xvfb даёт headless-дисплей.
+      # performance.spec исключён (бюджеты честны только для выделенного
+      # железа; запускается вручную: GALLEY_PERF=1 … --workers=1,
+      # результаты — в docs/verification.md).
       - name: Electron tests (Xvfb)
         run: xvfb-run --auto-servernum npm run test:desktop
         env:

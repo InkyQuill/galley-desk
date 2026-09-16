@@ -20,6 +20,16 @@ const TYPING_SAMPLES = 24;
 const OPEN_BUDGET_MS = 2000;
 const P95_BUDGET_MS = 50;
 
+// Бюджеты честны для железа из docs/verification.md и не выживают на
+// шумных общих раннерах (параллельные Electron-экземпляры уже давали потерю
+// нажатий). Стандартный `npm run test:desktop` этот тест пропускает;
+// запускается он явно и изолированно:
+//   GALLEY_PERF=1 npx playwright test tests/desktop/performance.spec.ts --workers=1
+test.skip(
+  process.env.GALLEY_PERF !== '1',
+  'производительность: запускать отдельно (GALLEY_PERF=1, --workers=1); числа — в docs/verification.md',
+);
+
 const tempDirs: string[] = [];
 
 function paragraph(index: number): string {
