@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useAppearance } from '../appearance/AppearanceProvider';
 import type { Chapter, RecordMarker } from '../data/fixtures';
 import { markText } from '../lib/marked-text';
@@ -10,12 +10,44 @@ type Props = {
   chapter: Chapter;
   records: RecordMarker[];
   onMarkerActivate: (recordId: string) => void;
+  onTextSelect: (selection: { from: number; to: number; x: number; y: number }) => void;
 };
 
-export function ChapterContent({ chapter, records, onMarkerActivate }: Props) {
+function textOffsetOf(root: Node, node: Node, offset: number): number | null {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let consumed = 0;
+  for (let current = walker.nextNode(); current !== null; current = walker.nextNode()) {
+    if (current === node) return consumed + offset;
+    consumed += (current as Text).data.length;
+  }
+  return null;
+}
+
+function resolveSelectionOffsets(root: Node, selection: Selection): { from: number; to: number } | null {
+  if (selection.anchorNode === null || selection.focusNode === null) return null;
+  const a = textOffsetOf(root, selection.anchorNode, selection.anchorOffset);
+  const b = textOffsetOf(root, selection.focusNode, selection.focusOffset);
+  if (a === null || b === null) return null;
+  return a <= b ? { from: a, to: b } : { from: b, to: a };
+}
+
+export function ChapterContent({ chapter, records, onMarkerActivate, onTextSelect }: Props) {
   const { appearance } = useAppearance();
   const [activeFlyoutId, setActiveFlyoutId] = useState<string | null>(null);
+  const textRef = useRef<HTMLParagraphElement | null>(null);
   const segments = markText(chapter.text, records);
+
+  const handleMouseUp = (): void => {
+    const selection = window.getSelection();
+    if (selection === null || selection.isCollapsed || textRef.current === null) return;
+    const text = selection.toString();
+    if (text.trim().length === 0) return;
+    const offsets = resolveSelectionOffsets(textRef.current, selection);
+    if (offsets === null) return;
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    onTextSelect({ ...offsets, x: rect.left, y: rect.bottom + window.scrollY });
+    selection.removeAllRanges();
+  };
 
   return (
     <section className="mx-auto" style={{ width: `min(100%, ${appearance.lineWidth}px)` }}>
@@ -39,7 +71,12 @@ export function ChapterContent({ chapter, records, onMarkerActivate }: Props) {
             );
           })}
         </div>
-        <p className="flex-1 leading-relaxed" style={{ fontFamily: appearance.bookFontFamily }}>
+        <p
+          ref={textRef}
+          onMouseUp={handleMouseUp}
+          className="flex-1 leading-relaxed"
+          style={{ fontFamily: appearance.bookFontFamily }}
+        >
           {segments.map((segment, index) => {
             if (segment.record === null) return <span key={index}>{segment.text}</span>;
             const record = segment.record;
