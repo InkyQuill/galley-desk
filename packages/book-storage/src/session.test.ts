@@ -475,3 +475,40 @@ test('preparing close drains input without clearing history; closing clears both
   expect(session.canUndoInput).toBe(false);
   expect(session.canUndoApply).toBe(false);
 });
+
+test('metadata author save preserves body records and clears session histories', async () => {
+ const {book,chapterId,appData,root,writeSidecar}=await makeBook();
+ const source='---\r\ntitle: 🐈\r\n---\r\nabcd';
+ const bytes=new TextEncoder().encode(source);
+ await externalWrite(root,source);
+ const start=bytes.length-4;
+ await writeSidecar(reviewFor(chapterId,[{...E1,anchor:makeAnchor(bytes,{from:start,to:start+2})}],'keep note'));
+ const session=await ChapterSession.open(book,chapterId,appData);
+ const prefix='---\r\ntitle: Longer title\r\n---\r\n';
+ await session.replaceSourcePrefix(source,start,prefix);
+ expect(await readFile(path.join(root,'01.md'),'utf8')).toBe(prefix+'abcd');
+ expect(session.model.text).toBe(prefix.replace(/\r\n/g,'\n')+'Xcd');
+ expect(session.model.review.chapter_note).toBe('keep note');
+ expect(session.canUndoInput).toBe(false);
+ expect(session.canUndoApply).toBe(false);
+ expect(session.model.review.edits).toHaveLength(1);
+});
+test('metadata author save refuses changed source and external disk writes',async()=>{
+ const {book,chapterId,appData,root}=await makeBook();
+ const session=await ChapterSession.open(book,chapterId,appData);
+ await expect(session.replaceSourcePrefix('old',0,'---\na: 1\n---\n')).rejects.toThrow();
+ await externalWrite(root,'external');
+ await expect(session.replaceSourcePrefix('abcd',0,'---\na: 1\n---\n')).rejects.toBeInstanceOf(WriteConflictError);
+ expect(await readFile(path.join(root,'01.md'),'utf8')).toBe('external');
+});
+test('metadata save keeps unchanged delimiter support of a start-of-body insertion',async()=>{
+ const {book,chapterId,appData,root}=await makeBook();
+ const source='---\r\ntitle: Old\r\n---\r\nabcd';
+ await externalWrite(root,source);
+ const session=await ChapterSession.open(book,chapterId,appData);
+ const body=session.model.text.indexOf('abcd');
+ await session.edit([{from:body,to:body,insert:'New '}],{anchor:body+4,head:body+4});
+ await session.replaceSourcePrefix(source,new TextEncoder().encode(source).length-4,'---\r\ntitle: New title\r\n---\r\n');
+ expect(session.model.text).toBe('---\ntitle: New title\n---\nNew abcd');
+ expect(session.model.review.edits).toHaveLength(1);
+});

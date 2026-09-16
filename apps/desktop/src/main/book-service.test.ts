@@ -1032,3 +1032,29 @@ test('command preflight rejects an external adoption queued by the watcher ahead
   expect(await readFile(path.join(harness.bookRoot, 'Глава.md'), 'utf8')).toBe('external');
   await harness.closeBook(view.bookId);
 });
+
+test('metadata titles derive from existing source and save without changing manifest or body records',async()=>{
+ const source='---\ntitle: Original\n---\nBody';
+ const h=await makeService({'01.md':source});
+ const book=(await h.chooseBook())!;
+ expect(book.entries[0]!.title).toBe('Original');
+ const id=book.entries[0]!.id;
+ const manifestPath=path.join(h.bookRoot,'.pocket-editor.json');
+ const manifest=await readFile(manifestPath,'utf8');
+ const initial=await h.openChapter(book.bookId,id);
+ const body=initial.text.indexOf('Body');
+ const edited=await h.command(book.bookId,id,initial.revision,{type:'text',changes:[{from:body,to:body+4,insert:'Better'}],selection:{anchor:body+6,head:body+6}});
+ const saved=await h.command(book.bookId,id,edited.revision,{type:'metadata',sourceText:source,yaml:'title: New name\nnested: {x: [1, 2]}\n'});
+ expect(saved.title).toBe('New name');
+ expect(saved.text).toContain('Better');
+ expect(saved.sourceText).toBe('---\ntitle: New name\nnested: {x: [1, 2]}\n---\nBody');
+ expect(saved.records).toHaveLength(1);
+ expect(saved.records[0]!.status).toBe('active');
+ expect(await readFile(manifestPath,'utf8')).toBe(manifest);
+ await expect(h.command(book.bookId,id,saved.revision,{type:'metadata',sourceText:source,yaml:'title: stale'})).rejects.toMatchObject({code:'STALE_REVISION'});
+ await expect(h.command(book.bookId,id,saved.revision,{type:'text',changes:[{from:0,to:1,insert:''}],selection:{anchor:0,head:0}})).rejects.toMatchObject({code:'UNAVAILABLE_RECORD'});
+ await writeFile(path.join(h.bookRoot,'01.md'),'external');
+ await expect(h.command(book.bookId,id,saved.revision,{type:'metadata',sourceText:saved.sourceText,yaml:'title: external conflict'})).rejects.toMatchObject({code:'STALE_REVISION'});
+ expect(await readFile(path.join(h.bookRoot,'01.md'),'utf8')).toBe('external');
+ await h.closeAll();
+});

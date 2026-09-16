@@ -1,3 +1,4 @@
+import { Metadata } from './Metadata';
 import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconX } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
@@ -128,6 +129,8 @@ export function BookWindow({
   // Актуальная глава вне React-потока: поздние ack и снимки сравниваются с
   // ней, а не с устаревшим замыканием (гон смены главы, см. applySnapshot).
   const chapterIdRef = useRef<string | null>(chapterId);
+  const [titles, setTitles] = useState<Record<string, string>>({});
+  const [metadataEditing, setMetadataEditing] = useState(false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   // Зеркало показанного снимка для решений вне React-потока (чип сбоя
   // сохранения при внешнем изменении — см. handleCommand).
@@ -187,6 +190,7 @@ export function BookWindow({
 
   const applySnapshot = useCallback((next: Snapshot) => {
     revisionsRef.current.set(next.chapterId, next.revision);
+    if (next.title) setTitles(current => ({ ...current, [next.chapterId]: next.title! }));
     // Поздний снимок чужой главы (пользователь уже переключился) не трогает
     // показанный документ: иначе редактор новой главы был бы пересоздан по
     // тексту прежней, а ввод новой главы ушёл бы в её сессию по смещённым
@@ -216,6 +220,7 @@ export function BookWindow({
     chapterIdRef.current = next;
     snapshotRef.current = null;
     setSnapshot(null);
+    setMetadataEditing(false);
     setChapterId(next);
   }, [editorApi]);
 
@@ -431,6 +436,15 @@ export function BookWindow({
         setSaveError(null);
         return next;
       } catch (cause) {
+        if (command.type === 'metadata') {
+          // Validation/stale-form rejection did not write. Ask main for the
+          // actual session state; only a failed persistence blocks closing.
+          const current = await window.desk.openChapter(book.bookId, chapterId).catch(() => null);
+          if (current !== null && current.saveState === 'saved') {
+            applySnapshot(current);
+            throw cause;
+          }
+        }
         // Отказ ввода при показанном внешнем изменении — не сбой сохранения:
         // на main сессия в состоянии external отвергает любой ввод как
         // устаревший (STALE_REVISION), поэтому чип остаётся аффордансом
@@ -604,7 +618,8 @@ export function BookWindow({
     [mode, editorApi],
   );
 
-  const activeChapter = book.entries.find((entry) => entry.id === chapterId) ?? null;
+  const entries = book.entries.map(entry => ({ ...entry, title: titles[entry.id] ?? entry.title }));
+  const activeChapter = entries.find((entry) => entry.id === chapterId) ?? null;
   // Локальный флаг ошибки сильнее снимка: main не уведомляет о сбое записи.
   const readOnly = snapshot === null || snapshot.readOnlyReason !== null;
   const saveState = saveError !== null ? 'error' : snapshot?.saveState ?? null;
@@ -614,8 +629,8 @@ export function BookWindow({
   const normalizedFilter = chapterFilter.trim().toLowerCase();
   const visibleEntries =
     normalizedFilter === ''
-      ? book.entries
-      : book.entries.filter((entry) =>
+      ? entries
+      : entries.filter((entry) =>
           (entry.title !== '' ? entry.title : entry.path).toLowerCase().includes(normalizedFilter),
         );
   // Переменные темы, шрифт и подложка живут на контейнере App (.app-root);
@@ -715,8 +730,8 @@ export function BookWindow({
                 title={entry.missing ? 'Файл главы отсутствует' : entry.path}
                 onClick={() => switchChapter(entry.id)}
               >
-                {entry.title !== '' ? entry.title : entry.path}
-                {entry.missing ? ' (файл отсутствует)' : ''}
+                <span className="book__chapter-name">{entry.title !== '' ? entry.title : entry.path}</span>
+                <small>{entry.path.split('/').pop()}{entry.missing ? ' (файл отсутствует)' : ''}</small>
               </button>
             ))}
             {visibleEntries.length === 0 && <p className="book__chapters-empty">Главы не найдены</p>}
@@ -724,6 +739,11 @@ export function BookWindow({
         )}
         <section className="book__content">
           {activeChapter !== null && <h2 className="book__chapter-title">{activeChapter.title || activeChapter.path}</h2>}
+          {snapshot !== null && <Metadata key={chapterId} source={snapshot.sourceText} readOnly={readOnly || saveError!==null || snapshot.saveState!=='saved'} onEditing={setMetadataEditing} onSave={async(yaml,sourceText)=>{
+            await editorApi?.flushPending();
+            await handleCommand({type:'metadata',yaml,sourceText});
+            setEditorEpoch(epoch=>epoch+1);
+          }}/>}
           {snapshot !== null && searchOpen && (
             // Поиск по главе: область подписана и зависит от вида (Текст/
             // Сравнение — snapshot.text, Исходник — snapshot.sourceText).
@@ -768,7 +788,7 @@ export function BookWindow({
                 <ReviewEditor
                   previewBlocked={popup !== null || cardId !== null}
                   key={`${chapterId}:${editorEpoch}`}
-                  snapshot={snapshot}
+                  snapshot={metadataEditing ? {...snapshot,readOnlyReason:'Изменение метаданных'} : snapshot}
                   theme={appearanceTheme.scheme}
                   onCommand={handleCommand}
                   onSelectionChange={rememberAnchor}

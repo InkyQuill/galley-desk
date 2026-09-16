@@ -3,7 +3,7 @@ export type Entry = {id:string; path:string; title:string; missing:boolean};
 export type RecordView = {id:string; kind:'edit'|'signal'; status:'active'|'unavailable'|'conflicting';
   reason:string; from:number|null; to:number|null; before:string; after:string;
   comment:string; signalType:'note'|'change_required'|'warning'|'review'|null};
-export type Snapshot = {bookId:string; chapterId:string; revision:number; text:string; sourceText:string;
+export type Snapshot = {bookId:string; chapterId:string; revision:number; text:string; sourceText:string; title?:string;
   records:RecordView[]; chapterNote:string; readOnlyReason:string|null; recoveryConflict?:boolean; saveState:'saved'|'saving'|'error'|'external';
   canUndoInput:boolean; canRedoInput:boolean; canUndoApply:boolean; canRedoApply:boolean};
 export type BookView = {bookId:string; title:string; entries:Entry[]};
@@ -14,6 +14,7 @@ export type Command =
     group?:string}
  | {type:'signal'; id?:string; from:number;to:number; signalType:'note'|'change_required'|'warning'|'review';comment:string}
  | {type:'note';text:string}
+ | {type:'metadata';yaml:string;sourceText:string}
  | {type:'remove'|'apply';id:string}
  | {type:'undo-input'|'redo-input'|'undo-apply'|'redo-apply'};
 export type AppearanceSettings = {themeId:string; fontFamily:string; fontSize:number; uiFontFamily:string; uiFontSize:number; lineWidth:number};

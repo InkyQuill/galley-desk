@@ -136,6 +136,7 @@ export function validateCommand(value: unknown): Command {
     }
     return command;
   }
+  if (type === 'metadata') return {type, yaml:asString(record.yaml, 'Command.yaml'),sourceText:asString(record.sourceText, 'Command.sourceText')};
   if (type === 'note') {
     return { type: 'note', text: asString(record.text, 'Command.text') };
   }

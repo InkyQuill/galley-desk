@@ -1,3 +1,5 @@
+import { protectedFrontmatter } from './frontmatter';
+import { frontmatter } from '../../shared/metadata';
 // ReviewEditor: один экземпляр Galley на главу, связывающий транзакции
 // редактора с сессией рецензирования через desk.command.
 //
@@ -192,7 +194,7 @@ export function ReviewEditor({
     pendingRef.current = null;
     groupsRef.current.reset();
     // Якорь ограничивается длиной нового текста: вне диапазона dispatch падает.
-    const anchor = Math.max(0, Math.min(pending.anchor, pending.text.length));
+    const anchor = Math.max(frontmatter(pending.text)?.end ?? 0, Math.min(pending.anchor, pending.text.length));
     if (view.state.doc.toString() !== pending.text) {
       const changes = snapshotChange(view.state.doc.toString(), pending.text);
       // Same-chapter updates retain logical selection and the viewport's text
@@ -366,7 +368,7 @@ export function ReviewEditor({
   }
   const extensionsRef = useRef<Extension[] | null>(null);
   if (extensionsRef.current === null) {
-    extensionsRef.current = [readOnlyCompartment.current.of(readOnlyExtensions(readOnly)), Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers(), recordPreview()];
+    extensionsRef.current = [protectedFrontmatter(), readOnlyCompartment.current.of(readOnlyExtensions(readOnly)), Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers(), recordPreview()];
   }
 
   // Выделение → окно flyout: непустой диапазон даёт координаты конца выделения,

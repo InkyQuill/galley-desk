@@ -1,3 +1,4 @@
+import { frontmatter, metadataReplacement, resolveTitle } from '../shared/metadata';
 // Book service: the main-process owner of open books and chapter sessions.
 // The renderer only ever sees BookView/Snapshot over typed IPC — no file
 //system handles cross the boundary. Main owns the book-id registry, the
@@ -378,7 +379,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
       handle.manifest.chapters.map(async (chapter) => ({
         id: chapter.id,
         path: chapter.path,
-        title: chapter.title,
+        title: await readPair(handle, chapter.id).then(({pair}) => resolveTitle(strictUtf8.decode(pair.source), chapter.title, chapter.path), () => chapter.title),
         missing: !(await isFile(path.join(handle.root, chapter.path))),
       })),
     );
@@ -469,10 +470,12 @@ export function createBookService(deps: BookServiceDeps): BookService {
       };
     }
     const model = entry.kind === 'live' ? entry.session.model : entry.model;
+    const chapter = requireBook(bookId).handle.manifest.chapters.find(candidate => candidate.id === chapterId);
     return {
       ...head,
       text: model.text,
       sourceText: strictUtf8.decode(model.source),
+      title: resolveTitle(strictUtf8.decode(model.source), chapter?.title ?? '', chapter?.path ?? ''),
       records: buildRecordViews(model),
       chapterNote: model.review.chapter_note,
       saveState: entry.kind === 'recovery' ? 'external' : entry.kind === 'live' ? entry.session.state : 'error',
@@ -488,7 +491,17 @@ export function createBookService(deps: BookServiceDeps): BookService {
   async function applyCommand(entry: LiveChapter, command: Command): Promise<void> {
     const session = entry.session;
     switch (command.type) {
+      case 'metadata': {
+        if (strictUtf8.decode(session.model.source) !== command.sourceText) throw new IpcError('STALE_REVISION', 'Исходник изменился; откройте метаданные заново');
+        let prefix: string;
+        try { prefix = metadataReplacement(command.sourceText, command.yaml); }
+        catch (error) { throw new IpcError('SAVE_FAILED', error instanceof Error ? error.message : 'Ошибка YAML'); }
+        try { await session.replaceSourcePrefix(command.sourceText, frontmatter(command.sourceText)?.byteEnd ?? 0, prefix); }
+        catch (error) { if (error instanceof Error && error.message.includes('overlap')) throw new IpcError('UNAVAILABLE_RECORD','Сначала разрешите записи рецензии внутри метаданных'); throw error; }
+        return;
+      }
       case 'text':
+        if (command.changes.some(change => change.from < (frontmatter(session.model.text)?.end ?? 0))) throw new IpcError('UNAVAILABLE_RECORD','Используйте изменение метаданных');
         await session.edit(command.changes, command.selection, command.group);
         return;
       case 'signal': {

@@ -155,3 +155,12 @@ body { margin: 0; background: Canvas; }
 }
 .gd-record-popup textarea { width: 100%; min-height: 8rem; box-sizing: border-box; }
 .review-editor .cm-tooltip.gd-before-preview { pointer-events: auto; max-height: min(24rem, 60vh); overflow: auto; overflow-wrap: anywhere; }
+
+.book__chapter-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book__chapter small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .6; font-size: .8em; }
+.book__metadata { font: calc(var(--desk-ui-size) * .85)/1.5 var(--desk-ui-font); margin: 0 1.5rem .5rem; flex: 0 1 auto; max-height: 40vh; overflow: auto; }
+.book__metadata-heading { display: flex; align-items: center; gap: .75rem; }
+.book__metadata button { display: inline-flex; align-items: center; gap: .25rem; margin-right: .5rem; }
+.book__metadata pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 8rem; overflow: auto; }
+.book__metadata textarea { display: block; width: 100%; min-height: 7rem; resize: vertical; font: inherit; }
+.book__metadata p { margin: .4rem 0; }
