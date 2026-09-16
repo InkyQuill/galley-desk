@@ -268,6 +268,10 @@ export function ReviewEditor({
       state.expectedRevision = snapshot.revision;
       return;
     }
+    // React may commit an older render after the command queue has already
+    // acknowledged newer input. An empty queue does not make that old snapshot
+    // authoritative: replacing from it would erase confirmed keystrokes.
+    if (snapshot.revision < state.expectedRevision) return;
     if (snapshot.revision > state.expectedRevision) {
       state.expectedRevision = snapshot.revision;
       if (queue.blocked) {

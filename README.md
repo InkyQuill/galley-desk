@@ -6,7 +6,7 @@
 
 ## Запуск и сборка
 
-Команды выполняются из корня репозитория (Node 20+; проверено на Node 22 и Node 26):
+Команды выполняются из корня репозитория (Node 20.19+ или 22.12+; проверено на Node 22 и Node 26):
 
 - `npm ci` — установка зависимостей (workspaces).
 - `npm start` — запустить приложение в режиме разработки (Electron Forge dev-сервер).
@@ -24,7 +24,7 @@ npm run package
 "./apps/desktop/out/Galley Desk-linux-x64/Galley Desk"
 ```
 
-Примечание: на Node 26 (и Node 24.16+) зависимость `extract-zip` из `@electron/packager` перестаёт работать; в корневом `package.json` она переопределена на официальный форк `@electron-internal/extract-zip`.
+Примечание: на Node 26 (и Node 24.16+) зависимость `extract-zip` из `@electron/packager` перестаёт работать; в корневом `package.json` она явно закреплена dev-зависимостью и override на официальный форк `@electron-internal/extract-zip`.
 
 ## Документация
 
@@ -48,3 +48,7 @@ npm run package
 ## Связанные проекты
 
 Реализация включает необходимые изменения Pocket Editor, Galley Editor и Galley Pad в их отдельных репозиториях; проверенные редакции перечислены в [docs/compatibility.md](docs/compatibility.md). Совместимость с недоступными и конфликтующими правками требует обновлённого Pocket Editor; существующие старые версии могут отвергать такие файлы.
+
+## Статический анализ Electron
+
+`npm run check:security` запускает Electronegativity по собственным TS/TSX и HTML, сохраняет JSON/SARIF в `test-results/security/`. Находки требуют разбора; ошибки сканера и парсинга завершают проверку неуспешно. [Ограничения и разбор находок](security.md).

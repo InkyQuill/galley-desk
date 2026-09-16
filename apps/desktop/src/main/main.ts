@@ -53,6 +53,11 @@ const createWindow = (): void => {
     },
   });
 
+  // Local book review needs no browser permissions (camera, microphone,
+  // notifications, location). Deny both requests and permission probes.
+  mainWindow.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  mainWindow.webContents.session.setPermissionCheckHandler(() => false);
+
   mainWindow.on('close', (event) => {
     if (quitFlushed) return;
     event.preventDefault();

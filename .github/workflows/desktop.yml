@@ -29,6 +29,15 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm test
+      - name: Electron static security analysis
+        run: npm run check:security
+      - name: Save security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-security
+          path: test-results/security/
+          if-no-files-found: warn
       - name: Forge package
         run: npm run package
       # Electron-тесты запускаются против собранного приложения (Forge .vite
@@ -40,6 +49,7 @@ jobs:
         run: xvfb-run --auto-servernum npm run test:desktop
         env:
           CI: true
+          GALLEY_PACKAGED_EXECUTABLE: ${{ github.workspace }}/apps/desktop/out/Galley Desk-linux-x64/Galley Desk
 
   macos:
     runs-on: macos-latest
@@ -61,6 +71,11 @@ jobs:
         run: npm test
       - name: Forge package
         run: npm run package
+      - name: Locate packaged macOS executable
+        run: |
+          executable="$PWD/apps/desktop/out/Galley Desk-darwin-$(node -p 'process.arch')/Galley Desk.app/Contents/MacOS/Galley Desk"
+          test -x "$executable"
+          echo "GALLEY_PACKAGED_EXECUTABLE=$executable" >> "$GITHUB_ENV"
       - name: Electron tests
         run: npm run test:desktop
         env:

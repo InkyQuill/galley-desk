@@ -7,12 +7,10 @@
     "apps/*"
   ],
   "overrides": {
-    "@electron/packager": {
-      "extract-zip": "npm:@electron-internal/extract-zip@1.0.5"
-    }
+    "extract-zip": "$extract-zip"
   },
   "engines": {
-    "node": ">=20"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
     "start": "npm start --workspace @galley-desk/desktop",
@@ -20,13 +18,17 @@
     "test": "vitest run",
     "test:contracts": "node scripts/check-contracts.mjs",
     "test:desktop": "playwright test",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "check:security": "node scripts/check-electron-security.mjs"
   },
   "devDependencies": {
+    "@doyensec/electronegativity": "1.10.3",
     "@playwright/test": "1.63.0",
     "@types/node": "26.5.1",
     "tsx": "4.23.13",
     "typescript": "5.9.3",
-    "vitest": "5.0.1"
+    "vitest": "5.0.1",
+    "extract-zip": "npm:@electron-internal/extract-zip@1.0.5",
+    "vite": "7.3.6"
   }
 }
