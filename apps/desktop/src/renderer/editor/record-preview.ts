@@ -9,11 +9,13 @@ const previewTarget = StateEffect.define<string | null>();
 const editorFocus = StateEffect.define<boolean>();
 const previewIntent = StateEffect.define<null>();
 export const setRecordPreviewBlocked = StateEffect.define<boolean>();
-type PreviewState = { focused: boolean; blocked: boolean; dismissed: boolean; tooltip: Tooltip | null };
+type RecordTooltip = Tooltip & { recordId: string };
+type PreviewState = { focused: boolean; blocked: boolean; dismissed: boolean; tooltip: RecordTooltip | null };
 
 /** The same passive before view serves caret, hover and keyboard gutter focus. */
-function beforeTooltip(record: RecordView, pos: number): Tooltip {
+function beforeTooltip(record: RecordView, pos: number): RecordTooltip {
   return {
+    recordId: record.id,
     pos,
     above: true,
     create: (view) => {
@@ -76,7 +78,13 @@ export function dismissRecordPreview(view: EditorView): boolean {
 export function recordPreview(): Extension {
   return [previewField, EditorView.domEventHandlers({
     mousedown: (_event, view) => { dismissRecordPreview(view); },
-    scroll: (_event, view) => { dismissRecordPreview(view); },
+    scroll: (_event, view) => {
+      const active = view.dom.ownerDocument.activeElement?.closest<HTMLElement>('.gd-record-marker, .gd-deletion-placeholder');
+      // Native Tab focus may scroll the marker into view after focusin. Keep
+      // that focused record's preview; hover/caret previews still dismiss.
+      if (active && view.dom.contains(active) && view.state.field(previewField).tooltip?.recordId === active.dataset.recordId) return false;
+      dismissRecordPreview(view);
+    },
   }), ViewPlugin.fromClass(class {
     constructor(readonly view: EditorView) {
       view.dom.addEventListener('focusin', this.focus);
@@ -94,15 +102,19 @@ export function recordPreview(): Extension {
     outsideFocus = (event: FocusEvent): void => {
       if (!this.view.dom.contains(event.target as Node)) this.tabFocusIntent = false;
     };
-    focus = (): void => {
+    focus = (event: FocusEvent): void => {
+      const entering = event.type === 'focusin';
+      const keyboardIntent = entering && this.tabFocusIntent;
+      if (entering) this.tabFocusIntent = false;
       // Never dispatch inside native focus(): CM is restoring its DOM selection.
       queueMicrotask(() => {
         if (this.destroyed) return;
         const active = this.view.dom.ownerDocument.activeElement;
-        const marker = active?.closest('.gd-record-marker');
+        const marker = active?.closest('.gd-record-marker, .gd-deletion-placeholder');
         const effects: StateEffect<unknown>[] = [editorFocus.of(this.view.hasFocus)];
-        if (this.tabFocusIntent && active !== null && this.view.dom.contains(active)) effects.push(previewIntent.of(null));
-        this.tabFocusIntent = false;
+        // Browsers can run the focusout microtask before focusin, with body
+        // temporarily active. Keep Tab intent until the destination receives it.
+        if (keyboardIntent && active !== null && this.view.dom.contains(active)) effects.push(previewIntent.of(null));
         if (marker && this.view.dom.contains(marker)) effects.push(previewTarget.of(marker.getAttribute('data-record-id')));
         else if (!this.view.hasFocus) effects.push(previewTarget.of(null));
         this.view.dispatch({ effects });

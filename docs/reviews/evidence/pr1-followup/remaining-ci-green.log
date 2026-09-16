@@ -1,0 +1,15 @@
+
+Running 10 tests using 1 worker
+
+  ✓   1 tests/desktop/book-management.spec.ts:6:1 › book management: rename, create, discover, cancel trash, remove/readd review and trash pair (2.8s)
+  ✓   2 tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (941ms)
+  ✓   3 tests/desktop/book-management.spec.ts:6:1 › book management: rename, create, discover, cancel trash, remove/readd review and trash pair (2.8s)
+  ✓   4 tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (909ms)
+  ✓   5 tests/desktop/book-management.spec.ts:6:1 › book management: rename, create, discover, cancel trash, remove/readd review and trash pair (2.9s)
+  ✓   6 tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (933ms)
+  ✓   7 tests/desktop/book-management.spec.ts:6:1 › book management: rename, create, discover, cancel trash, remove/readd review and trash pair (2.7s)
+  ✓   8 tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (885ms)
+  ✓   9 tests/desktop/book-management.spec.ts:6:1 › book management: rename, create, discover, cancel trash, remove/readd review and trash pair (2.8s)
+  ✓  10 tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (861ms)
+
+  10 passed (21.6s)

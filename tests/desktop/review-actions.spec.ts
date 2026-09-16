@@ -801,11 +801,29 @@ test('gutter follows wrapped Markdown and scrolling; deletion has its own focusa
       return Math.abs((markerBox?.y ?? -1000) - (rangeBox?.y ?? 0));
     }).toBeLessThan(5);
     await page.locator('.cm-content').press('ArrowLeft');
+    // Enter by an actual keyboard focus transition, not a synthetic focus event
+    // following Escape (which intentionally leaves previews dismissed).
     await deletion.focus();
+    await page.keyboard.press('Tab');
+    await expect(deletion).not.toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(deletion).toBeFocused();
+    // Focus scroll can arrive after focusin; it must not erase its own preview.
+    await page.locator('.cm-scroller').evaluate(element => { element.scrollTop += 1; });
     await expect(page.getByRole('tooltip', { name: 'До правки' })).toContainText('DELETE');
     await page.keyboard.press('Enter');
     await expect(page.getByRole('dialog', { name: 'Правка' })).toContainText('DELETE');
     await page.keyboard.press('Escape');
+    await expect(page.getByRole('tooltip', { name: 'До правки' })).toHaveCount(0);
+    const inlineDeletion = page.getByRole('button', { name: 'Удалённый текст', exact: true });
+    await inlineDeletion.focus();
+    await page.keyboard.press('Tab');
+    await expect(inlineDeletion).not.toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(inlineDeletion).toBeFocused();
+    await expect(page.getByRole('tooltip', { name: 'До правки' })).toContainText('DELETE');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('tooltip', { name: 'До правки' })).toHaveCount(0);
     await range.hover();
     await expect(page.getByRole('tooltip', { name: 'До правки' })).toContainText('targe');
     await page.locator('.cm-scroller').evaluate((element) => { element.scrollTop += 500; });

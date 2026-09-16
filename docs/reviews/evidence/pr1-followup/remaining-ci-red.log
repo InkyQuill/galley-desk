@@ -1,0 +1,50 @@
+
+Running 2 tests using 1 worker
+
+  ✘  1 tests/desktop/book-management.spec.ts:6:1 › book management: rename, create, discover, cancel trash, remove/readd review and trash pair (1.5s)
+  ✘  2 tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview (10.8s)
+
+
+  1) tests/desktop/book-management.spec.ts:6:1 › book management: rename, create, discover, cancel trash, remove/readd review and trash pair 
+
+    Error: ENOENT: no such file or directory, open '/home/inky/.cache/desk-manage-book-test-Up22E8/b.md'
+
+      135 |       .getByRole('button', { name: 'Создать главу', exact: true })
+      136 |       .click();
+    > 137 |     await expect
+          |     ^
+      138 |       .poll(async () => readFile(path.join(root, 'b.md'), 'utf8'))
+      139 |       .toBe('# Second\n');
+      140 |     await writeFile(path.join(root, 'extra.md'), '# External extra\n');
+        at /home/inky/Development/galley-desk/tests/desktop/book-management.spec.ts:137:5
+
+    Error Context: test-results/book-management-book-manag-ed976-readd-review-and-trash-pair/error-context.md
+
+  2) tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByRole('tooltip', { name: 'До правки' })
+    Expected substring: "DELETE"
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toContainText" getByRole('tooltip', { name: 'До правки' }) with timeout 10000ms
+      - waiting for getByRole('tooltip', { name: 'До правки' })
+
+
+      809 |     await page.keyboard.press('Shift+Tab');
+      810 |     await expect(deletion).toBeFocused();
+    > 811 |     await expect(page.getByRole('tooltip', { name: 'До правки' })).toContainText('DELETE');
+          |                                                                    ^
+      812 |     await page.keyboard.press('Enter');
+      813 |     await expect(page.getByRole('dialog', { name: 'Правка' })).toContainText('DELETE');
+      814 |     await page.keyboard.press('Escape');
+        at /home/inky/Development/galley-desk/tests/desktop/review-actions.spec.ts:811:68
+
+    Error Context: test-results/review-actions-gutter-foll-c2770-wn-focusable-before-preview/error-context.md
+
+  2 failed
+    tests/desktop/book-management.spec.ts:6:1 › book management: rename, create, discover, cancel trash, remove/readd review and trash pair 
+    tests/desktop/review-actions.spec.ts:775:1 › gutter follows wrapped Markdown and scrolling; deletion has its own focusable before preview 
