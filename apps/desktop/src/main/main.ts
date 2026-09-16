@@ -106,6 +106,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     const service = createBookService({
       appData: app.getPath('userData'),
+      trashItem: (target) => shell.trashItem(target),
       chooseDirectory: async () => {
         const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
         return result.canceled ? null : (result.filePaths[0] ?? null);

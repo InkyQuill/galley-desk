@@ -1,5 +1,6 @@
+import { BookManagement } from './BookManagement';
 import { Metadata } from './Metadata';
-import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconX } from '@tabler/icons-react';
+import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconBook, IconX } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { AppearanceSettings, BookView, Command, RecordView, Snapshot } from '../../shared/api';
@@ -110,7 +111,7 @@ type PopupState =
  * в книгах не пишут).
  */
 export function BookWindow({
-  book,
+  book: initialBook,
   restore = null,
   onClose,
   appearance,
@@ -118,6 +119,8 @@ export function BookWindow({
   appearanceError,
   onAppearanceChange,
 }: Props) {
+  const [book, setBook] = useState(initialBook);
+  const [managementOpen, setManagementOpen] = useState(false);
   const cached = positionCache.get(book.bookId);
   // Сохранённая позиция из записи недавних сильнее внутрисессионного кэша;
   // глава могла исчезнуть из манифеста — тогда восстановление игнорируется.
@@ -223,6 +226,20 @@ export function BookWindow({
     setMetadataEditing(false);
     setChapterId(next);
   }, [editorApi]);
+
+  const refreshBook = useCallback(async (next: BookView) => {
+    setBook(next);
+    if (!next.entries.some(entry => entry.id === chapterIdRef.current)) {
+      const nextId = firstOpenEntryId(next);
+      chapterIdRef.current = nextId;
+      snapshotRef.current = null;
+      setSnapshot(null);
+      setChapterId(nextId);
+      setMetadataEditing(false);
+    } else if (chapterIdRef.current !== null) {
+      applySnapshot(await window.desk.openChapter(next.bookId, chapterIdRef.current));
+    }
+  }, [applySnapshot]);
 
   // --- оформление ------------------------------------------------------------
 
@@ -672,12 +689,16 @@ export function BookWindow({
           <div className="book__menu" ref={menuRef}>
             <button type="button" ref={menuButtonRef} title="Меню книги" aria-label="Меню книги" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><IconDots /></button>
             {menuOpen && <div className="book__menu-items" aria-label="Действия книги" onBlur={(event) => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) setMenuOpen(false); }}>
+              <button type="button" disabled={metadataEditing} onClick={() => { setManagementOpen(true); setMenuOpen(false); }}><IconBook />Управление книгой</button>
               <button type="button" onClick={() => { setAppearanceOpen((open) => !open); setMenuOpen(false); }}><IconAdjustments />Оформление</button>
               <button type="button" className="book__close" onClick={() => void closeBook()}><IconBookOff />Закрыть книгу</button>
             </div>}
           </div>
         </header>
       )}
+      {managementOpen && <BookManagement book={book} chapterId={chapterId}
+        onChange={async change => { await editorApi?.flushPending(); await refreshBook(await window.desk.manageBook(book.bookId, change)); }}
+        onRefresh={refreshBook} onClose={() => { setManagementOpen(false); menuButtonRef.current?.focus(); }} />}
       {appearanceOpen && (
         <div className="book__appearance-panel">
           <button className="book__appearance-close" type="button" aria-label="Закрыть оформление" onClick={() => setAppearanceOpen(false)}><IconX /></button>

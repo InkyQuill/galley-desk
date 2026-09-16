@@ -18,7 +18,15 @@ export type Command =
  | {type:'remove'|'apply';id:string}
  | {type:'undo-input'|'redo-input'|'undo-apply'|'redo-apply'};
 export type AppearanceSettings = {themeId:string; fontFamily:string; fontSize:number; uiFontFamily:string; uiFontSize:number; lineWidth:number};
+export type BookChange =
+ | {type:'rename';title:string}
+ | {type:'create';path:string;title:string}
+ | {type:'add';paths:string[]}
+ | {type:'remove'|'trash';chapterId:string};
+export type ChapterDiscovery = {book:BookView;files:{path:string}[]};
 export interface DeskApi {
+  manageBook(bookId:string,change:BookChange):Promise<BookView>;
+  discoverChapters(bookId:string):Promise<ChapterDiscovery>;
   onCloseRequest(listener:(closing:boolean)=>Promise<void>):()=>void;
   appearance():Promise<AppearanceSettings>;
   setAppearance(value:AppearanceSettings):Promise<void>;

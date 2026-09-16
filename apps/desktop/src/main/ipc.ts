@@ -47,6 +47,7 @@ export function toIpcError(error: unknown): IpcError {
   if (name === 'WriteConflictError') {
     return new IpcError('SAVE_FAILED', 'Глава изменилась на диске; перечитайте её перед сохранением');
   }
+  if (name === 'BookManagementError') return new IpcError('SAVE_FAILED', message);
   if (name === 'ManifestError') {
     // Сообщение ManifestError безопасно: путь манифеста и причина декодирования.
     return new IpcError('BOOK_MISSING', message);
@@ -264,6 +265,15 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
   handle('desk:set-appearance', (_event, args) => service.setAppearance(args[0] as import('../shared/api').AppearanceSettings));
   handle('desk:save-position', (_event, args) =>
     service.savePosition(asStringArg(args[0]), asStringArg(args[1]), asNumberArg(args[2]), asNumberArg(args[3])));
+  handle('desk:discover-chapters', (_event, args) => service.discoverChapters(asStringArg(args[0])));
+  handle('desk:manage-book', async (event, args) => {
+    const bookId = asStringArg(args[0]);
+    const change = validateBookChange(args[1]);
+    try {
+      await flushRenderer(event.sender);
+      return await service.manageBook(bookId, change);
+    } finally { resumeRenderer(event.sender); }
+  });
   handle('desk:choose-book', () => service.chooseBook());
   handle('desk:recent', () => service.recent());
   handle('desk:open-recent', (_event, args) => service.openRecent(asStringArg(args[0])));
@@ -340,3 +350,16 @@ export async function openExternalVia(
 // Forge Vite plugin defines these at build time (dev server URL in dev).
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
+
+export function validateBookChange(value: unknown): import('../shared/api').BookChange {
+  const record = asRecord(value, 'BookChange');
+  switch (record.type) {
+    case 'rename': return { type: 'rename', title: asNonEmptyString(record.title, 'title') };
+    case 'create': return { type: 'create', path: asNonEmptyString(record.path, 'path'), title: asNonEmptyString(record.title, 'title') };
+    case 'add':
+      if (!Array.isArray(record.paths) || !record.paths.length) throw new CommandError('paths must be nonempty');
+      return { type: 'add', paths: record.paths.map(p => asNonEmptyString(p, 'path')) };
+    case 'remove': case 'trash': return { type: record.type, chapterId: asNonEmptyString(record.chapterId, 'chapterId') };
+    default: throw new CommandError('Unknown book change');
+  }
+}

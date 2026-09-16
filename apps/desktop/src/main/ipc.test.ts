@@ -145,3 +145,11 @@ test('overlapping book closes share preparation and only a failed close resumes 
   expect(await second).toMatchObject({ ok: false });
   expect(h.sender.send.mock.calls.filter(([, id]) => id === null)).toHaveLength(1);
 });
+
+
+import { validateBookChange } from './ipc';
+test('management IPC validates operation and all supplied values', () => {
+ for (const payload of [null, {}, {type:'trash'}, {type:'add',paths:[]}, {type:'add',paths:[42]}, {type:'rename',title:42}, {type:'create',title:'x',path:null}, {type:'unlink',chapterId:'x'}]) expect(()=>validateBookChange(payload)).toThrow();
+ expect(validateBookChange({type:'add',paths:['a.md']})).toEqual({type:'add',paths:['a.md']});
+ expect(validateBookChange({type:'trash',chapterId:'a'})).toEqual({type:'trash',chapterId:'a'});
+});

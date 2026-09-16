@@ -10,6 +10,8 @@ import type { FSWatcher } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  manageBook as changeStoredBook,
+  discoverChapters as discoverStoredChapters,
   ChapterSession,
   SaveQueue,
   acceptRecoveryExternal,
@@ -29,6 +31,8 @@ import type { ChapterModel, Piece } from '@galley-desk/review-engine';
 import type {
   AppearanceSettings,
   BookView,
+  BookChange,
+  ChapterDiscovery,
   Command,
   Entry,
   RecordView,
@@ -51,6 +55,7 @@ export type SnapshotListener = (snapshot: Snapshot) => void;
 
 export type BookServiceDeps = {
   appData: string;
+  trashItem?: (absolutePath: string) => Promise<void>;
   /** Directory picker; null means the user cancelled. */
   chooseDirectory: () => Promise<string | null>;
   /** Save dialog for exporting a pending review draft; null means cancel. */
@@ -105,6 +110,8 @@ type ChapterEntry = LiveChapter | ReadonlyChapter | MissingChapter | RecoveryCha
 type BookEntry = { handle: BookHandle; chapters: Map<string, ChapterEntry> };
 
 export type BookService = {
+  manageBook(bookId: string, change: BookChange): Promise<BookView>;
+  discoverChapters(bookId: string): Promise<ChapterDiscovery>;
   appearance(): Promise<AppearanceSettings>;
   setAppearance(value: AppearanceSettings): Promise<void>;
   savePosition(bookId: string, chapterId: string, anchor: number, scrollTop: number): Promise<void>;
@@ -289,6 +296,7 @@ function buildRecordViews(model: ChapterModel): RecordView[] {
 // --- service -----------------------------------------------------------------
 
 export function createBookService(deps: BookServiceDeps): BookService {
+  const managing = new Set<string>();
   const { appData } = deps;
   const watchRoot = deps.watchRoot ?? defaultWatchRoot;
   const books = new Map<string, BookEntry>();
@@ -339,6 +347,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
 
   /** Перечитывает пары живых глав книги; уведомляет только об изменениях. */
   async function recheckBook(bookId: string): Promise<void> {
+    if (managing.has(bookId)) return;
     const book = books.get(bookId);
     if (book === undefined) return;
     for (const [chapterId, entry] of book.chapters) {
@@ -359,6 +368,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
 
   /** Drains every session of the book and drops it from the registry. */
   async function closeBookById(bookId: string): Promise<void> {
+    if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
     const book = books.get(bookId);
     if (book === undefined) return;
     await Promise.all([...book.chapters.values()].map(async (entry) => {
@@ -547,6 +557,37 @@ export function createBookService(deps: BookServiceDeps): BookService {
   }
 
   return {
+    async discoverChapters(bookId: string): Promise<ChapterDiscovery> {
+      const book = requireBook(bookId);
+      try { return { book: await bookView(book.handle), files: await discoverStoredChapters(book.handle) }; }
+      catch (error) { throw toIpcError(error); }
+    },
+    async manageBook(bookId: string, change: BookChange): Promise<BookView> {
+      const book = requireBook(bookId);
+      if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
+      managing.add(bookId);
+      try {
+        if ((await readJournalsForRoot(appData, book.handle.root)).some(record => !record.complete)) throw new IpcError('SAVE_FAILED', 'Сначала разрешите восстановление книги');
+        for (const entry of book.chapters.values()) {
+          if (entry.kind === 'live') {
+            await entry.session.flushPending();
+            if (entry.session.state === 'external' || entry.session.state === 'error') throw new IpcError('SAVE_FAILED', 'Сначала разрешите внешнее изменение или ошибку сохранения');
+          }
+        }
+        // Retire a removed session before files move; reopening after a failed trash
+        // must read the actual remaining pair rather than a stale cached model.
+        if (change.type === 'remove' || change.type === 'trash') {
+          const entry = book.chapters.get(change.chapterId);
+          if (entry?.kind === 'live') await entry.session.close();
+          book.chapters.delete(change.chapterId);
+        }
+        await changeStoredBook(book.handle, change, deps.trashItem);
+        const stored = await loadRecentBooks(appData);
+        await saveRecentBooks(appData, upsertRecent(stored, { path: book.handle.root, bookId, title: book.handle.manifest.title }));
+        return await bookView(book.handle);
+      } catch (error) { throw toIpcError(error); }
+      finally { managing.delete(bookId); }
+    },
     async appearance(): Promise<AppearanceSettings> {
       return (await settings.loadSettings(appData)).appearance;
     },
@@ -614,6 +655,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
     },
 
     async openChapter(bookId: string, chapterId: string): Promise<Snapshot> {
+      if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
       const book = requireBook(bookId);
       const chapter = book.handle.manifest.chapters.find((candidate) => candidate.id === chapterId);
       if (chapter === undefined) {
@@ -634,6 +676,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
       command: unknown,
     ): Promise<Snapshot> {
       const book = requireBook(bookId);
+      if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
       const entry = book.chapters.get(chapterId);
       if (entry === undefined) {
         throw new IpcError('BOOK_MISSING', 'Глава ещё не открыта');

@@ -1,0 +1,163 @@
+import { test, expect, chromium } from '@playwright/test';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
+import path from 'node:path';
+
+test('actual packaged executable persists book management and uses native trash', async () => {
+  const executable = process.env.GALLEY_PACKAGED_EXECUTABLE;
+  test.skip(
+    !executable,
+    'Set GALLEY_PACKAGED_EXECUTABLE to test the hardened package via renderer CDP',
+  );
+  await mkdir(path.join(homedir(), '.cache'), { recursive: true });
+  const root = await mkdtemp(
+    path.join(homedir(), '.cache', 'desk-packaged-management-test-'),
+  );
+  const profile = await mkdtemp(
+    path.join(tmpdir(), 'desk-packaged-management-profile-'),
+  );
+  const bookId = randomUUID();
+  const chapterId = randomUUID();
+  await writeFile(path.join(root, 'a.md'), 'Packaged source.\n');
+  await writeFile(
+    path.join(root, '.pocket-editor.json'),
+    JSON.stringify({
+      schema_version: 1,
+      book_id: bookId,
+      title: 'Packaged fixture',
+      chapters: [{ id: chapterId, path: 'a.md', title: 'First' }],
+      ignored_files: [],
+    }),
+  );
+  await writeFile(
+    path.join(profile, 'recent-books.json'),
+    JSON.stringify([
+      {
+        path: root,
+        bookId,
+        title: 'Packaged fixture',
+        lastOpenedAt: Date.now(),
+        lastChapterId: null,
+        anchor: null,
+        scrollTop: null,
+      },
+    ]),
+  );
+  const child = spawn(executable!, ['--remote-debugging-port=0'], {
+    env: { ...process.env, GALLEY_DESK_USER_DATA: profile },
+  });
+  try {
+    const endpoint = await new Promise<string>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(Error('No package CDP endpoint')),
+        15000,
+      );
+      child.once('error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+      child.stderr.on('data', (chunk) => {
+        const match = String(chunk).match(/DevTools listening on (ws:\/\/\S+)/);
+        if (match) {
+          clearTimeout(timeout);
+          resolve(match[1]!);
+        }
+      });
+    });
+    const browser = await chromium.connectOverCDP(endpoint);
+    try {
+      const context = browser.contexts()[0]!;
+      const page = context.pages()[0] ?? (await context.waitForEvent('page'));
+      await page.getByRole('button', { name: 'Открыть', exact: true }).click();
+      await expect(page.locator('.cm-content')).toBeVisible();
+      await page.locator('.cm-content').click();
+      await page.keyboard.press('Control+Home');
+      await page.keyboard.type('New ');
+      await page
+        .getByRole('button', { name: 'Меню книги', exact: true })
+        .click();
+      await page
+        .getByRole('button', { name: 'Управление книгой', exact: true })
+        .click();
+      const panel = page.getByRole('dialog', {
+        name: 'Управление книгой',
+        exact: true,
+      });
+      await panel
+        .getByLabel('Название книги', { exact: true })
+        .fill('Packaged renamed');
+      await panel
+        .getByRole('button', { name: 'Переименовать книгу', exact: true })
+        .click();
+      await expect
+        .poll(
+          async () =>
+            JSON.parse(
+              await readFile(path.join(root, '.pocket-editor.json'), 'utf8'),
+            ).title,
+        )
+        .toBe('Packaged renamed');
+      await expect
+        .poll(
+          async () =>
+            JSON.parse(await readFile(path.join(root, 'a.review.json'), 'utf8'))
+              .edits.length,
+        )
+        .toBe(1);
+      await panel.getByLabel('Название новой главы').fill('Created chapter');
+      await panel.getByLabel('Имя файла (.md)').fill('b.md');
+      await panel
+        .getByRole('button', { name: 'Создать главу', exact: true })
+        .click();
+      await expect
+        .poll(async () => readFile(path.join(root, 'b.md'), 'utf8'))
+        .toBe('# Created chapter\n');
+      await panel.getByRole('button', { name: 'Удалить файлы главы…' }).click();
+      await panel.getByRole('button', { name: 'Отмена удаления' }).click();
+      expect(await readFile(path.join(root, 'a.md'), 'utf8')).toBe(
+        'Packaged source.\n',
+      );
+      await panel.getByRole('button', { name: 'Удалить файлы главы…' }).click();
+      await panel
+        .getByRole('button', { name: 'Переместить в корзину', exact: true })
+        .click();
+      await expect
+        .poll(async () =>
+          JSON.parse(
+            await readFile(path.join(root, '.pocket-editor.json'), 'utf8'),
+          ).chapters.map((chapter: { path: string }) => chapter.path),
+        )
+        .toEqual(['b.md']);
+      await expect(readFile(path.join(root, 'a.md'))).rejects.toThrow();
+      await expect(
+        readFile(path.join(root, 'a.review.json')),
+      ).rejects.toThrow();
+      await page.screenshot({ path: '/tmp/galley-packaged-management.png' });
+      await panel
+        .getByRole('button', { name: 'Закрыть управление книгой' })
+        .click();
+      await page
+        .getByRole('button', { name: 'Меню книги', exact: true })
+        .click();
+      await page
+        .getByRole('button', { name: 'Закрыть книгу', exact: true })
+        .click();
+      await expect(page.locator('.recent-list__title')).toHaveText(
+        'Packaged renamed',
+      );
+    } finally {
+      await browser.close();
+    }
+  } finally {
+    if (child.exitCode === null) {
+      const exited = once(child, 'exit');
+      child.kill('SIGTERM');
+      await exited;
+    }
+    await rm(root, { recursive: true, force: true });
+    await rm(profile, { recursive: true, force: true });
+  }
+});

@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AppearanceSettings,
   BookView,
+  ChapterDiscovery,
   Command,
   DeskApi,
   Recent,
@@ -33,6 +34,8 @@ ipcRenderer.on('desk:flush-request', async (_event, requestId: string | null) =>
 });
 
 const desk: DeskApi = {
+  manageBook: (bookId, change) => call<BookView>('desk:manage-book', bookId, change),
+  discoverChapters: (bookId) => call<ChapterDiscovery>('desk:discover-chapters', bookId),
   onCloseRequest: (listener) => {
     closeListeners.add(listener);
     return () => { closeListeners.delete(listener); };

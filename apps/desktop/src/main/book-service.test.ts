@@ -1090,3 +1090,43 @@ test('adding metadata to BOM source retains exactly one BOM', async () => {
   expect(await readFile(path.join(h.bookRoot,'01.md'))).toEqual(Buffer.from(expected));
   await h.closeAll();
 });
+
+test('management drains pending edits, updates recent title, removes and re-adds intact review', async () => {
+  const service = await makeService({'a.md':'Alpha body\n'});
+  const book = (await service.chooseBook())!; const chapter=book.entries[0]!;
+  const snap=await service.openChapter(book.bookId,chapter.id);
+  const pending=service.command(book.bookId,chapter.id,snap.revision,{type:'text',changes:[{from:0,to:0,insert:'New '}],selection:{anchor:4,head:4}});
+  await pending;
+  const renamed=await service.manageBook(book.bookId,{type:'rename',title:'Renamed'});
+  expect(renamed.title).toBe('Renamed'); expect((await service.recent())[0]!.title).toBe('Renamed');
+  const saved=await readFile(path.join(service.bookRoot,'a.review.json'),'utf8');
+  await service.manageBook(book.bookId,{type:'remove',chapterId:chapter.id});
+  expect((await service.discoverChapters(book.bookId)).files.map(x=>x.path)).toEqual(['a.md']);
+  const added=await service.manageBook(book.bookId,{type:'add',paths:['a.md']});
+  expect(added.entries[0]!.id).toBe(chapter.id);
+  expect((await service.openChapter(book.bookId,chapter.id)).text).toBe('New Alpha body\n');
+  expect(await readFile(path.join(service.bookRoot,'a.review.json'),'utf8')).toBe(saved);
+  await service.closeAll();
+});
+
+test('management rejects external manifest changes', async () => {
+  const service=await makeService({'a.md':'Alpha body\n'}); const book=(await service.chooseBook())!;
+  const manifest=path.join(service.bookRoot,'.pocket-editor.json');
+  await writeFile(manifest,JSON.stringify({...JSON.parse(await readFile(manifest,'utf8')),title:'External'}));
+  await expect(service.manageBook(book.bookId,{type:'rename',title:'Wrong'})).rejects.toMatchObject({code:'SAVE_FAILED'});
+  expect(JSON.parse(await readFile(manifest,'utf8')).title).toBe('External');
+  await service.closeAll();
+});
+
+test('management refuses a failed pending save and retains source and manifest', async () => {
+ const service=await makeService({'a.md':'Alpha body\n'}); const book=(await service.chooseBook())!;
+ const chapter=book.entries[0]!; const snap=await service.openChapter(book.bookId,chapter.id);
+ const storage=await vi.importActual<typeof import('@galley-desk/book-storage')>('../../../../packages/book-storage/src/book');
+ const spy=vi.spyOn(storage,'writePair').mockRejectedValueOnce(new Error('injected save failure'));
+ try {
+  await expect(service.command(book.bookId,chapter.id,snap.revision,{type:'text',changes:[{from:0,to:0,insert:'New '}],selection:{anchor:4,head:4}})).rejects.toThrow();
+  await expect(service.manageBook(book.bookId,{type:'remove',chapterId:chapter.id})).rejects.toMatchObject({code:'SAVE_FAILED'});
+  expect(JSON.parse(await readFile(path.join(service.bookRoot,'.pocket-editor.json'),'utf8')).chapters[0].id).toBe(chapter.id);
+  expect(await readFile(path.join(service.bookRoot,'a.md'),'utf8')).toBe('Alpha body\n');
+ } finally {spy.mockRestore(); await service.closeAll().catch(()=>undefined);}
+});
