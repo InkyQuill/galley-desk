@@ -109,7 +109,7 @@ export function App() {
       data-scheme={appearanceTheme.scheme}
     >
       <TitleBar title={book?.title ?? 'Galley Desk'} />
-      <div className="app-root__content">
+      <div className={`app-root__content${book === null ? ' app-root__content--welcome' : ''}`}>
         {book === null ? (
           <RecentBooks onOpen={openBook} refreshKey={refreshKey} />
         ) : (

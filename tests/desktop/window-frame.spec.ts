@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -36,4 +36,37 @@ test('packaged Linux window has custom accessible chrome and native controls wor
   await page.screenshot({ path: '.superpowers/sdd/2026-09-16-real-book-fixes/task-6-window-frame.png' });
   await page.getByRole('button', { name: 'Восстановить окно' }).click();
   await expect(page.getByRole('button', { name: 'Развернуть окно' })).toBeVisible();
+});
+
+test('compact welcome keeps every recent book reachable below the fixed title bar', async () => {
+  profile = await mkdtemp(path.join(tmpdir(), 'desk-window-recents-'));
+  const recents = Array.from({ length: 30 }, (_, index) => ({
+    path: `/missing/${String(index).padStart(2, '0')}/${'очень-длинный-путь-'.repeat(4)}`,
+    bookId: `book-${index}`,
+    title: `Книга ${String(index + 1).padStart(2, '0')}`,
+    missing: true,
+    lastOpenedAt: Date.now() - index,
+    lastChapterId: null,
+    anchor: null,
+    scrollTop: null,
+  }));
+  await writeFile(path.join(profile, 'recent-books.json'), JSON.stringify(recents));
+  const executable = process.env.GALLEY_PACKAGED_EXECUTABLE
+    ?? path.resolve('apps/desktop/out/Galley Desk-linux-x64/Galley Desk');
+  app = await launchPackaged(executable, profile);
+  const page = app.page;
+  const windowId = (await run('xdotool', ['search', '--onlyvisible', '--pid', String(app.pid)])).stdout.trim().split('\n')[0]!;
+  await run('xdotool', ['windowsize', '--sync', windowId, '720', '520']);
+
+  const titlebar = page.locator('.titlebar');
+  const first = page.getByText('Книга 01', { exact: true });
+  const last = page.getByText('Книга 30', { exact: true });
+  await expect(first).toBeVisible();
+  const fixedTop = (await titlebar.boundingBox())!.y;
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+  expect((await titlebar.boundingBox())!.y).toBe(fixedTop);
+  await first.scrollIntoViewIfNeeded();
+  await expect(first).toBeInViewport();
+  expect((await titlebar.boundingBox())!.y).toBe(fixedTop);
 });

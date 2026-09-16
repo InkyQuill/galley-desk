@@ -6,6 +6,7 @@
 body { margin: 0; background: Canvas; }
 .app-root { height: 100vh; display: flex; flex-direction: column; overflow: hidden; --desk-accent: var(--app-focus); }
 .app-root__content { flex: 1; min-height: 0; }
+.app-root__content--welcome { overflow: auto; }
 .titlebar { -webkit-app-region: drag; flex: none; height: 38px; display: flex; align-items: center; gap: 9px; padding-left: 12px; background: var(--app-panel); color: var(--app-text); user-select: none; }
 .titlebar--mac { padding-left: 82px; }
 .titlebar__icon { width: 23px; height: 23px; object-fit: contain; }
@@ -24,7 +25,7 @@ body { margin: 0; background: Canvas; }
 .app-root :is(input, select, textarea) { min-width: 0; border: 0; border-radius: 6px; padding: 8px 10px; background: var(--app-panel-muted); }
 .app-root textarea { width: 100%; resize: vertical; }
 .app-root svg { width: 18px; height: 18px; flex: none; stroke-width: 2; }
-.app { display: grid; place-content: center; justify-items: center; height: 100%; text-align: center; gap: 12px; }
+.app { display: grid; place-content: safe center; justify-items: center; min-height: 100%; padding: 24px; text-align: center; gap: 12px; }
 .app__hint, .recent-list__path { color: var(--app-text-muted); margin: 0; }
 .app .app__primary { background: var(--app-hover); padding: 10px 22px; }
 .app__error, .recent-list__missing { color: var(--app-error-text); overflow-wrap: anywhere; }
