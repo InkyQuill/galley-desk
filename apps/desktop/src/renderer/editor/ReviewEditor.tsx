@@ -29,6 +29,7 @@ import { bookResourceUrl, isHttpHttpsUrl, isLocalImagePath } from '../book/bookr
 import { dispatchRecordMarkers, mappedRecords, recordMarkers, subscribeScheme } from './markers';
 import { CommandQueue, TypingGroups, fromSnapshot, isHistoryCommand, toTextChanges } from './transaction-adapter';
 import { dismissRecordPreview, recordPreview, setRecordPreviewBlocked } from './record-preview';
+import { snapshotChange } from './snapshot-change';
 import '@inkyquill/galley-editor/style.css';
 
 /** Императивный доступ панели/попапов к FIFO-очереди и геометрии редактора. */
@@ -193,13 +194,19 @@ export function ReviewEditor({
     // Якорь ограничивается длиной нового текста: вне диапазона dispatch падает.
     const anchor = Math.max(0, Math.min(pending.anchor, pending.text.length));
     if (view.state.doc.toString() !== pending.text) {
+      const changes = snapshotChange(view.state.doc.toString(), pending.text);
+      // Same-chapter updates retain logical selection and the viewport's text
+      // anchor. Mapping a whole-document replacement sends that anchor to an
+      // edge of the book. Capture at application time (also after IME deferral).
+      const sync = pending.kind === 'sync';
       view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: pending.text },
-        selection: { anchor, head: anchor },
+        changes,
+        selection: sync ? view.state.selection.map(changes, -1) : { anchor, head: anchor },
+        effects: sync ? view.scrollSnapshot().map(changes) : EditorView.scrollIntoView(anchor),
         annotations: fromSnapshot.of(true),
       });
-    } else if (pending.anchor > 0) {
-      view.dispatch({ selection: { anchor, head: anchor } });
+    } else if (pending.kind === 'switch') {
+      view.dispatch({ selection: { anchor, head: anchor }, effects: EditorView.scrollIntoView(anchor) });
     }
     setDocRef.current?.({ chapterId: pending.chapterId, text: pending.text });
   }

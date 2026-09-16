@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import type { EditorView } from '@codemirror/view';
 import { encodeReview, makeAnchor } from '../../packages/pocket-format/src/index';
 import type { Review } from '../../packages/pocket-format/src/index';
 import { applyEdit, openChapter } from '../../packages/review-engine/src/index';
@@ -803,5 +804,74 @@ test('gutter follows wrapped Markdown and scrolling; deletion has its own focusa
     await page.locator('.cm-scroller').evaluate((element) => { element.scrollTop += 500; });
     await expect(page.getByRole('tooltip', { name: 'До правки' })).toHaveCount(0);
     await expect(page.locator('.cm-content .gd-record-marker, .gd-signal-comment')).toHaveCount(0);
+  } finally { await session.app.close(); }
+});
+
+test('long chapter deletion around an existing deletion keeps reading position through undo and redo', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-viewport-');
+  const paragraphs = Array.from({ length: 160 }, (_, i) => `Paragraph ${i}: ` + 'Quiet words along the river. '.repeat(8) + '\n\n');
+  const sourceText = paragraphs.join('');
+  const paragraph = paragraphs[90]!;
+  const from = paragraphs.slice(0, 90).join('').length;
+  const deleted = 'along the river. ';
+  const deletionFrom = sourceText.indexOf(deleted, from);
+  const review: Review = { ...emptyReview(), edits: [{
+    id: randomUUID(), before: deleted, after: '',
+    anchor: makeAnchor(new TextEncoder().encode(sourceText), { from: deletionFrom, to: deletionFrom + deleted.length }),
+  }] };
+  await writeBook(bookRoot, review);
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const derived = sourceText.slice(0, deletionFrom) + sourceText.slice(deletionFrom + deleted.length);
+  const after = derived.slice(0, from) + derived.slice(from + paragraph.length - deleted.length);
+  const session = await launch(bookRoot);
+  try {
+    const page = session.page;
+    await openOwnBook(session);
+    const content = page.locator('.cm-content');
+    await content.evaluate((element, range) => {
+      const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+      view.dispatch({ selection: { anchor: range.from, head: range.to }, scrollIntoView: true });
+      view.focus();
+    }, { from, to: from + paragraph.length - deleted.length });
+    const measure = () => content.evaluate((element) => {
+      const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+      const anchor = view.state.selection.main.anchor;
+      const coords = view.coordsAtPos(anchor);
+      const bounds = view.scrollDOM.getBoundingClientRect();
+      return { text: view.state.doc.toString(), anchor, y: coords?.top ?? -10000, top: bounds.top, bottom: bounds.bottom,
+        line: view.state.doc.lineAt(anchor).text };
+    });
+    await expect.poll(async () => {
+      const current = await measure();
+      return current.y > current.top && current.y < current.bottom;
+    }).toBe(true);
+    const beforeDeletion = await measure();
+    await page.keyboard.press('Backspace');
+    await expect.poll(async () => (await measure()).text).toBe(after);
+    await expect.poll(async () => Math.abs((await measure()).y - beforeDeletion.y)).toBeLessThan(4);
+    await waitSaveDrained(page, path.join(bookRoot, SIDECAR_PATH));
+    const baseline = await measure();
+    expect(baseline.anchor).toBe(from);
+    expect(baseline.line).toContain('Paragraph 91:');
+    expect(baseline.y).toBeGreaterThan(baseline.top);
+    expect(baseline.y).toBeLessThan(baseline.bottom);
+    for (const [key, expected, line] of [
+      ['ControlOrMeta+z', derived, 'Paragraph 90:'],
+      ['ControlOrMeta+y', after, 'Paragraph 91:'],
+      ['ControlOrMeta+z', derived, 'Paragraph 90:'],
+    ] as const) {
+      await page.keyboard.press(key);
+      await expect.poll(async () => (await measure()).text).toBe(expected);
+      await expect.poll(async () => Math.abs((await measure()).y - baseline.y)).toBeLessThan(4);
+      const current = await measure();
+      expect(current.anchor).toBe(from);
+      expect(current.line).toContain(line);
+      await expect(content).toBeFocused();
+    }
+    // Explicit navigation still moves the viewport after snapshot restoration.
+    await content.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
+    await expect.poll(async () => (await measure()).anchor).toBe(derived.length);
+    await expect.poll(async () => (await measure()).y).toBeGreaterThan(baseline.top);
+    expect(await readFile(path.join(bookRoot, CHAPTER_PATH), 'utf8')).toBe(sourceText);
   } finally { await session.app.close(); }
 });
