@@ -334,7 +334,7 @@ test('close surfaces a failed save instead of silently dropping the model', asyn
   expect(session.model.text).toBe('abcd');
 });
 
-test('applying through the session removes a signal inside the replacement and keeps a stale record', async () => {
+test('apply, undo and redo preserve an independent signal and restore each exact pair', async () => {
   const { book, chapterId, appData, writeSidecar } = await makeBook();
   const stale = { id: STALE_ID, before: 'zz', after: 'q', anchor: makeAnchor(BYTES, { from: 2, to: 4 }) };
   const inside = {
@@ -348,13 +348,24 @@ test('applying through the session removes a signal inside the replacement and k
   sidecar.signals = [inside];
   await writeSidecar(sidecar);
   const session = await ChapterSession.open(book, chapterId, appData);
+  const original = await readPair(book, chapterId);
   await session.apply(E1_ID);
 
-  const pair = await readPair(book, chapterId);
-  const review = decodeReview(pair.pair.review as string, chapterId, '01.md');
-  expect(review.signals).toEqual([]);
+  const applied = await readPair(book, chapterId);
+  const review = decodeReview(applied.pair.review as string, chapterId, '01.md');
+  expect(review.signals).toEqual([inside]);
   expect(review.edits).toContainEqual(stale);
   expect(session.model.text).toBe('Xcd');
+
+  await session.undoApply();
+  const undone = await readPair(book, chapterId);
+  expect(undone.pair).toEqual(original.pair);
+  expect(decodeReview(undone.pair.review as string, chapterId, '01.md').signals).toEqual([inside]);
+
+  await session.redoApply();
+  const redone = await readPair(book, chapterId);
+  expect(redone.pair).toEqual(applied.pair);
+  expect(decodeReview(redone.pair.review as string, chapterId, '01.md').signals).toEqual([inside]);
   await session.close();
 });
 

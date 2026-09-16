@@ -67,7 +67,7 @@ test('conflicting corrections stay in the review with their original anchors', (
   expect(next.review.edits).toContainEqual(second);
 });
 
-test('signals before the replacement keep their anchors, signals after shift with fresh ones', () => {
+test('signals outside the replacement get fresh anchors at their exact ranges', () => {
   const source = new TextEncoder().encode('abcd');
   const edit = { id: E1, before: 'bc', after: 'XYZ', anchor: makeAnchor(source, { from: 1, to: 3 }) };
   const beforeSignal = signalOn(source, 's-before', 0, 1);
@@ -76,11 +76,22 @@ test('signals before the replacement keep their anchors, signals after shift wit
   expect(next.source).toEqual(new TextEncoder().encode('aXYZd'));
   expect(next.review.signals).toHaveLength(2);
   const kept = next.review.signals.find((signal) => signal.id === 's-before') as Signal;
-  expect(kept).toEqual(beforeSignal);
+  expect(kept.anchor).toEqual(makeAnchor(next.source, { from: 0, to: 1 }));
+  expect(kept.selected_text).toBe('a');
   const shifted = next.review.signals.find((signal) => signal.id === 's-after') as Signal;
   expect(shifted.anchor).toEqual(makeAnchor(next.source, { from: 4, to: 5 }));
   expect(shifted.selected_text).toBe('d');
   expect(shifted.comment).toBe('');
+});
+
+test('apply refreshes a signal before the replacement when its text repeats', () => {
+  const source = new TextEncoder().encode('aa bb aa');
+  const edit = { id: E1, before: 'bb', after: 'X', anchor: makeAnchor(source, { from: 3, to: 5 }) };
+  const signal = signalOn(source, E2, 0, 2, 'first occurrence');
+  const next = applyEdit(openChapter(source, reviewWith(source, [edit], [signal])), E1);
+  expect(next.review.signals).toEqual([
+    { ...signal, anchor: makeAnchor(next.source, { from: 0, to: 2 }) },
+  ]);
 });
 
 test('a signal spanning the whole replacement keeps covering it over the corrected bytes', () => {
@@ -95,13 +106,23 @@ test('a signal spanning the whole replacement keeps covering it over the correct
   expect(moved.comment).toBe('whole line');
 });
 
-test('a signal entirely inside the replacement is removed with it', () => {
-  const source = new TextEncoder().encode('abcd');
-  const edit = { id: E1, before: 'bc', after: 'XY', anchor: makeAnchor(source, { from: 1, to: 3 }) };
-  const inside = signalOn(source, 's-in', 1, 3);
-  const outside = signalOn(source, 's-out', 3, 4);
-  const next = applyEdit(openChapter(source, reviewWith(source, [edit], [inside, outside])), E1);
-  expect(next.review.signals.map((signal) => signal.id)).toEqual(['s-out']);
+test('apply keeps an independent signal whose selection disappeared', () => {
+  const source = new TextEncoder().encode('кот');
+  const edit = { id: E1, before: 'кот', after: 'кит', anchor: makeAnchor(source, { from: 0, to: 6 }) };
+  const signal = signalOn(source, E2, 0, 6, 'не терять');
+  const next = applyEdit(openChapter(source, reviewWith(source, [edit], [signal])), E1);
+  expect(next.review.signals).toEqual([signal]);
+});
+
+test('apply refreshes an earlier active anchor even with zero shift', () => {
+  const source = new TextEncoder().encode('aa bb');
+  const edits = [
+    { id: E1, before: 'aa', after: 'X', anchor: makeAnchor(source, { from: 0, to: 2 }) },
+    { id: E2, before: 'bb', after: 'aa', anchor: makeAnchor(source, { from: 3, to: 5 }) },
+  ];
+  const next = applyEdit(openChapter(source, reviewWith(source, edits)), E2);
+  expect(next.text).toBe('X aa');
+  expect(next.review.edits[0]!.anchor).toEqual(makeAnchor(next.source, { from: 0, to: 2 }));
 });
 
 test('a partially overlapping signal keeps its old anchor instead of guessing', () => {
