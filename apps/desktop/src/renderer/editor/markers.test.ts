@@ -27,7 +27,7 @@ test('unavailable/conflicting anchors never receive gutter targets even with non
   expect(state.field(mappedRecords).map((item) => item.id)).toEqual(['active']);
 });
 
-test('resolved signal comments and deleted text never become inline editor widgets', () => {
+test('comments and deletion placeholders decorate without changing manuscript coordinates', () => {
   const doc = EditorState.create({ doc: 'one two' }).doc;
   const decorations = buildDecorations([
     record('edit', 0, 3), { ...record('delete', 4, 4), after: '' },
@@ -35,5 +35,9 @@ test('resolved signal comments and deleted text never become inline editor widge
   ], doc);
   const ranges: { from: number; to: number; widget: unknown }[] = [];
   decorations.between(0, doc.length, (from, to, value) => { ranges.push({ from, to, widget: value.spec.widget }); });
-  expect(ranges).toEqual([{ from: 0, to: 3, widget: undefined }, { from: 4, to: 7, widget: undefined }]);
+  expect(ranges.map(({ from, to, widget }) => ({ from, to, widget: widget !== undefined }))).toEqual([
+    { from: 0, to: 3, widget: false }, { from: 4, to: 4, widget: true },
+    { from: 4, to: 7, widget: false }, { from: 7, to: 7, widget: true },
+  ]);
+  expect(doc.toString()).toBe('one two');
 });

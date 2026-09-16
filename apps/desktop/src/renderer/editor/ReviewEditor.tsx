@@ -29,6 +29,7 @@ import { bookResourceUrl, isHttpHttpsUrl, isLocalImagePath } from '../book/bookr
 import { dispatchRecordMarkers, mappedRecords, recordMarkers, subscribeScheme } from './markers';
 import { CommandQueue, TypingGroups, fromSnapshot, isHistoryCommand, toTextChanges } from './transaction-adapter';
 import { dismissRecordPreview, recordPreview, setRecordPreviewBlocked } from './record-preview';
+import { visualRecord } from './visual-range';
 import { snapshotChange } from './snapshot-change';
 import '@inkyquill/galley-editor/style.css';
 
@@ -407,6 +408,7 @@ export function ReviewEditor({
     const target = event.target as HTMLElement | null;
     const marker = target?.closest?.('[data-record-id]') ?? null;
     if (marker === null) return;
+    if (!marker.matches('button, .gd-signal-comment') && handleRef.current?.view?.state.selection.main.empty === false) return;
     const recordId = marker.getAttribute('data-record-id');
     if (recordId === null) return;
     const rect = marker.getBoundingClientRect();
@@ -433,7 +435,7 @@ export function ReviewEditor({
       dismissPreview: () => handleRef.current?.view ? dismissRecordPreview(handleRef.current.view) : false,
       reveal: (recordId) => {
         const view = handleRef.current?.view ?? null;
-        const record = view?.state.field(mappedRecords).find((candidate) => candidate.id === recordId);
+        const record = view?.state.field(mappedRecords).map(visualRecord).find((candidate) => candidate.id === recordId);
         if (record === undefined || record.from === null || record.to === null || view === null) return false;
         const from = Math.max(0, Math.min(record.from, view.state.doc.length));
         const to = Math.max(0, Math.min(record.to, view.state.doc.length));

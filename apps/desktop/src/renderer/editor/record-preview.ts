@@ -3,7 +3,8 @@ import type { Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin, showTooltip } from '@codemirror/view';
 import type { Tooltip } from '@codemirror/view';
 import type { RecordView } from '../../shared/api';
-import { mappedRecords, setRecordMarkers } from './markers';
+import { visualRecord } from './visual-range';
+import { currentTheme, signalColor, mappedRecords, setRecordMarkers } from './markers';
 
 const previewTarget = StateEffect.define<string | null>();
 const editorFocus = StateEffect.define<boolean>();
@@ -16,15 +17,17 @@ function beforeTooltip(record: RecordView, pos: number): Tooltip {
   return {
     pos,
     above: true,
-    create: () => {
+    create: (view) => {
       const dom = document.createElement('section');
       dom.className = 'gd-before-preview';
+      if (record.kind === 'signal') dom.style.color = signalColor(record.signalType ?? 'note', currentTheme());
       dom.setAttribute('role', 'tooltip');
-      dom.setAttribute('aria-label', 'До правки');
+      dom.setAttribute('aria-label', record.kind === 'signal' ? 'Комментарий сигнала' : 'До правки');
+      dom.addEventListener('mouseleave', () => dismissRecordPreview(view));
       const label = document.createElement('strong');
-      label.textContent = 'До правки';
+      label.textContent = record.kind === 'signal' ? 'Сигнал' : 'До правки';
       const before = document.createElement('p');
-      before.textContent = record.before || 'Добавление';
+      before.textContent = record.kind === 'signal' ? record.comment || record.before : record.before || 'Добавление';
       dom.append(label, before);
       return { dom };
     },
@@ -50,16 +53,16 @@ const previewField = StateField.define<PreviewState>({
     const selection = tr.state.selection.main;
     if (target === null) dismissed = true;
     if (blocked || dismissed || !selection.empty) return { focused, blocked, dismissed, tooltip: null };
-    const records = tr.state.field(mappedRecords);
+    const records = tr.state.field(mappedRecords).map(visualRecord);
     if (target !== undefined) {
-      const record = records.find((record) => record.id === target && record.kind === 'edit');
+      const record = records.find((record) => record.id === target);
       return { focused, blocked, dismissed, tooltip: record ? beforeTooltip(record, record.from!) : null };
     }
     const changed = tr.selection !== undefined || tr.docChanged || tr.effects.some((effect) =>
       effect.is(setRecordMarkers) || effect.is(editorFocus) || effect.is(previewIntent));
     if (!changed) return value;
     const record = focused ? records.find((record) => record.kind === 'edit' &&
-      record.from! <= selection.head && selection.head <= record.to!) : undefined;
+      record.from! <= selection.head && (selection.head < record.to! || record.from === record.to && selection.head === record.from)) : undefined;
     return { focused, blocked, dismissed, tooltip: record ? beforeTooltip(record, selection.head) : null };
   },
   provide: (field) => showTooltip.from(field, (value) => value.tooltip),
@@ -114,7 +117,10 @@ export function recordPreview(): Extension {
     };
     out = (event: MouseEvent): void => {
       const marker = (event.target as Element).closest('[data-record-id]');
-      if (marker && !marker.contains(event.relatedTarget as Node | null)) dismissRecordPreview(this.view);
+      const tooltip = (event.target as Element).closest('.gd-before-preview');
+      if (tooltip && !tooltip.contains(event.relatedTarget as Node | null) ||
+          marker && !marker.contains(event.relatedTarget as Node | null) &&
+          !(event.relatedTarget instanceof Element && event.relatedTarget.closest('.gd-before-preview'))) dismissRecordPreview(this.view);
     };
     destroy(): void {
       this.destroyed = true;

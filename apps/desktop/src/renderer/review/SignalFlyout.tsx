@@ -1,6 +1,7 @@
 // Flyout выбора типа сигнала у выделенного текста. Появляется без переноса
 // фокуса: копирование и клавиатурная навигация в редакторе остаются доступны;
 // в flyout можно попасть Tab-ом из редактора, пока выделение непусто.
+import { signalLabels, signalIcons } from './signal-types';
 import { useEffect } from 'react';
 import { SIGNAL_TYPES, useMarkerTheme, signalColor } from '../editor/markers';
 import type { SignalTypeName } from '../editor/markers';
@@ -46,6 +47,8 @@ export function SignalFlyout({ x, bottom, onPick, registerFocus }: Props) {
       {SIGNAL_TYPES.map((type) => (
         <button
           key={type}
+          aria-label={signalLabels[type]}
+          title={signalLabels[type]}
           type="button"
           // preventDefault на mousedown сохраняет выделение и фокус редактора.
           onMouseDown={(event) => event.preventDefault()}
@@ -59,7 +62,7 @@ export function SignalFlyout({ x, bottom, onPick, registerFocus }: Props) {
           }}
           onClick={() => onPick(type)}
         >
-          {type}
+          {(() => { const Icon = signalIcons[type]; return <Icon size={20} aria-hidden="true" />; })()}
         </button>
       ))}
     </div>

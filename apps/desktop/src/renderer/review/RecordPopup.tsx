@@ -4,6 +4,8 @@
 // комментарий и тип; недоступная/конфликтующая запись — сохранённые тексты,
 // причина и удаление, без фиктивного перехода к якорю. Esc закрывает попап,
 // не создавая сигнал, и возвращает фокус туда, где он был.
+import { signalLabels, signalIcons } from './signal-types';
+import { visualRecord } from '../editor/visual-range';
 import { useEffect, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
 import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react';
@@ -40,15 +42,22 @@ const cardBase: CSSProperties = {
   display: 'grid',
   gap: '0.5rem',
   textAlign: 'left',
-  maxWidth: '20rem',
+  width: 440,
+  maxWidth: 'min(100%, calc(100vw - 16px))',
+  maxHeight: 'calc(100vh - 16px)',
+  overflow: 'auto',
+  overflowWrap: 'anywhere',
+  boxSizing: 'border-box',
 };
 
 function floatingCard(at: NonNullable<PopupPosition>): CSSProperties {
+  const top = Math.max(8, Math.min(at.bottom + 8, window.innerHeight - 360));
   return {
     ...cardBase,
     position: 'fixed',
-    left: Math.max(8, Math.min(at.x, window.innerWidth - 336)),
-    top: Math.max(8, Math.min(at.bottom + 8, window.innerHeight - 220)),
+    left: Math.max(8, Math.min(at.x, window.innerWidth - 448)),
+    top,
+    maxHeight: window.innerHeight - top - 8,
     zIndex: 40,
     boxShadow: 'var(--app-dialog-shadow)',
   };
@@ -81,6 +90,48 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
   const [signalType, setSignalType] = useState<SignalTypeName>(
     draft?.signalType ?? record?.signalType ?? 'note',
   );
+  const popupRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    if (record?.kind !== 'edit' || at === null) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const inside = (target: EventTarget | null): boolean => {
+      if (!(target instanceof Element)) return false;
+      return popupRef.current?.contains(target) === true || target.closest('[data-record-id]')?.getAttribute('data-record-id') === record.id;
+    };
+    const down = (event: PointerEvent) => { if (!inside(event.target)) closeRef.current(); };
+    const over = (event: PointerEvent) => {
+      clearTimeout(timer);
+      if (!inside(event.target)) timer = setTimeout(() => closeRef.current(), 220);
+    };
+    const out = (event: PointerEvent) => {
+      if (event.relatedTarget === null) {
+        clearTimeout(timer);
+        timer = setTimeout(() => closeRef.current(), 220);
+      }
+    };
+    const selection = () => {
+      const content = document.activeElement;
+      if (!(content instanceof HTMLElement) || !content.matches('.cm-content')) return;
+      const view = EditorView.findFromDOM(content);
+      const range = visualRecord(record);
+      const head = view?.state.selection.main.head;
+      if (head !== undefined && range.from !== null && range.to !== null &&
+          (head < range.from || head > range.to)) closeRef.current();
+    };
+    document.addEventListener('pointerdown', down, true);
+    document.addEventListener('pointerover', over, true);
+    document.addEventListener('pointerout', out, true);
+    document.addEventListener('selectionchange', selection);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('pointerdown', down, true);
+      document.removeEventListener('pointerover', over, true);
+      document.removeEventListener('pointerout', out, true);
+      document.removeEventListener('selectionchange', selection);
+    };
+  }, [record, at]);
   // Восстановление фокуса при любом способе закрытия (Esc, действие, исчезновение
   // записи). Если фокус уже занят (открылся новый попап), его не перехватываем.
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -137,15 +188,15 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
 
   if (draft !== null) {
     return (
-      <div role="dialog" aria-label="Новый сигнал" style={at !== null ? floatingCard(at) : cardBase} onKeyDown={onKeyDown}>
+      <div ref={popupRef} className="gd-record-popup" role="dialog" aria-label="Новый сигнал" style={at !== null ? floatingCard(at) : cardBase} onKeyDown={onKeyDown}>
         <strong>
-          Новый сигнал: <span style={{ color: signalColor(draft.signalType, theme) }}>{draft.signalType}</span>
+          Новый сигнал: <span style={{ color: signalColor(draft.signalType, theme) }}>{signalLabels[signalType]}</span>
         </strong>
         <textarea
           readOnly={readOnly}
           autoFocus
           aria-label="Комментарий сигнала"
-          rows={3}
+          rows={6}
           placeholder="Комментарий (необязательно)"
           value={comment}
           onChange={(event) => setComment(event.target.value)}
@@ -169,7 +220,7 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
   if (record.status !== 'active') {
     // Недоступная/конфликтующая запись: сохранённые тексты, причина, удаление.
     return (
-      <div role="dialog" aria-label="Недоступная запись" style={at !== null ? floatingCard(at) : cardBase} onKeyDown={onKeyDown}>
+      <div ref={popupRef} className="gd-record-popup" role="dialog" aria-label="Недоступная запись" style={at !== null ? floatingCard(at) : cardBase} onKeyDown={onKeyDown}>
         <strong>{record.kind === 'edit' ? 'Правка' : 'Сигнал'} — {record.status === 'conflicting' ? 'конфликтует' : 'недоступна'}</strong>
         {record.kind === 'edit' ? (
           <span>
@@ -193,7 +244,7 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
 
   if (record.kind === 'edit') {
     return (
-      <div role="dialog" aria-label="Правка" style={at !== null ? floatingCard(at) : cardBase} onKeyDown={onKeyDown}>
+      <div ref={popupRef} className="gd-record-popup" role="dialog" aria-label="Правка" style={at !== null ? floatingCard(at) : cardBase} onKeyDown={onKeyDown}>
         <strong>Правка</strong>
         <span>
           <s>{record.before}</s> → <strong>{record.after}</strong>
@@ -216,14 +267,16 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
   }
 
   return (
-    <div role="dialog" aria-label="Сигнал" style={at !== null ? floatingCard(at) : cardBase} onKeyDown={onKeyDown}>
+    <div ref={popupRef} className="gd-record-popup" role="dialog" aria-label="Сигнал" style={at !== null ? floatingCard(at) : cardBase} onKeyDown={onKeyDown}>
       <strong>
-        Сигнал: <span style={{ color: signalColor(signalType, theme) }}>{signalType}</span>
+        Сигнал: <span style={{ color: signalColor(signalType, theme) }}>{signalLabels[signalType]}</span>
       </strong>
       <div style={rowStyle}>
         {SIGNAL_TYPES.map((type) => (
           <button
             key={type}
+            aria-label={signalLabels[type]}
+            title={signalLabels[type]}
             type="button"
             disabled={readOnly}
             aria-pressed={signalType === type}
@@ -237,14 +290,14 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
             }}
             onClick={() => setSignalType(type)}
           >
-            {type}
+            {(() => { const Icon = signalIcons[type]; return <Icon size={20} aria-hidden="true" />; })()}
           </button>
         ))}
       </div>
       <textarea
         readOnly={readOnly}
         aria-label="Комментарий сигнала"
-        rows={3}
+        rows={6}
         placeholder="Комментарий (необязательно)"
         value={comment}
         onChange={(event) => setComment(event.target.value)}
@@ -256,6 +309,7 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
         <button type="button" disabled={readOnly} onClick={saveSignal}>
           Сохранить
         </button>
+        <button type="button" onClick={onClose}>Отмена</button>
         <button type="button" disabled={readOnly} onClick={remove}>
           Удалить
         </button>

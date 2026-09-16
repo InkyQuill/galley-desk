@@ -246,7 +246,7 @@ async function createSignalByKeyboard(
   const flyout = page.locator('[data-review-flyout]');
   await expect(flyout).toBeVisible();
   await page.keyboard.press('Tab');
-  const firstType = flyout.getByRole('button', { name: 'note', exact: true });
+  const firstType = flyout.getByRole('button', { name: 'Заметка', exact: true });
   await expect(firstType).toBeFocused();
   let focused = 'note';
   while (focused !== type) {
@@ -398,7 +398,7 @@ test('клавиатурный путь выделение → flyout → поп
     expect(signal?.selected_text).toBe('кот');
     // Маркер остаётся в gutter, комментарий — в панели и карточке.
     await expect(page.getByRole('button', { name: 'Сигнал', exact: true })).toBeVisible();
-    await expect(page.locator('.gd-signal-comment')).toHaveCount(0);
+    await expect(page.locator('.gd-signal-comment')).toHaveCount(1);
     await expect(page.locator('.book__review')).toContainText('Обсудить');
     await page.getByRole('button', { name: 'Сигнал', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Комментарий сигнала' })).toHaveValue('Обсудить');
@@ -464,7 +464,7 @@ test('четыре типа сигналов получают свои цвет�
     for (const [type, rgb] of Object.entries(expectedColors)) {
       expect(
         await flyout
-          .getByRole('button', { name: type, exact: true })
+          .getByRole('button', { name: ({ note: 'Заметка', change_required: 'Требуется правка', warning: 'Предупреждение', review: 'На проверку' })[type], exact: true })
           .evaluate((element) => getComputedStyle(element).color),
       ).toBe(rgb);
     }
@@ -476,7 +476,7 @@ test('четыре типа сигналов получают свои цвет�
     await createSignalByKeyboard(page, sidecarPath, { skip: 4, length: 4 }, 'warning', 'Тон');
     await createSignalByKeyboard(page, sidecarPath, { skip: 8, length: 1 }, 'review', '');
     await expect(page.getByRole('button', { name: 'Сигнал', exact: true })).toHaveCount(4);
-    await expect(page.locator('.gd-signal-comment')).toHaveCount(0);
+    await expect(page.locator('.gd-signal-comment')).toHaveCount(2);
     await expect(page.locator('.book__review')).toContainText('Проверить');
     await expect(page.locator('.book__review')).toContainText('Тон');
 
@@ -519,7 +519,7 @@ test('изменение существующего сигнала заменя�
     await expect(dialog).toBeVisible();
     const textarea = dialog.getByRole('textbox', { name: 'Комментарий сигнала' });
     await expect(textarea).toHaveValue('Первый');
-    await dialog.getByRole('button', { name: 'review', exact: true }).click();
+    await dialog.getByRole('button', { name: 'На проверку', exact: true }).click();
     await textarea.fill('Второй');
     await textarea.press('ControlOrMeta+Enter');
 
@@ -719,7 +719,7 @@ test('gutter: before preview preserves typing focus, selection flyout wins, butt
     expect(await markers.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('data-record-id')))).toEqual([EDIT_ID, SIGNAL_ID]);
     await expect(content.locator('.gd-record-marker')).toHaveCount(0);
     await selectFromStart(page, 1, 0);
-    await expect(preview).toContainText('кот');
+    await expect(preview).toContainText('о');
     await page.screenshot({ path: test.info().outputPath('gutter-preview.png') });
     await expect(content).toBeFocused();
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -739,7 +739,7 @@ test('gutter: before preview preserves typing focus, selection flyout wins, butt
     await page.keyboard.press('Escape');
     await expect(page.locator('.book--zen')).toHaveCount(0);
     await page.locator('.gd-edit-range').hover();
-    await expect(preview).toContainText('кот');
+    await expect(preview).toContainText('о');
     await expect(content).toBeFocused();
     await page.locator('.gd-edit-range').click();
     await expect(page.getByRole('dialog', { name: 'Правка' })).toBeVisible();
@@ -751,11 +751,11 @@ test('gutter: before preview preserves typing focus, selection flyout wins, butt
     await expect(preview).toHaveCount(0);
     await expect(page.locator('[data-review-flyout]')).toBeVisible();
     await page.keyboard.press('Tab');
-    await expect(page.locator('[data-review-flyout]').getByRole('button', { name: 'note', exact: true })).toBeFocused();
+    await expect(page.locator('[data-review-flyout]').getByRole('button', { name: 'Заметка', exact: true })).toBeFocused();
     await page.keyboard.press('Escape');
     await selectFromStart(page, 0, 0);
     await markers.first().focus();
-    await expect(preview).toContainText('кот');
+    await expect(preview).toContainText('о');
     await page.keyboard.press('Tab');
     await expect(markers.nth(1)).toBeFocused();
     await page.keyboard.press('Shift+Tab');
@@ -787,7 +787,7 @@ test('gutter follows wrapped Markdown and scrolling; deletion has its own focusa
     await page.getByRole('button', { name: /^Правка: DELETE / }).click();
     await page.keyboard.press('Escape');
     await expect(deletion).toBeVisible();
-    const range = page.locator('.gd-edit-range').filter({ hasText: 'replacement' });
+    const range = page.locator('.gd-edit-range').filter({ hasText: 'replacemen' });
     await expect.poll(async () => {
       const markerBox = await deletion.boundingBox();
       const rangeBox = await range.boundingBox();
@@ -800,7 +800,7 @@ test('gutter follows wrapped Markdown and scrolling; deletion has its own focusa
     await expect(page.getByRole('dialog', { name: 'Правка' })).toContainText('DELETE');
     await page.keyboard.press('Escape');
     await range.hover();
-    await expect(page.getByRole('tooltip', { name: 'До правки' })).toContainText('target');
+    await expect(page.getByRole('tooltip', { name: 'До правки' })).toContainText('targe');
     await page.locator('.cm-scroller').evaluate((element) => { element.scrollTop += 500; });
     await expect(page.getByRole('tooltip', { name: 'До правки' })).toHaveCount(0);
     await expect(page.locator('.cm-content .gd-record-marker, .gd-signal-comment')).toHaveCount(0);
@@ -873,5 +873,95 @@ test('long chapter deletion around an existing deletion keeps reading position t
     await expect.poll(async () => (await measure()).anchor).toBe(derived.length);
     await expect.poll(async () => (await measure()).y).toBeGreaterThan(baseline.top);
     expect(await readFile(path.join(bookRoot, CHAPTER_PATH), 'utf8')).toBe(sourceText);
+  } finally { await session.app.close(); }
+});
+
+test('review annotation content, support ranges, safe comments and popup dismissal', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-annotations-');
+  const sourceText = 'alpha DELETE omega\nwrapped line\n\nSecond paragraph.';
+  const source = new TextEncoder().encode(sourceText);
+  const comment = '<img src=x onerror=alert(1)> plain comment';
+  const review: Review = { ...emptyReview(), edits: [
+    { id: randomUUID(), before: 'DELETE ', after: '', anchor: makeAnchor(source, { from: 6, to: 13 }) },
+    { id: randomUUID(), before: 'alpha', after: 'alphabeta', anchor: makeAnchor(source, { from: 0, to: 5 }) },
+  ], signals: [
+    { id: '00000000-0000-4000-8000-000000000001', type: 'note', selected_text: 'omega', comment, anchor: makeAnchor(source, { from: 13, to: 18 }) },
+    { id: '00000000-0000-4000-8000-000000000002', type: 'warning', selected_text: 'omega', comment: 'Second comment', anchor: makeAnchor(source, { from: 13, to: 18 }) },
+  ] };
+  await writeBook(bookRoot, review);
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const session = await launch(bookRoot);
+  try {
+    const page = session.page;
+    await openOwnBook(session);
+    const content = page.locator('.cm-content');
+    await expect(page.locator('.gd-edit-range')).toHaveText('beta');
+    const annotations = page.locator('.gd-signal-comment');
+    await expect(annotations).toHaveText([comment, 'Second comment']);
+    await expect(annotations.locator('img')).toHaveCount(0);
+    const line = page.locator('.cm-line').filter({ hasText: 'wrapped line' });
+    expect((await annotations.first().boundingBox())!.y).toBeGreaterThan((await line.boundingBox())!.y);
+    const trash = page.getByRole('button', { name: 'Удалённый текст', exact: true });
+    await expect(trash).toBeVisible();
+    await expect(trash).toHaveText('');
+    await trash.hover();
+    await expect(page.getByRole('tooltip', { name: 'До правки' })).toContainText('DELETE');
+    await trash.click();
+    const popup = page.getByRole('dialog', { name: 'Правка', exact: true });
+    await expect(popup).toBeVisible();
+    await popup.hover();
+    await page.waitForTimeout(300);
+    await expect(popup).toBeVisible();
+    await page.mouse.move(2, 2);
+    await expect(popup).toHaveCount(0);
+    await trash.click();
+    await expect(popup).toBeVisible();
+    await content.focus();
+    await page.keyboard.press('ControlOrMeta+End');
+    await expect(popup).toHaveCount(0);
+    await trash.click();
+    await expect(popup).toBeVisible();
+    await page.getByRole('textbox', { name: 'Фильтр глав' }).click();
+    await expect(popup).toHaveCount(0);
+    await selectFromStart(page, 0, 0);
+    await expect(page.getByRole('tooltip', { name: 'До правки' })).toHaveCount(0);
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.press('ControlOrMeta+c');
+    const copied = await session.app.evaluate(({ clipboard }) => clipboard.readText());
+    expect(copied).toBe(sourceText.replace('alpha', 'alphabeta').replace('DELETE ', ''));
+    await page.keyboard.press('Escape');
+    await selectFromStart(page, 0, 3);
+    await page.locator('[data-review-flyout]').getByRole('button', { name: 'Заметка', exact: true }).click();
+    const draft = page.getByRole('dialog', { name: 'Новый сигнал' });
+    await draft.getByRole('textbox').fill('unsaved draft');
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(300);
+    await expect(draft.getByRole('textbox')).toHaveValue('unsaved draft');
+    expect((await draft.boundingBox())!.width).toBeGreaterThan(400);
+    await page.screenshot({ path: '/tmp/galley-task3-signal-light.png' });
+    await draft.getByRole('button', { name: 'Отмена' }).click();
+    await expect(content).toBeFocused();
+    await page.getByRole('button', { name: 'Меню книги' }).click();
+    await page.getByRole('button', { name: 'Оформление', exact: true }).click();
+    await page.getByLabel('Тема', { exact: true }).selectOption('gruvbox-dark');
+    await page.getByRole('button', { name: 'Закрыть оформление' }).click();
+    await page.screenshot({ path: '/tmp/galley-task3-annotations-dark.png' });
+    await annotations.first().click();
+    const signalForm = page.getByRole('dialog', { name: 'Сигнал', exact: true });
+    await signalForm.getByRole('textbox').fill('Long safe comment '.repeat(2000));
+    await signalForm.getByRole('button', { name: 'Сохранить', exact: true }).click();
+    await page.keyboard.press('Escape');
+    const updatedComment = page.locator('.gd-signal-comment[data-record-id="00000000-0000-4000-8000-000000000001"]');
+    await expect(updatedComment).toContainText('Long safe comment');
+    await selectFromStart(page, 0, 0);
+    await updatedComment.hover();
+    const signalPreview = page.getByRole('tooltip', { name: 'Комментарий сигнала' });
+    await expect(signalPreview).toContainText('Long safe comment');
+    const bounds = await signalPreview.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.y).toBeGreaterThanOrEqual(0);
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(900);
+    await page.mouse.move(2, 2);
+    await expect(signalPreview).toHaveCount(0);
   } finally { await session.app.close(); }
 });

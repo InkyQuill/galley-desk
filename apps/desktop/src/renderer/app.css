@@ -131,3 +131,27 @@ body { margin: 0; background: Canvas; }
 .review-editor .cm-tooltip.gd-before-preview { font: var(--desk-ui-size)/1.5 var(--desk-ui-font); color: var(--app-text); background: var(--app-panel); border: 0; border-radius: 8px; padding: 12px 16px; box-shadow: var(--app-dialog-shadow); max-width: min(420px, 80vw); max-height: 200px; overflow: hidden; pointer-events: none; }
 .gd-before-preview strong { display: block; color: var(--app-text-muted); font-size: .85em; font-weight: 500; margin-bottom: 5px; }
 .gd-before-preview p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.gd-signal-comment {
+  font: calc(var(--desk-ui-size) * .85)/1.5 var(--desk-ui-font);
+  padding: 0.3rem 0 0.55rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: min(12rem, 30vh);
+  overflow: auto;
+  user-select: none;
+}
+.app-root .gd-deletion-placeholder {
+  width: 18px;
+  height: 14px;
+  line-height: 0;
+  display: inline-flex;
+  vertical-align: baseline;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+}
+.gd-record-popup textarea { width: 100%; min-height: 8rem; box-sizing: border-box; }
+.review-editor .cm-tooltip.gd-before-preview { pointer-events: auto; max-height: min(24rem, 60vh); overflow: auto; overflow-wrap: anywhere; }

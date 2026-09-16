@@ -1,3 +1,4 @@
+import { recordsInReadingOrder } from '../editor/visual-range';
 import { IconPencil, IconBolt } from '@tabler/icons-react';
 import { EDIT_MARKER_COLOR, useMarkerTheme, signalColor } from '../editor/markers';
 // Правая панель рецензии: список правок и сигналов для перехода между ними.
@@ -33,7 +34,7 @@ export function ReviewList({ records, cardRecordId, onSelect, onCommand, onCardC
   return (
     <nav aria-label="Рецензия главы" style={{ display: 'grid', gap: '0.25rem' }}>
       <ul className="book__records">
-        {records.map((record) => (
+        {recordsInReadingOrder(records).map((record) => (
           <li key={record.id} style={{ display: 'grid', gap: '0.35rem' }}>
             <button
               type="button"

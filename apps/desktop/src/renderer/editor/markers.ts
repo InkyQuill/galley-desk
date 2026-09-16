@@ -17,14 +17,15 @@
 // (LightReviewColors/DarkReviewColors; оттенки правок — Umber/Amber и
 // deletion/additionContainer оттуда же). Рендерер не может импортировать
 // Kotlin, поэтому значения захардкожены здесь.
-import { Decoration, EditorView, GutterMarker, ViewPlugin, gutter } from '@codemirror/view';
+import { Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, gutter } from '@codemirror/view';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { IconBolt, IconPencil } from '@tabler/icons-react';
+import { IconBolt, IconPencil, IconTrash } from '@tabler/icons-react';
 import { Range, StateEffect, StateField } from '@codemirror/state';
 import { useSyncExternalStore } from 'react';
 import type { DecorationSet } from '@codemirror/view';
 import type { Extension, Text } from '@codemirror/state';
+import { visualRecord, recordsInReadingOrder } from './visual-range';
 import type { RecordView } from '../../shared/api';
 
 export const SIGNAL_TYPES = ['note', 'change_required', 'warning', 'review'] as const;
@@ -137,12 +138,57 @@ export const mappedRecords = StateField.define<RecordView[]>({
   },
 });
 
-/** No widgets: the text and clipboard contain only the derived manuscript. */
+class AnnotationWidget extends WidgetType {
+  constructor(readonly record: RecordView, readonly theme: ThemeName) { super(); }
+  eq(other: AnnotationWidget): boolean {
+    return this.record.id === other.record.id && this.record.comment === other.record.comment &&
+      this.record.before === other.record.before && this.record.signalType === other.record.signalType && this.theme === other.theme;
+  }
+  toDOM(): HTMLElement {
+    const deletion = this.record.kind === 'edit';
+    const dom = document.createElement(deletion ? 'button' : 'div');
+    dom.className = deletion ? 'gd-deletion-placeholder' : 'gd-signal-comment';
+    dom.dataset.recordId = this.record.id;
+    dom.contentEditable = 'false';
+    dom.style.color = deletion ? deletionColor(this.theme) : signalColor(this.record.signalType ?? 'note', this.theme);
+    if (deletion) {
+      (dom as HTMLButtonElement).type = 'button';
+      dom.setAttribute('aria-label', 'Удалённый текст');
+      dom.innerHTML = trash;
+    } else dom.textContent = this.record.comment;
+    return dom;
+  }
+  coordsAt(dom: HTMLElement): { left: number; right: number; top: number; bottom: number } | null {
+    if (this.record.kind !== 'edit') return null;
+    const view = EditorView.findFromDOM(dom);
+    if (!view) return null;
+    const pos = view.posAtDOM(dom);
+    const line = view.state.doc.lineAt(pos);
+    // The small icon must not redefine the text caret/scroll anchor's height.
+    const text = pos < line.to ? view.coordsForChar(pos) : pos > line.from ? view.coordsForChar(pos - 1) : null;
+    if (!text) return null;
+    const icon = dom.getBoundingClientRect();
+    return { left: icon.left, right: icon.left, top: text.top, bottom: text.bottom };
+  }
+  ignoreEvent(): boolean { return true; }
+}
+
+/** Widgets never alter the document, storage coordinates or CM clipboard text. */
 export function buildDecorations(records: RecordView[], doc: Text, theme: ThemeName = currentTheme()): DecorationSet {
   const ranges: Range<Decoration>[] = [];
-  for (const record of records) {
+  for (const stored of recordsInReadingOrder(records)) {
+    const record = visualRecord(stored);
     if (record.status !== 'active' || record.from === null || record.to === null ||
-        record.from < 0 || record.from >= record.to || record.to > doc.length) continue;
+        record.from < 0 || record.from > record.to || record.to > doc.length) continue;
+    if (record.kind === 'edit' && record.from === record.to && record.before !== '') {
+      ranges.push(Decoration.widget({ widget: new AnnotationWidget(record, theme), side: 1 }).range(record.from));
+    }
+    if (record.kind === 'signal' && record.comment !== '') {
+      let line = doc.lineAt(record.to);
+      while (line.number < doc.lines && doc.line(line.number + 1).text.trim() !== '') line = doc.line(line.number + 1);
+      ranges.push(Decoration.widget({ widget: new AnnotationWidget(record, theme), block: true, side: 1 }).range(line.to));
+    }
+    if (record.from === record.to) continue;
     const color = signalColor(record.signalType ?? 'note', theme);
     ranges.push(Decoration.mark({
       class: record.kind === 'edit' ? 'gd-edit-range' : `gd-signal-range gd-signal-range--${record.signalType ?? 'note'}`,
@@ -168,6 +214,7 @@ const recordMarkersField = StateField.define<DecorationSet>({
 });
 
 // These strings come only from bundled Tabler components, never book content.
+const trash = renderToStaticMarkup(createElement(IconTrash, { size: 14, 'aria-hidden': true }));
 const pencil = renderToStaticMarkup(createElement(IconPencil, { size: 18, 'aria-hidden': true }));
 const bolt = renderToStaticMarkup(createElement(IconBolt, { size: 18, 'aria-hidden': true }));
 
@@ -188,8 +235,6 @@ class RecordGutterMarker extends GutterMarker {
       button.dataset.recordPos = String(record.from);
       const deletion = record.kind === 'edit' && record.after === '';
       button.setAttribute('aria-label', record.kind === 'signal' ? 'Сигнал' : deletion ? `Удаление: ${record.before}` : 'Правка');
-      button.title = record.kind === 'signal' ? `Сигнал: ${record.comment || record.before}` :
-        deletion ? `Удаление: ${record.before}` : `Правка: ${record.before} → ${record.after}`;
       button.style.color = record.kind === 'signal' ? signalColor(record.signalType ?? 'note', this.theme) :
         deletion ? deletionColor(this.theme) : EDIT_MARKER_COLOR;
       button.innerHTML = record.kind === 'signal' ? bolt : pencil;
@@ -242,7 +287,7 @@ export function recordMarkers(): Extension {
   return [mappedRecords, recordMarkersField, gutter({
     class: 'gd-review-gutter',
     lineMarker: (view, line) => {
-      const records = view.state.field(mappedRecords).filter((record) =>
+      const records = view.state.field(mappedRecords).map(visualRecord).filter((record) =>
         record.from !== null && record.from >= line.from && record.from <= line.to)
         .sort((a, b) => a.from! - b.from! || a.to! - b.to! || a.id.localeCompare(b.id));
       return records.length ? new RecordGutterMarker(records, currentTheme()) : null;
