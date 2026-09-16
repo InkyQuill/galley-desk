@@ -54,26 +54,15 @@ async function openOwnBook(session: Session): Promise<void> {
   await expect(session.page.locator('.cm-content')).toBeVisible();
 }
 
-/** Дожидается завершения сохранения: sidecar на диске перестаёт меняться. */
-async function waitSaveDrained(page: Page, sidecarPath: string): Promise<string> {
-  let previous = '';
-  try {
-    previous = await readFile(sidecarPath, 'utf8');
-  } catch {
-    previous = '';
-  }
-  for (let attempt = 0; attempt < 60; attempt++) {
-    await page.waitForTimeout(250);
-    let current: string;
-    try {
-      current = await readFile(sidecarPath, 'utf8');
-    } catch {
-      current = '';
-    }
-    if (current !== '' && current === previous) return current;
-    previous = current;
-  }
-  throw new Error(`Сохранение не завершилось: ${sidecarPath}`);
+/** Wait for the complete expected text on disk, not a pause between writes. */
+async function waitSavedText(sidecarPath: string, source: Buffer, expectedText: string): Promise<void> {
+  await expect.poll(async () => {
+    const sidecar = await readFile(sidecarPath, 'utf8').catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    return sidecar === null ? null : openChapter(source, JSON.parse(sidecar) as Review).text;
+  }, { timeout: 15_000 }).toBe(expectedText);
 }
 
 test.afterEach(async () => {
@@ -88,14 +77,27 @@ test('ввод кот→кит пишет sidecar, исходник цел, по
     const content = session.page.locator('.cm-content');
     await expect(content).toContainText('кот спит.');
 
+    // Leave the first character persisted while the next command is in flight.
+    // A quiet sidecar (or the previous «Сохранено» snapshot) is not a queue drain.
+    await session.app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>> })._invokeHandlers;
+      const original = handlers.get('desk:command')!;
+      let commands = 0;
+      ipcMain.removeHandler('desk:command');
+      ipcMain.handle('desk:command', async (...args) => {
+        if (++commands === 2) await new Promise(resolve => setTimeout(resolve, 1500));
+        return original(...args);
+      });
+    });
+
     // Замена кот спит. → кит одним вводом поверх выделения всего текста.
     await content.click();
     await session.page.keyboard.press('ControlOrMeta+a');
     await session.page.keyboard.type('кит');
     await expect(content).toContainText('кит');
     await expect(session.page.getByText('Сохранено')).toBeVisible();
-    // Дожидаемся тишины на диске: нажатия Undo не пересекаются с пачкой.
-    await waitSaveDrained(session.page, path.join(bookRoot, 'Глава.review.json'));
+    // Дожидаемся всей пачки на диске перед Undo.
+    await waitSavedText(path.join(bookRoot, 'Глава.review.json'), Buffer.from('кот спит.\n'), 'кит');
 
     // Исходный Markdown не меняется, правка живёт в sidecar.
     expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe('кот спит.\n');
@@ -200,9 +202,9 @@ test('смена главы во время пачки ввода не пере�
     await session.page.keyboard.insertText(burstB);
     await expect(content).toContainText(burstB);
 
-    // Тишина на диске по обоим sidecar.
-    await waitSaveDrained(session.page, path.join(bookRoot, 'Глава.review.json'));
-    await waitSaveDrained(session.page, path.join(bookRoot, 'Вторая.review.json'));
+    // Проверяем полный результат ввода в обоих sidecar.
+    await waitSavedText(path.join(bookRoot, 'Глава.review.json'), Buffer.from('кот спит.\n'), `кот спит.\n${burstA}`);
+    await waitSavedText(path.join(bookRoot, 'Вторая.review.json'), Buffer.from(bigB), `${bigB}${burstB}`);
 
     // Основная истина на диске: закрытие дожидается очередей сохранения.
     await session.page.getByRole('button', { name: 'Меню книги' }).click();
@@ -250,8 +252,7 @@ test('быстрый ввод 50 транзакций не теряет и не 
     await session.page.keyboard.type(burst, { delay: 5 });
     await expect(content).toContainText(burst);
 
-    const sidecar = await waitSaveDrained(session.page, path.join(bookRoot, 'Глава.review.json'));
-    expect(sidecar.length).toBeGreaterThan(0);
+    await waitSavedText(path.join(bookRoot, 'Глава.review.json'), Buffer.from('Текст\n'), `Текст\n${burst}`);
 
     // Основная истина на диске: закрытие и повторное открытие книги.
     await session.page.getByRole('button', { name: 'Меню книги' }).click();
