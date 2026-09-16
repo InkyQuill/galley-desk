@@ -512,3 +512,18 @@ test('metadata save keeps unchanged delimiter support of a start-of-body inserti
  expect(session.model.text).toBe('---\ntitle: New title\n---\nNew abcd');
  expect(session.model.review.edits).toHaveLength(1);
 });
+
+test('metadata prefix replacement preserves BOM, UTF-8 body and body insertion record', async () => {
+  const {book, chapterId, appData, root} = await makeBook();
+  const source = '\uFEFF---\r\ntitle: Old\r\n---\r\nBody 🐈\r\n';
+  await externalWrite(root, source);
+  const session = await ChapterSession.open(book, chapterId, appData);
+  const body = session.model.text.indexOf('Body');
+  await session.edit([{from:body,to:body,insert:'New '}], {anchor:body+4,head:body+4});
+  const prefix = '\uFEFF---\r\ntitle: New\r\n---\r\n';
+  const end = Buffer.byteLength(source.slice(0,source.indexOf('Body')));
+  await session.replaceSourcePrefix(source, end, prefix);
+  expect(await readFile(path.join(root,'01.md'))).toEqual(Buffer.from(prefix+'Body 🐈\r\n'));
+  expect(session.model.text).toBe('---\ntitle: New\n---\nNew Body 🐈\n');
+  expect(session.model.review.edits).toHaveLength(1);
+});

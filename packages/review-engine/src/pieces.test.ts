@@ -73,3 +73,13 @@ function emptyReview(fields?: Partial<Review>): Review {
     ...fields,
   };
 }
+
+test('BOM-free derived boundaries still count the source BOM bytes', () => {
+  const source = new TextEncoder().encode('\uFEFFA\r\n🐈B');
+  const review: Review = {schema_version:1,chapter_id:'bom',source_path:'01.md',chapter_note:'',edits:[],signals:[]};
+  const model = openChapter(source, review);
+  expect(model.text).toBe('A\n🐈B');
+  expect(sourceRange(model,0,1)).toEqual({from:3,to:4});
+  expect(sourceRange(model,2,4)).toEqual({from:6,to:10});
+  expect(sourceRange(model,0,model.text.length)).toEqual({from:3,to:source.length});
+});

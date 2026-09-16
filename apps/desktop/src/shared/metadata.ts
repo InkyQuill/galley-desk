@@ -45,7 +45,7 @@ export function frontmatter(source: string): Frontmatter | null {
     yaml,
     end,
     byteEnd: new TextEncoder().encode(source.slice(0, end)).length,
-    derivedEnd: source.slice(0, end).replace(/\r\n?|\n/g, '\n').length,
+    derivedEnd: source.slice(0, end).replace(/^\uFEFF/, '').replace(/\r\n?|\n/g, '\n').length,
     eol: start[1]!,
     ...parsed,
     error: match ? parsed.error : 'YAML: нет закрывающей строки ---',
@@ -82,13 +82,14 @@ export function resolveTitle(
   parser.parse(body).iterate({
     enter(node) {
       if (node.name === 'ATXHeading1' || node.name === 'SetextHeading1') {
-        if (!heading)
+        if (!heading) {
+          const underline = node.name === 'SetextHeading1' ? node.node.getChild('HeaderMark') : null;
           heading = body
-            .slice(node.from, node.to)
+            .slice(node.from, underline?.from ?? node.to)
             .replace(/^#[ \t]+/, '')
-            .replace(/\n[=]+[ \t]*$/, '')
             .replace(/[ \t]+#+[ \t]*$/, '')
             .trim();
+        }
         return false;
       }
     },

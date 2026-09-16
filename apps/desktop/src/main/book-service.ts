@@ -134,6 +134,8 @@ export type BookService = {
 };
 
 const strictUtf8 = new TextDecoder('utf-8', { fatal: true });
+// Raw source transport must retain BOM; engine-derived text keeps its own convention.
+const sourceUtf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 /**
  * Состояние сессии читается через функцию: смена состояния происходит внутри
@@ -203,7 +205,9 @@ function boundaryDerivedPosition(spans: PieceSpan[], source: Uint8Array, byte: n
     }
     if (byte < piece.source.to) {
       const slice = strictUtf8.decode(source.subarray(piece.source.from, piece.source.to));
-      return start + derivedUnitsForSliceByteOffset(slice, byte - piece.source.from);
+      const from = piece.source.from;
+      const bomBytes = source[from] === 0xef && source[from + 1] === 0xbb && source[from + 2] === 0xbf ? 3 : 0;
+      return start + derivedUnitsForSliceByteOffset(slice, Math.max(0, byte - from - bomBytes));
     }
   }
   const last = spans[spans.length - 1];
@@ -474,7 +478,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
     return {
       ...head,
       text: model.text,
-      sourceText: strictUtf8.decode(model.source),
+      sourceText: sourceUtf8.decode(model.source),
       title: resolveTitle(strictUtf8.decode(model.source), chapter?.title ?? '', chapter?.path ?? ''),
       records: buildRecordViews(model),
       chapterNote: model.review.chapter_note,
@@ -492,11 +496,11 @@ export function createBookService(deps: BookServiceDeps): BookService {
     const session = entry.session;
     switch (command.type) {
       case 'metadata': {
-        if (strictUtf8.decode(session.model.source) !== command.sourceText) throw new IpcError('STALE_REVISION', 'Исходник изменился; откройте метаданные заново');
+        if (sourceUtf8.decode(session.model.source) !== command.sourceText) throw new IpcError('STALE_REVISION', 'Исходник изменился; откройте метаданные заново');
         let prefix: string;
         try { prefix = metadataReplacement(command.sourceText, command.yaml); }
         catch (error) { throw new IpcError('SAVE_FAILED', error instanceof Error ? error.message : 'Ошибка YAML'); }
-        try { await session.replaceSourcePrefix(command.sourceText, frontmatter(command.sourceText)?.byteEnd ?? 0, prefix); }
+        try { await session.replaceSourcePrefix(command.sourceText, frontmatter(command.sourceText)?.byteEnd ?? (command.sourceText.startsWith('\uFEFF') ? 3 : 0), prefix); }
         catch (error) { if (error instanceof Error && error.message.includes('overlap')) throw new IpcError('UNAVAILABLE_RECORD','Сначала разрешите записи рецензии внутри метаданных'); throw error; }
         return;
       }

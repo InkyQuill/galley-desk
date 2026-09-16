@@ -114,7 +114,10 @@ export function byteOffsetAt(pieces: Piece[], source: Uint8Array, pos: number, s
 /** Exact byte offset of a UTF-16 boundary inside an unchanged piece. */
 function byteOffsetInSlice(piece: Piece, offsetInPiece: number, source: Uint8Array): number {
   const decoded = decodeStrict(source.subarray(piece.source.from, piece.source.to));
-  let byteOffset = 0;
+  // TextDecoder omits a leading UTF-8 BOM from each decoded slice, but
+  // source anchors still count its three bytes.
+  const from = piece.source.from;
+  let byteOffset = source[from] === 0xef && source[from + 1] === 0xbb && source[from + 2] === 0xbf ? 3 : 0;
   let outUnits = 0;
   let index = 0;
   while (outUnits < offsetInPiece && index < decoded.length) {

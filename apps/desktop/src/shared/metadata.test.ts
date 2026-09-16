@@ -38,3 +38,18 @@ test('unsafe YAML tags stay visible with an error and cannot be saved', () => {
   expect(frontmatter('---\n' + yaml + '\n---\nBody')?.error).toBeTruthy();
   expect(() => metadataReplacement('Body', yaml)).toThrow();
 });
+
+test('Setext titles exclude CRLF and indented underline parser markers', () => {
+  expect(resolveTitle('Title\r\n=====\r\n', 'Manifest', '01.md')).toBe('Title');
+  expect(resolveTitle('Title\n  =====\n', 'Manifest', '01.md')).toBe('Title');
+  expect(resolveTitle('Title\r\n  =====\r\n', 'Manifest', '01.md')).toBe('Title');
+});
+
+test('BOM counts in source bytes but not in normalized editor metadata boundary', () => {
+  const prefix = '\uFEFF---\r\ntitle: Old\r\n---\r\n';
+  const fm = frontmatter(prefix+'Body')!;
+  expect(fm.byteEnd).toBe(new TextEncoder().encode(prefix).length);
+  expect(fm.end).toBe(prefix.length);
+  expect(fm.derivedEnd).toBe(prefix.slice(1).replace(/\r\n/g,'\n').length);
+  expect(metadataReplacement(prefix+'Body','title: New')).toBe(prefix.replace('Old','New'));
+});

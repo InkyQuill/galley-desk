@@ -1058,3 +1058,35 @@ test('metadata titles derive from existing source and save without changing mani
  expect(await readFile(path.join(h.bookRoot,'01.md'),'utf8')).toBe('external');
  await h.closeAll();
 });
+
+test.each(['\n', '\r\n'])('metadata save preserves BOM and exact source bytes with %j line endings', async eol => {
+  const source = '\uFEFF' + ['---', 'title: Old', '---', 'Body 🐈', ''].join(eol);
+  const h = await makeService({'01.md': source});
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  expect(initial.sourceText).toBe(source);
+  const body = initial.text.indexOf('Body');
+  const signalled = await h.command(book.bookId, id, initial.revision, {type:'signal',from:body,to:body+4,signalType:'note',comment:'keep'});
+  expect(signalled.records[0]).toMatchObject({from:body,to:body+4,before:'Body'});
+  const saved = await h.command(book.bookId, id, signalled.revision, {type:'metadata', sourceText:initial.sourceText, yaml:'title: New'});
+  expect(saved.records[0]).toMatchObject({from:body,to:body+4,before:'Body',status:'active'});
+  const expected = source.replace('title: Old', 'title: New');
+  expect(saved.sourceText).toBe(expected);
+  expect(await readFile(path.join(h.bookRoot, '01.md'))).toEqual(Buffer.from(expected));
+  expect(saved.text).toBe(expected.slice(1).replace(/\r\n/g, '\n'));
+  await h.closeAll();
+});
+
+test('adding metadata to BOM source retains exactly one BOM', async () => {
+  const source = '\uFEFFBody 🐈\r\n';
+  const h = await makeService({'01.md': source});
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  const saved = await h.command(book.bookId, id, initial.revision, {type:'metadata', sourceText:initial.sourceText, yaml:'title: New'});
+  const expected = '\uFEFF---\r\ntitle: New\r\n---\r\nBody 🐈\r\n';
+  expect(saved.sourceText).toBe(expected);
+  expect(await readFile(path.join(h.bookRoot,'01.md'))).toEqual(Buffer.from(expected));
+  await h.closeAll();
+});

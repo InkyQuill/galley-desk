@@ -296,7 +296,7 @@ export class ChapterSession {
     return this.queue.enqueue(async () => {
       if (
         this.state !== 'saved' ||
-        new TextDecoder('utf-8', { fatal: true }).decode(this.model.source) !== expectedSource
+        new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(this.model.source) !== expectedSource
       )
         throw new Error('Metadata source changed');
       // Keep unchanged delimiter/support bytes outside the replacement. A body
@@ -317,7 +317,7 @@ export class ChapterSession {
       const nextModel = replaceSourceRange(
         this.model,
         { from, to: end - suffix },
-        new TextDecoder('utf-8', { fatal: true }).decode(replacement.subarray(from, replacement.length - suffix)),
+        new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(replacement.subarray(from, replacement.length - suffix)),
       );
       const target = pairOf(nextModel);
       this.state = 'saving';

@@ -7,7 +7,7 @@ test('metadata display, protected body start, validation, save and title refresh
   const root = await mkdtemp(path.join(tmpdir(), 'desk-metadata-'));
   const userData = await mkdtemp(path.join(tmpdir(), 'desk-metadata-profile-'));
   const source =
-    '---\r\ntitle: "Старая 🐈"\r\ncomplex: {nested: [1, 2]}\r\n# keep comment\r\n---\r\nFirst body paragraph.\r\n';
+    '\uFEFF---\r\ntitle: "Старая 🐈"\r\ncomplex: {nested: [1, 2]}\r\n# keep comment\r\n---\r\nFirst body paragraph.\r\n';
   await writeFile(path.join(root, '01.md'), source);
   const app = await electron.launch({
     args: ['apps/desktop'],
