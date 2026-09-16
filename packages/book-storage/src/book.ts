@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { realpath } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath } from 'node:fs/promises';
 import * as path from 'node:path';
 import { decodeManifest, discover, encodeManifest } from '@galley-desk/pocket-format';
 import type { Chapter, Manifest } from '@galley-desk/pocket-format';
@@ -234,6 +234,9 @@ export async function writePairImpl(
   appData: string,
   afterStep?: (step: WriteStep) => void,
 ): Promise<Revision> {
+  if ((await readJournalsForRoot(appData, book.root)).some(record => record.chapter_id === chapterId && !record.complete)) {
+    throw new Error('Unresolved chapter recovery');
+  }
   const { sourceRel, reviewRel } = resolveChapter(book, chapterId);
   const sourceAbs = path.join(book.root, sourceRel);
   const reviewAbs = path.join(book.root, reviewRel);
@@ -386,4 +389,31 @@ export async function recoverBook(
     await removeJournal(appData, record.root, record.chapter_id);
   }
   return records.some((record) => !record.complete) ? 'recovered' : 'clean';
+}
+
+
+/** Preserve a recovery target in a fresh directory; never overwrite user files. */
+export async function preserveRecovery(record: JournalRecord, parent: string): Promise<string> {
+  assertDirectChildName(record.source_path);
+  if (reviewPathFor(record.source_path) !== record.review_path) throw new UnsafePathError('Invalid recovery sidecar path');
+  const directory = await mkdtemp(path.join(parent, 'galley-recovery-'));
+  await replaceFileSynced(directory, record.source_path, decodeBytes(record.after.source));
+  if (record.after.review !== null) await replaceFileSynced(directory, record.review_path, decodeBytes(record.after.review));
+  await replaceFileSynced(directory, 'recovery-journal.json', utf8Bytes(JSON.stringify(record)));
+  await fsyncDir(parent);
+  return directory;
+}
+
+/** Explicit acceptance only: back up before retiring the pending operation. */
+export function acceptRecoveryExternal(book: BookHandle, chapterId: string, appData: string): Promise<void> {
+  return queueFor(book, chapterId).enqueue(async () => {
+    const record = (await readJournalsForRoot(appData, book.root)).find(record => record.chapter_id === chapterId && !record.complete);
+    if (record === undefined) return;
+    const backups = path.join(appData, 'recovery-backups');
+    await mkdir(backups, { recursive: true });
+    await preserveRecovery(record, backups);
+    await fsyncDir(appData);
+    await removeJournal(appData, book.root, chapterId);
+    await fsyncDir(appData);
+  });
 }

@@ -592,6 +592,7 @@ export function BookWindow({
           )}
           {snapshot !== null && snapshot.saveState === 'external' && (
             <span className="book__external-actions">
+              {snapshot.recoveryConflict && <span role="alert">Восстановление приостановлено. Локальная пара сохранена в журнале. Открытие внешней версии сохранит резервную копию; экспорт сохранит пару в новую папку и откроет внешнюю версию.</span>}
               <button type="button" onClick={() => void resolveExternal('open-external')}>
                 Открыть внешнюю версию
               </button>
@@ -740,7 +741,7 @@ export function BookWindow({
             </>
           ) : (
             <div className="book__text" ref={textRef} style={widthStyle}>
-              {snapshot !== null && (
+              {snapshot?.recoveryConflict ? <pre aria-label="Локальная версия восстановления">{snapshot.text}</pre> : snapshot !== null && (
                 <ReviewEditor
                   key={`${chapterId}:${editorEpoch}`}
                   snapshot={snapshot}

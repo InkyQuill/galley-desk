@@ -570,3 +570,26 @@ async function exists(absPath: string): Promise<boolean> {
     return false;
   }
 }
+
+test.each(['prepared', 'source-written', 'review-written'] as const)(
+  'pending %s blocks queued writes until recovery, preserving exact journal and files', async step => {
+    const root = await seedBook();
+    const appData = await tempDir('galley-recovery-');
+    try {
+      const book = await openBook(root);
+      const before = await readPair(book, ID1);
+      await expect(writePairImpl(book, ID1, before.revision,
+        { source: NEXT_SOURCE, review: reviewJson(ID1, '01.md', 'target') }, appData,
+        reached => { if (reached === step) throw new Error('crash'); })).rejects.toThrow('crash');
+      const journals = await readJournalsForRoot(appData, root);
+      const interrupted = await readPair(book, ID1);
+      const attempts = await Promise.allSettled([1, 2].map(() => writePair(book, ID1, interrupted.revision, before.pair, appData)));
+      expect(attempts.every(result => result.status === 'rejected' && result.reason.message === 'Unresolved chapter recovery')).toBe(true);
+      expect(await readJournalsForRoot(appData, root)).toEqual(journals);
+      expect(await readPair(book, ID1)).toEqual(interrupted);
+      expect(await recoverBook(book, appData)).toBe('recovered');
+      const recovered = await readPair(book, ID1);
+      await expect(writePair(book, ID1, recovered.revision, recovered.pair, appData)).resolves.toEqual(recovered.revision);
+    } finally { await cleanup(root, appData); }
+  },
+);

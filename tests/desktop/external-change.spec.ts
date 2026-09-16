@@ -223,3 +223,36 @@ test('сбой сохранения сохраняет локальный тек
     await session.app.close();
   }
 });
+
+test('recovery conflict blocks input and preserves local pair before explicit acceptance', async () => {
+  const { createHash, randomUUID } = await import('node:crypto');
+  const { readdir } = await import('node:fs/promises');
+  const bookRoot = await makeTempDir('galley-e2e-recovery-');
+  const bookId = randomUUID();
+  const chapterId = randomUUID();
+  const session = await launch(bookRoot, {
+    '01.md': 'external fox',
+    '.pocket-editor.json': JSON.stringify({ schema_version: 1, book_id: bookId, title: 'Recovery', chapters: [{ id: chapterId, path: '01.md', title: 'One' }], ignored_files: [] }),
+  });
+  try {
+    const bytes = (text: string) => ({ base64: Buffer.from(text).toString('base64'), sha256: createHash('sha256').update(text).digest('hex') });
+    const record = { version: 1, root: bookRoot, chapter_id: chapterId, source_path: '01.md', review_path: '01.review.json', complete: false, before: { source: bytes('cat'), review: null }, after: { source: bytes('local dog'), review: null } };
+    const name = `galley-journal-${createHash('sha256').update(`${bookRoot}\n${chapterId}`).digest('hex').slice(0, 32)}.json`;
+    await writeFile(path.join(session.userData, name), JSON.stringify(record));
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.getByRole('alert')).toContainText('Восстановление приостановлено');
+    await expect(session.page.getByLabel('Локальная версия восстановления')).toHaveText('local dog');
+    await expect(session.page.locator('.cm-content')).toHaveCount(0);
+    expect(JSON.parse(await readFile(path.join(session.userData, name), 'utf8'))).toEqual(record);
+    expect(await readFile(path.join(bookRoot, '01.md'), 'utf8')).toBe('external fox');
+    await session.page.getByRole('button', { name: 'Открыть внешнюю версию' }).click();
+    await expect(session.page.locator('.cm-content')).toContainText('external fox');
+    await expect(session.page.getByText('Сохранено')).toBeVisible();
+    const backups = path.join(session.userData, 'recovery-backups');
+    const [backup] = await readdir(backups);
+    expect(await readFile(path.join(backups, backup!, '01.md'), 'utf8')).toBe('local dog');
+    expect(JSON.parse(await readFile(path.join(backups, backup!, 'recovery-journal.json'), 'utf8'))).toEqual(record);
+    await expect(readFile(path.join(session.userData, name))).rejects.toThrow();
+  } finally { await session.app.close(); }
+});

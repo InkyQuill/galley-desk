@@ -747,3 +747,94 @@ test('audit: failed close retains session and recoverable draft', async () => {
   const { readDrafts } = await import('@galley-desk/book-storage');
   expect((await readDrafts(h.appData)).find(draft => draft.id === c)?.pair.review).toContain('dog');
 });
+
+
+import { openBook, readPair, writePair, recoverBook, readJournalsForRoot } from '@galley-desk/book-storage';
+import { createHash } from 'node:crypto';
+import { readdir } from 'node:fs/promises';
+
+async function seedRecovery(h: Harness) {
+  const book = await openBook(h.bookRoot);
+  const c = book.manifest.chapters[0]!.id;
+  const bytes = (s: string) => ({ base64: Buffer.from(s).toString('base64'), sha256: createHash('sha256').update(s).digest('hex') });
+  const review = encodeReview({ schema_version: 1, chapter_id: c, source_path: '01.md', chapter_note: 'local note', edits: [], signals: [] });
+  const record = { version: 1, root: book.root, chapter_id: c, source_path: '01.md', review_path: '01.review.json', complete: false, before: { source: bytes('cat'), review: null }, after: { source: bytes('dog'), review: bytes(review) } };
+  const name = 'galley-journal-' + createHash('sha256').update(book.root + '\n' + c).digest('hex').slice(0, 32) + '.json';
+  await writeFile(path.join(h.appData, name), JSON.stringify(record));
+  return { book, c, record, review };
+}
+
+test('audit: unresolved third revision must block new writes and preserve journal', async () => {
+  const h = await makeService({ '01.md': 'cat' });
+  const { book, c } = await seedRecovery(h);
+  const journals = await readJournalsForRoot(h.appData, h.bookRoot);
+  await writeFile(path.join(h.bookRoot, '01.md'), 'fox');
+  expect(await recoverBook(book, h.appData)).toBe('external-change');
+  const v = (await h.chooseBook())!;
+  const s = await h.openChapter(v.bookId, c);
+  await expect(h.command(v.bookId, c, s.revision, { type: 'note', text: 'new note' })).rejects.toMatchObject({ code: 'SAVE_FAILED' });
+  expect(await readJournalsForRoot(h.appData, h.bookRoot)).toEqual(journals);
+  expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe('fox');
+  expect(existsSync(path.join(h.bookRoot, '01.review.json'))).toBe(false);
+  expect(s.recoveryConflict).toBe(true);
+  const current = await readPair(book, c);
+  await expect(writePair(book, c, current.revision, current.pair, h.appData)).rejects.toThrow('Unresolved chapter recovery');
+  expect(await readJournalsForRoot(h.appData, h.bookRoot)).toEqual(journals);
+});
+
+
+test.each(['open-external', 'export-local'] as const)('recovery %s preserves the exact local pair and journal before adopting external; reopen is clean', async choice => {
+  const h = await makeService({ '01.md': 'cat' });
+  const { c, record, review } = await seedRecovery(h);
+  await writeFile(path.join(h.bookRoot, '01.md'), 'fox');
+  const v = (await h.chooseBook())!;
+  const snapshot = await h.openChapter(v.bookId, c);
+  expect(snapshot.chapterNote).toBe('local note');
+  const destination = await tempDir('galley-export-');
+  await writeFile(path.join(destination, '01.md'), 'existing');
+  h.setPicker(destination);
+  const resolved = await h.resolveExternal(v.bookId, c, choice);
+  expect(resolved.recoveryConflict).toBe(false);
+  expect(resolved.text).toBe('fox');
+  expect(await readJournalsForRoot(h.appData, h.bookRoot)).toEqual([]);
+  const backups = path.join(h.appData, 'recovery-backups');
+  const [name] = await readdir(backups);
+  const backup = path.join(backups, name!);
+  expect(await readFile(path.join(backup, '01.md'), 'utf8')).toBe('dog');
+  expect(await readFile(path.join(backup, '01.review.json'), 'utf8')).toBe(review);
+  expect(JSON.parse(await readFile(path.join(backup, 'recovery-journal.json'), 'utf8'))).toEqual(record);
+  if (choice === 'export-local') {
+    const directory = (await readdir(destination)).find(name => name.startsWith('galley-recovery-'))!;
+    expect(await readFile(path.join(destination, directory, '01.md'), 'utf8')).toBe('dog');
+    expect(await readFile(path.join(destination, directory, '01.review.json'), 'utf8')).toBe(review);
+    expect(JSON.parse(await readFile(path.join(destination, directory, 'recovery-journal.json'), 'utf8'))).toEqual(record);
+  }
+  expect(await readFile(path.join(destination, '01.md'), 'utf8')).toBe('existing');
+  await h.closeBook(v.bookId);
+  h.setPicker(h.bookRoot);
+  await h.chooseBook();
+  const reopened = await h.openChapter(v.bookId, c);
+  expect(reopened.recoveryConflict).toBe(false);
+  await expect(h.command(v.bookId, c, reopened.revision, { type: 'note', text: 'new' })).resolves.toMatchObject({ chapterNote: 'new' });
+});
+
+test.each(['cancel', 'export-failed', 'backup-failed'])('recovery %s keeps pending journal and blocks mutations', async failure => {
+  const h = await makeService({ '01.md': 'cat' });
+  const { c, record } = await seedRecovery(h);
+  await writeFile(path.join(h.bookRoot, '01.md'), 'fox');
+  const v = (await h.chooseBook())!;
+  await h.openChapter(v.bookId, c);
+  if (failure === 'cancel') {
+    h.setPicker(null);
+    expect((await h.resolveExternal(v.bookId, c, 'export-local')).recoveryConflict).toBe(true);
+  } else {
+    if (failure === 'export-failed') h.setPicker(path.join(h.bookRoot, '01.md'));
+    else await writeFile(path.join(h.appData, 'recovery-backups'), 'blocked');
+    await expect(h.resolveExternal(v.bookId, c, failure === 'export-failed' ? 'export-local' : 'open-external')).rejects.toMatchObject({ code: 'SAVE_FAILED' });
+  }
+  expect(await readJournalsForRoot(h.appData, h.bookRoot)).toEqual([record]);
+  expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe('fox');
+  const snapshot = await h.openChapter(v.bookId, c);
+  expect(snapshot.recoveryConflict).toBe(true);
+  await expect(h.command(v.bookId, c, snapshot.revision, { type: 'note', text: 'blocked' })).rejects.toMatchObject({ code: 'SAVE_FAILED' });
+});

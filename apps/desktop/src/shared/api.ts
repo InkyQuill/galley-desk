@@ -4,7 +4,7 @@ export type RecordView = {id:string; kind:'edit'|'signal'; status:'active'|'unav
   reason:string; from:number|null; to:number|null; before:string; after:string;
   comment:string; signalType:'note'|'change_required'|'warning'|'review'|null};
 export type Snapshot = {bookId:string; chapterId:string; revision:number; text:string; sourceText:string;
-  records:RecordView[]; chapterNote:string; saveState:'saved'|'saving'|'error'|'external';
+  records:RecordView[]; chapterNote:string; recoveryConflict?:boolean; saveState:'saved'|'saving'|'error'|'external';
   canUndoInput:boolean; canRedoInput:boolean; canUndoApply:boolean; canRedoApply:boolean};
 export type BookView = {bookId:string; title:string; entries:Entry[]};
 export type Recent = {path:string; title:string; missing:boolean;

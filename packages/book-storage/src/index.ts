@@ -22,6 +22,8 @@
  */
 export type { BookHandle, Pair, Revision, WriteStep } from './book';
 export {
+  acceptRecoveryExternal,
+  preserveRecovery,
   ManifestError,
   UnknownChapterError,
   WriteConflictError,
@@ -35,3 +37,6 @@ export { UnsafePathError } from './files';
 export { ApplyHistory } from './session-history';
 export { ChapterSession, exportDraft, readDrafts } from './session';
 export type { ChapterSessionState, Draft } from './session';
+
+export { readJournalsForRoot, decodeBytes } from './journal';
+export type { JournalRecord } from './journal';

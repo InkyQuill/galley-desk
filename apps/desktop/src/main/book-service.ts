@@ -10,13 +10,17 @@ import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
   ChapterSession,
+  acceptRecoveryExternal,
+  preserveRecovery,
+  readJournalsForRoot,
+  decodeBytes,
   exportDraft,
   openBook,
   readPair,
   recoverBook,
 } from '@galley-desk/book-storage';
-import type { BookHandle, ChapterSessionState } from '@galley-desk/book-storage';
-import { classifyReview } from '@galley-desk/pocket-format';
+import type { BookHandle, ChapterSessionState, JournalRecord } from '@galley-desk/book-storage';
+import { classifyReview, decodeReview } from '@galley-desk/pocket-format';
 import type { Resolution } from '@galley-desk/pocket-format';
 import { addSignal, openChapter as openChapterModel, removeRecord, setChapterNote } from '@galley-desk/review-engine';
 import type { ChapterModel, Piece } from '@galley-desk/review-engine';
@@ -93,7 +97,8 @@ type MissingChapter = {
   revision: number;
 };
 
-type ChapterEntry = LiveChapter | ReadonlyChapter | MissingChapter;
+type RecoveryChapter = { kind: 'recovery'; model: ChapterModel; record: JournalRecord; revision: number };
+type ChapterEntry = LiveChapter | ReadonlyChapter | MissingChapter | RecoveryChapter;
 
 type BookEntry = { handle: BookHandle; chapters: Map<string, ChapterEntry> };
 
@@ -408,6 +413,13 @@ export function createBookService(deps: BookServiceDeps): BookService {
   }
 
   async function createChapterEntry(handle: BookHandle, chapterId: string, chapterPath: string): Promise<ChapterEntry> {
+    const pending = (await readJournalsForRoot(appData, handle.root)).find(record => record.chapter_id === chapterId && !record.complete);
+    if (pending !== undefined) {
+      // Preview the local target without constructing a mutable session.
+      const review = pending.after.review === null ? emptyReview(chapterId, chapterPath) : decodeReview(strictUtf8.decode(decodeBytes(pending.after.review)), chapterId, chapterPath);
+      const model = openChapterModel(decodeBytes(pending.after.source), review);
+      return { kind: 'recovery', model, record: pending, revision: 1 };
+    }
     let pair: Awaited<ReturnType<typeof readPair>>;
     try {
       pair = await readPair(handle, chapterId);
@@ -433,6 +445,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
       bookId,
       chapterId,
       revision: entry.revision,
+      recoveryConflict: entry.kind === 'recovery',
       // Доступность undo/redo — истина движка (стеки сессии); сгруппированные
       // пачки набора считаются одним шагом, поэтому зеркала-счётчики удалены.
       canUndoInput: live?.canUndoInput ?? false,
@@ -457,7 +470,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
       sourceText: strictUtf8.decode(model.source),
       records: buildRecordViews(model),
       chapterNote: model.review.chapter_note,
-      saveState: entry.kind === 'live' ? entry.session.state : 'saved',
+      saveState: entry.kind === 'recovery' ? 'external' : entry.kind === 'live' ? entry.session.state : 'saved',
     };
   }
 
@@ -595,6 +608,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
       if (entry === undefined) {
         throw new IpcError('BOOK_MISSING', 'Глава ещё не открыта');
       }
+      if (entry.kind === 'recovery') throw new IpcError('SAVE_FAILED', 'Незавершённое восстановление: сохраните локальную пару или откройте внешнюю версию');
       if (entry.kind !== 'live') {
         throw new IpcError('UNAVAILABLE_RECORD', 'Глава открыта только для чтения: записи недоступны');
       }
@@ -648,6 +662,24 @@ export function createBookService(deps: BookServiceDeps): BookService {
     ): Promise<Snapshot> {
       const book = requireBook(bookId);
       const entry = book.chapters.get(chapterId);
+      if (entry?.kind === 'recovery') {
+        try {
+          if (choice === 'export-local') {
+            const parent = await deps.chooseDirectory();
+            if (parent === null) return snapshotOf(bookId, chapterId, entry);
+            // A fresh child directory avoids replacing any existing pair.
+            await preserveRecovery(entry.record, parent);
+          }
+          await acceptRecoveryExternal(book.handle, chapterId, appData);
+          const chapter = book.handle.manifest.chapters.find(chapter => chapter.id === chapterId)!;
+          const next = await createChapterEntry(book.handle, chapterId, chapter.path);
+          next.revision = entry.revision + 1;
+          book.chapters.set(chapterId, next);
+          const snapshot = snapshotOf(bookId, chapterId, next);
+          notify(snapshot);
+          return snapshot;
+        } catch (error) { throw toIpcError(error); }
+      }
       if (entry === undefined || entry.kind !== 'live') {
         throw new IpcError('UNAVAILABLE_RECORD', 'Глава недоступна для разрешения внешнего изменения');
       }
