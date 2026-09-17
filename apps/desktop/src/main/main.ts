@@ -162,6 +162,11 @@ if (!app.requestSingleInstanceLock()) {
   app.on('render-process-gone', (_event, webContents, details) => {
     crashedContents.add(webContents);
     logger.write({ event: 'renderer-gone', level: 'error', process: 'main', code: `${details.reason}(${details.exitCode})` });
+    // If this webContents ever starts loading again (e.g. a future
+    // reload-after-crash feature), it is no longer doomed -- clear the
+    // marker so quit's flush handshake above resumes waiting on it instead
+    // of silently skipping the save for a live renderer.
+    webContents.once('did-start-loading', () => crashedContents.delete(webContents));
   });
   app.on('child-process-gone', (_event, details) => {
     logger.write({ event: 'child-gone', level: 'error', process: 'main', code: `${details.type}:${details.reason}(${details.exitCode})` });
