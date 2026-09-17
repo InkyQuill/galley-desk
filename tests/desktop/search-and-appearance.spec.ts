@@ -434,7 +434,7 @@ test('фильтр глав скрывает лишние записи и не �
   }
 });
 
-test('оформление: тема красит контейнер, настройки сохраняются в appData, границы в main', async () => {
+test('оформление: тема красит контейнер, настройки сохраняются в appData, границы в main', async ({}, testInfo) => {
   const session = await launchWithBook({ 'Глава 1.md': 'текст\n' });
   const { page, userData, openByDialog } = session;
   try {
@@ -446,6 +446,10 @@ test('оформление: тема красит контейнер, настр
     const themeSelect = page.getByLabel('Тема');
     await expect(themeSelect).toBeVisible();
 
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await themeSelect.selectOption('galley-light');
+    await page.screenshot({ path: testInfo.outputPath('titlebar-1920-light.png') });
+
     const bgBefore = await page.evaluate(
       () => getComputedStyle(document.querySelector('.book')!).getPropertyValue('--app-bg').trim(),
     );
@@ -454,6 +458,7 @@ test('оформление: тема красит контейнер, настр
       () => getComputedStyle(document.querySelector('.book')!).getPropertyValue('--app-bg').trim(),
     );
     expect(bgAfter).not.toBe(bgBefore);
+    await page.screenshot({ path: testInfo.outputPath('titlebar-1920-dark.png') });
     // Схема темы доезжает до контейнера (color-scheme).
     await expect
       .poll(() =>
@@ -473,6 +478,12 @@ test('оформление: тема красит контейнер, настр
         return { themeId: appearance.themeId, fontSize: appearance.fontSize };
       })
       .toEqual({ themeId: 'gruvbox-dark', fontSize: 20 });
+
+    await page.setViewportSize({ width: 900, height: 700 });
+    await page.screenshot({ path: testInfo.outputPath('titlebar-900-dark.png') });
+    await themeSelect.selectOption('galley-light');
+    await page.screenshot({ path: testInfo.outputPath('titlebar-900-light.png') });
+    await themeSelect.selectOption('gruvbox-dark');
 
     // The passive editor preview uses interface typography, independently of book text.
     await page.getByLabel('Шрифт интерфейса', { exact: true }).fill('Georgia');
@@ -516,7 +527,7 @@ test('оформление: тема красит контейнер, настр
   }
 });
 
-test('Zen: панели и topbar скрыты; Escape закрывает popup, но никогда не переключает Zen -- выход только кнопкой, меню или shortcut', async () => {
+test('Zen: панели скрыты; unified titlebar keeps exit and window controls while Escape never switches Zen', async () => {
   const chapterText = '# Заголовок\n\nкот спит на подоконнике.\n';
   const session = await launchWithBook({ 'Глава 1.md': chapterText });
   const { page, bookRoot, userData, openByDialog } = session;
@@ -534,9 +545,9 @@ test('Zen: панели и topbar скрыты; Escape закрывает popup,
     await zenPage.getByRole('button', { name: 'Заголовок', exact: true }).click();
     await expect(zenPage.locator('.cm-content')).toBeVisible();
 
-    // Вход в Zen: topbar/панели скрыты, выход виден всегда.
+    // Вход в Zen: панели скрыты, единый chrome и выход видны всегда.
     await zenPage.getByRole('button', { name: 'Режим Zen', exact: true }).click();
-    await expect(zenPage.locator('.book__header')).toHaveCount(0);
+    await expect(zenPage.locator('header.titlebar')).toHaveCount(1);
     await expect(zenPage.getByRole('navigation', { name: 'Оглавление' })).toHaveCount(0);
     await expect(zenPage.getByRole('complementary', { name: 'Рецензия' })).toHaveCount(0);
     await expect(zenPage.locator('.book__zen-exit')).toBeVisible();
@@ -561,19 +572,21 @@ test('Zen: панели и topbar скрыты; Escape закрывает popup,
     await expect(zenPage.locator('.book--zen')).toBeVisible();
     await zenPage.keyboard.press('Escape');
     await expect(zenPage.locator('.book--zen')).toBeVisible();
-    await expect(zenPage.locator('.book__header')).toHaveCount(0);
+    await expect(zenPage.locator('header.titlebar')).toBeVisible();
 
     // Постоянная кнопка выхода работает (тот же toggle, что и вход).
     await zenPage.getByRole('button', { name: 'Выйти из Zen' }).click();
-    await expect(zenPage.locator('.book__header')).toBeVisible();
+    await expect(zenPage.getByRole('button', { name: 'Режим Zen', exact: true })).toBeVisible();
 
     // Shortcut переключает Zen туда и обратно, независимо от Escape.
     await zenPage.keyboard.press(zenShortcut);
     await expect(zenPage.locator('.book--zen')).toBeVisible();
     await zenPage.keyboard.press(zenShortcut);
-    await expect(zenPage.locator('.book__header')).toBeVisible();
+    await expect(zenPage.getByRole('button', { name: 'Режим Zen', exact: true })).toBeVisible();
 
-    // Пункт меню тоже переключает Zen через тот же toggle.
+    // На компактной ширине редкое действие переезжает в меню без второго tab stop.
+    await zenPage.setViewportSize({ width: 900, height: 700 });
+    await expect(zenPage.locator('.book__zen-direct')).toBeHidden();
     await zenPage.getByRole('button', { name: 'Меню книги' }).click();
     await zenPage.locator('.book__menu-items').getByRole('button', { name: 'Режим Zen', exact: true }).click();
     await expect(zenPage.locator('.book--zen')).toBeVisible();

@@ -152,7 +152,7 @@ export function App() {
       style={windowContainerStyle(appearanceTheme, appearance)}
       data-scheme={appearanceTheme.scheme}
     >
-      <TitleBar title={book?.title ?? 'Galley Desk'} />
+      {book === null && <TitleBar title="Galley Desk" />}
       <div className={`app-root__content${book === null ? ' app-root__content--welcome' : ''}`}>
         {book === null ? (
           <RecentBooks onOpen={openBook} refreshKey={refreshKey} />

@@ -28,6 +28,7 @@ import type { LayoutSettings } from '../../shared/layout';
 import { SIDEBAR_BOUNDS } from '../../shared/layout';
 import { CENTER_MIN_WIDTH, RESIZER_WIDTH, fitLayout } from './layout';
 import { SidebarResizer } from './SidebarResizer';
+import { TitleBar } from '../TitleBar';
 
 type Props = {
   book: BookView;
@@ -846,30 +847,12 @@ export function BookWindow({
 
   return (
     <div className={zen ? 'book book--zen' : 'book'}>
-      {!zen && (
-        <header className="book__header">
-          <h1 className="book__title">{book.title}</h1>
+      <TitleBar title={book.title}>
+        <div className="book__toolbar" aria-label="Действия книги">
           {saveState !== null && (
             <Tooltip content={snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}>
               <span role="status" className={`book__save-state book__save-state--${snapshot?.readOnlyReason ? 'readonly' : saveState}`}>{snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}</span>
             </Tooltip>
-          )}
-          {saveError !== null && (
-            <button type="button" className="book__reread" onClick={rereadChapter}>
-              Перечитать главу
-            </button>
-          )}
-          {snapshot?.readOnlyReason && <p role="alert">{snapshot.readOnlyReason}</p>}
-          {snapshot !== null && snapshot.saveState === 'external' && (
-            <span className="book__external-actions">
-              {snapshot.recoveryConflict && <span>Восстановление приостановлено. Локальная пара сохранена в журнале. Открытие внешней версии сохранит резервную копию; экспорт сохранит копию главы в новую папку и откроет внешнюю версию.</span>}
-              <button type="button" onClick={() => void resolveExternal('open-external')}>
-                Открыть внешнюю версию
-              </button>
-              <button type="button" onClick={() => void resolveExternal('export-local')}>
-                {snapshot.recoveryConflict ? 'Экспортировать копию главы…' : 'Экспортировать черновик…'}
-              </button>
-            </span>
           )}
           <Tooltip content="Поиск по главе" shortcut="Ctrl+F">
             <button type="button" ref={searchButtonRef} aria-label="Поиск по главе" aria-expanded={searchOpen} onClick={() => setSearchOpen((open) => !open)}><IconSearch /></button>
@@ -885,9 +868,15 @@ export function BookWindow({
             <Tooltip content="Сравнение"><button type="button" aria-label="Сравнение" aria-pressed={mode === 'comparison'} onClick={() => switchMode('comparison')}><IconColumns2 /></button></Tooltip>
             <Tooltip content="Исходник"><button type="button" aria-label="Исходник" aria-pressed={mode === 'source'} onClick={() => switchMode('source')}><IconCode /></button></Tooltip>
           </div>
-          <Tooltip content="Режим Zen" shortcut={zenShortcut}>
-            <button type="button" aria-label="Режим Zen" onClick={toggleZen}><IconTarget /></button>
-          </Tooltip>
+          {zen ? (
+            <Tooltip content="Выйти из Zen" shortcut={zenShortcut}>
+              <button type="button" className="book__zen-exit" aria-label="Выйти из Zen" onClick={toggleZen}><IconTargetOff /><span>Выйти из Zen</span></button>
+            </Tooltip>
+          ) : (
+            <Tooltip content="Режим Zen" shortcut={zenShortcut}>
+              <button type="button" className="book__zen-direct" aria-label="Режим Zen" onClick={toggleZen}><IconTarget /></button>
+            </Tooltip>
+          )}
           <div className="book__menu" ref={menuRef}>
             <Tooltip content="Меню книги">
               <button type="button" ref={menuButtonRef} aria-label="Меню книги" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><IconDots /></button>
@@ -895,12 +884,32 @@ export function BookWindow({
             {menuOpen && <div className="book__menu-items" aria-label="Действия книги" onBlur={(event) => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) setMenuOpen(false); }}>
               <button type="button" disabled={metadataEditing} onClick={() => { actionTriggerRef.current = document.activeElement as HTMLElement; setRenameOpen(true); setMenuOpen(false); }}><IconPencil />Переименовать книгу</button>
               <button type="button" onClick={() => { setAppearanceOpen((open) => !open); setMenuOpen(false); }}><IconAdjustments />Оформление</button>
-              <button type="button" onClick={() => { document.querySelector<HTMLButtonElement>('.titlebar__diagnostics')?.click(); setMenuOpen(false); }}><IconInfoCircle />Диагностика</button>
-              <button type="button" onClick={() => { toggleZen(); setMenuOpen(false); }}><IconTarget />Режим Zen</button>
+              <button type="button" className="book__menu-diagnostics" onClick={() => { window.dispatchEvent(new Event('galley-desk:open-diagnostics')); setMenuOpen(false); }}><IconInfoCircle />Диагностика</button>
+              <button type="button" className="book__menu-zen" onClick={() => { toggleZen(); setMenuOpen(false); }}><IconTarget />Режим Zen</button>
               <button type="button" className="book__close" onClick={() => void closeBook()}><IconBookOff />Закрыть книгу</button>
             </div>}
+            {appearanceOpen && (
+              <div className="book__appearance-panel">
+                <button className="book__appearance-close" type="button" aria-label="Закрыть оформление" onClick={() => setAppearanceOpen(false)}><IconX /></button>
+                <Appearance value={appearance} onChange={onAppearanceChange} />
+                {appearanceError !== null && <p className="app__error" role="alert">{appearanceError}</p>}
+              </div>
+            )}
           </div>
-        </header>
+        </div>
+      </TitleBar>
+      {saveError !== null && (
+        <p className="app__error book__save-error" role="alert">
+          {saveError} <button type="button" className="book__reread" onClick={rereadChapter}>Перечитать главу</button>
+        </p>
+      )}
+      {snapshot?.readOnlyReason && <p className="app__error" role="alert">{snapshot.readOnlyReason}</p>}
+      {snapshot !== null && snapshot.saveState === 'external' && (
+        <div className="book__external-actions" role="alert">
+          {snapshot.recoveryConflict && <span>Восстановление приостановлено. Локальная пара сохранена в журнале. Открытие внешней версии сохранит резервную копию; экспорт сохранит копию главы в новую папку и откроет внешнюю версию.</span>}
+          <button type="button" onClick={() => void resolveExternal('open-external')}>Открыть внешнюю версию</button>
+          <button type="button" onClick={() => void resolveExternal('export-local')}>{snapshot.recoveryConflict ? 'Экспортировать копию главы…' : 'Экспортировать черновик…'}</button>
+        </div>
       )}
       {renameOpen && <RenameBookDialog title={book.title}
         onChange={async change => { await editorApi?.flushPending(); await refreshBook(await window.desk.manageBook(book.bookId, change)); }}
@@ -909,32 +918,6 @@ export function BookWindow({
         onChange={async change => { await editorApi?.flushPending(); await refreshBook(await window.desk.manageBook(book.bookId, change)); }}
         onRefresh={refreshBook}
         onClose={() => { setChapterAction(null); requestAnimationFrame(() => actionTriggerRef.current?.isConnected ? actionTriggerRef.current.focus() : document.querySelector<HTMLButtonElement>('.book__chapter-row--active .book__chapter-menu-button, .book__chapter-menu-button, .book__chapter-tools button')?.focus()); }} />}
-      {appearanceOpen && (
-        <div className="book__appearance-panel">
-          <button className="book__appearance-close" type="button" aria-label="Закрыть оформление" onClick={() => setAppearanceOpen(false)}><IconX /></button>
-          <Appearance value={appearance} onChange={onAppearanceChange} />
-          {appearanceError !== null && (
-            <p className="app__error" role="alert">
-              {appearanceError}
-            </p>
-          )}
-        </div>
-      )}
-      {zen && (
-        // Постоянная доступная кнопка выхода: топбар скрыт, управление Zen
-        // остаётся на экране всегда. Escape её не заменяет (Zen не входит в
-        // цепочку Escape) -- выход только этой кнопкой, пунктом меню (после
-        // выхода топбар/меню снова видны) или Ctrl/Cmd+Alt+Z.
-        <Tooltip content="Выйти из Zen" shortcut={zenShortcut}>
-          <button
-            type="button"
-            className="book__zen-exit"
-            onClick={toggleZen}
-          >
-            <IconTargetOff /><span>Выйти из Zen</span>
-          </button>
-        </Tooltip>
-      )}
       {openWarning !== null && !openWarningDismissed && (
         <p className="app__error" role="alert">
           {openWarning}

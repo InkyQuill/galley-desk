@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { IconCopy, IconInfoCircle, IconMinus, IconSquare, IconX } from '@tabler/icons-react';
 import type { WindowAction, WindowState } from '../shared/api';
 import { Diagnostics } from './diagnostics/Diagnostics';
@@ -6,13 +6,14 @@ import { Tooltip } from './ui/Tooltip';
 
 const iconUrl = new URL('../../assets/branding/galley-desk-icon.svg', import.meta.url).href;
 
-// The titlebar is mounted once at App level and renders identically above
-// both the welcome/recent-books screen and an open book (see App.tsx) --
-// hosting the Diagnostics entry point here makes it reachable from both
-// without duplicating it in RecentBooks.tsx and BookWindow.tsx separately.
+// App mounts the titlebar for the welcome screen; BookWindow mounts it for an
+// open book so book controls can stay with book state without a portal.
+// Hosting Diagnostics here keeps the real panel reachable from both owners.
 // It also answers the main-process app menu's "Диагностика" item (macOS,
 // see main.ts) via onOpenDiagnosticsRequest.
-export function TitleBar({ title }: { title: string }) {
+export type TitleBarProps = { title: string; children?: ReactNode };
+
+export function TitleBar({ title, children }: TitleBarProps) {
   const [state, setState] = useState<WindowState | null>(null);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const diagnosticsButtonRef = useRef<HTMLButtonElement>(null);
@@ -25,6 +26,12 @@ export function TitleBar({ title }: { title: string }) {
   }, []);
 
   useEffect(() => window.desk.onOpenDiagnosticsRequest(() => setDiagnosticsOpen(true)), []);
+
+  useEffect(() => {
+    const open = (): void => setDiagnosticsOpen(true);
+    window.addEventListener('galley-desk:open-diagnostics', open);
+    return () => window.removeEventListener('galley-desk:open-diagnostics', open);
+  }, []);
 
   // Escape/close explicitly returns focus to the button that opened the
   // panel -- the same manual-refocus convention BookWindow.tsx already uses
@@ -44,11 +51,12 @@ export function TitleBar({ title }: { title: string }) {
     <header className={`titlebar${state?.platform === 'darwin' ? ' titlebar--mac' : ''}`} onDoubleClick={toggleOnDoubleClick}>
       <img className="titlebar__icon" src={iconUrl} alt="Galley Desk" />
       <span className="titlebar__title">{title}</span>
+      {children !== undefined && <div className="titlebar__actions">{children}</div>}
       <Tooltip content="Диагностика">
         <button
           type="button"
           ref={diagnosticsButtonRef}
-          className="titlebar__diagnostics"
+          className={`titlebar__diagnostics${children !== undefined ? ' titlebar__diagnostics--book' : ''}`}
           aria-label="Диагностика"
           aria-haspopup="dialog"
           aria-expanded={diagnosticsOpen}
