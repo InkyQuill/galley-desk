@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { IconFilePlus, IconFolderSearch, IconDots } from '@tabler/icons-react';
+import { IconFilePlus, IconFolderSearch, IconDots, IconSortAscending } from '@tabler/icons-react';
 import type { BookView } from '../../shared/api';
 import { Tooltip } from '../ui/Tooltip';
 import { matchesChapter } from './chapter-filter';
 import { ChapterMenu } from './ChapterMenu';
 
 export type ChapterAction =
-  | { kind: 'create' | 'discover' | 'sort' }
+  | { kind: 'create' | 'discover' }
+  | { kind: 'sort'; filterActive: boolean }
   | { kind: 'remove' | 'trash'; chapterId: string };
 
 export type ChapterSidebarProps = {
@@ -39,6 +40,7 @@ export function ChapterSidebar({ book, activeId, disabled, onOpen, onAction }: C
         <h2 className="book__panel-title">Оглавление</h2>
         <div className="book__chapter-tools">
           <Tooltip content="Добавить главу"><button type="button" aria-label="Добавить главу" disabled={disabled} onClick={() => onAction({ kind: 'create' })}><IconFilePlus /></button></Tooltip>
+          <Tooltip content="Сортировать главы"><button type="button" aria-label="Сортировать главы" disabled={disabled || book.entries.length === 0} onClick={() => onAction({ kind: 'sort', filterActive: filter.trim().length > 0 })}><IconSortAscending /></button></Tooltip>
           <Tooltip content="Найти главы в папке"><button type="button" aria-label="Найти главы в папке" disabled={disabled} onClick={() => onAction({ kind: 'discover' })}><IconFolderSearch /></button></Tooltip>
         </div>
       </div>

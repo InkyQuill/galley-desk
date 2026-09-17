@@ -209,6 +209,12 @@ body { margin: 0; background: Canvas; }
 .book__action-dialog label { display: grid; gap: 5px; }
 .book__action-dialog input:not([type=checkbox]) { width: 100%; box-sizing: border-box; }
 .book__action-dialog .book__discovery-file { display: flex; align-items: center; overflow-wrap: anywhere; }
+.book__action-dialog fieldset { display: flex; gap: 16px; border: 0; padding: 0; }
+.book__action-dialog fieldset label { display: flex; grid-template-columns: auto 1fr; align-items: center; }
+.book__sort-preview { display: grid; gap: 6px; margin: 0; padding-left: 28px; }
+.book__sort-preview li span, .book__sort-preview li small { display: block; overflow-wrap: anywhere; }
+.book__sort-preview li small { color: var(--app-muted); }
+.book__dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .book__action-dialog p { margin: 8px 0; font-size: .9em; }
 .book__action-dialog [role=alert] { color: var(--app-error-text); overflow-wrap: anywhere; }
 

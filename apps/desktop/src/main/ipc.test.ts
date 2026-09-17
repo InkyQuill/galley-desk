@@ -167,6 +167,8 @@ test('management IPC validates operation and all supplied values', () => {
  for (const payload of [null, {}, {type:'trash'}, {type:'add',paths:[]}, {type:'add',paths:[42]}, {type:'rename',title:42}, {type:'create',title:'x',path:null}, {type:'unlink',chapterId:'x'}]) expect(()=>validateBookChange(payload)).toThrow();
  expect(validateBookChange({type:'add',paths:['a.md']})).toEqual({type:'add',paths:['a.md']});
  expect(validateBookChange({type:'trash',chapterId:'a'})).toEqual({type:'trash',chapterId:'a'});
+ expect(validateBookChange({type:'reorder',chapterIds:['b','a']})).toEqual({type:'reorder',chapterIds:['b','a']});
+ for (const payload of [{type:'reorder'}, {type:'reorder',chapterIds:[]}, {type:'reorder',chapterIds:['a', 1]}]) expect(()=>validateBookChange(payload)).toThrow();
 });
 
 // --- desk:report-diagnostic -------------------------------------------------

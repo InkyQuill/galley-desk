@@ -1159,6 +1159,22 @@ test('management drains pending edits, updates recent title, removes and re-adds
   await service.closeAll();
 });
 
+test('reorder preserves live session revision and input undo history', async () => {
+  const service = await makeService({'10.md':'Ten body\n', '2.md':'Two body\n'});
+  const book = (await service.chooseBook())!;
+  const active = book.entries[0]!;
+  const initial = await service.openChapter(book.bookId, active.id);
+  const edited = await service.command(book.bookId, active.id, initial.revision, {
+    type: 'text', changes: [{from: 0, to: 0, insert: 'Draft '}], selection: {anchor: 6, head: 6},
+  });
+  const reordered = await service.manageBook(book.bookId, {type: 'reorder', chapterIds: [...book.entries].reverse().map(entry => entry.id)});
+  expect(reordered.entries.map(entry => entry.id)).toEqual([...book.entries].reverse().map(entry => entry.id));
+  const undone = await service.command(book.bookId, active.id, edited.revision, {type: 'undo-input'});
+  expect(undone.text).toBe(active.path === '10.md' ? 'Ten body\n' : 'Two body\n');
+  expect(undone.canRedoInput).toBe(true);
+  await service.closeAll();
+});
+
 test('management rejects external manifest changes', async () => {
   const service=await makeService({'a.md':'Alpha body\n'}); const book=(await service.chooseBook())!;
   const manifest=path.join(service.bookRoot,'.pocket-editor.json');

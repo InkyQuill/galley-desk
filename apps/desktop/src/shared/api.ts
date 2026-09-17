@@ -23,6 +23,7 @@ export type BookChange =
  | {type:'rename';title:string}
  | {type:'create';path:string;title:string}
  | {type:'add';paths:string[]}
+ | {type:'reorder';chapterIds:string[]}
  | {type:'remove'|'trash';chapterId:string};
 export type ChapterDiscovery = {book:BookView;files:{path:string}[]};
 export type WindowAction = 'minimize'|'toggle-maximize'|'close';

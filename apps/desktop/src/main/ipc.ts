@@ -559,6 +559,9 @@ export function validateBookChange(value: unknown): import('../shared/api').Book
     case 'add':
       if (!Array.isArray(record.paths) || !record.paths.length) throw new CommandError('paths must be nonempty');
       return { type: 'add', paths: record.paths.map(p => asNonEmptyString(p, 'path')) };
+    case 'reorder':
+      if (!Array.isArray(record.chapterIds) || !record.chapterIds.length) throw new CommandError('chapterIds must be nonempty');
+      return { type: 'reorder', chapterIds: record.chapterIds.map(id => asNonEmptyString(id, 'chapterId')) };
     case 'remove': case 'trash': return { type: record.type, chapterId: asNonEmptyString(record.chapterId, 'chapterId') };
     default: throw new CommandError('Unknown book change');
   }

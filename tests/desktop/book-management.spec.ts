@@ -3,6 +3,55 @@ import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir, homedir } from 'node:os';
 import path from 'node:path';
 
+test('chapter sorting previews the whole spine and preserves the active edit session', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'desk-reorder-book-'));
+  const userData = await mkdtemp(path.join(tmpdir(), 'desk-reorder-profile-'));
+  await writeFile(path.join(root, '10.md'), '# Ten\nBody ten\n');
+  await writeFile(path.join(root, '2.md'), '# Two\nBody two\n');
+  const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, GALLEY_DESK_USER_DATA: userData } });
+  try {
+    await app.evaluate(({ dialog }, root) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] }); }, root);
+    const page = await app.firstWindow();
+    await page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(page.locator('.cm-content')).toBeVisible();
+    const manifestPath = path.join(root, '.pocket-editor.json');
+    const initial = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const activePath = initial.chapters[0].path as string;
+    await page.locator('.cm-content').click();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
+    await page.keyboard.type('Draft ');
+    await expect.poll(async () => readFile(path.join(root, activePath.replace(/\.md$/, '.review.json')), 'utf8').catch(() => '')).toContain('Draft ');
+    const sourceBefore = await readFile(path.join(root, activePath));
+    const reviewBefore = await readFile(path.join(root, activePath.replace(/\.md$/, '.review.json')));
+    const toc = page.getByRole('navigation', { name: 'Оглавление' });
+    await toc.getByLabel('Фильтр глав').fill('2');
+    await toc.getByRole('button', { name: 'Сортировать главы' }).click();
+    const sort = page.getByRole('dialog', { name: 'Сортировать главы' });
+    await expect(sort).toContainText('Сортируется вся книга, включая главы, скрытые фильтром.');
+    await expect(sort.getByRole('listitem')).toHaveCount(2);
+    await sort.getByRole('button', { name: 'Отмена' }).click();
+    expect(await readFile(manifestPath, 'utf8')).toBe(JSON.stringify(initial, null, 2) + '\n');
+    await toc.getByRole('button', { name: 'Сортировать главы' }).click();
+    await page.getByRole('dialog', { name: 'Сортировать главы' }).getByRole('button', { name: 'Применить' }).click();
+    await expect.poll(async () => JSON.parse(await readFile(manifestPath, 'utf8')).chapters.map((chapter: {path:string}) => chapter.path)).toEqual(['2.md', '10.md']);
+    expect(await readFile(path.join(root, activePath))).toEqual(sourceBefore);
+    expect(await readFile(path.join(root, activePath.replace(/\.md$/, '.review.json')))).toEqual(reviewBefore);
+    await expect(page.locator('.book__chapter-title')).toContainText(activePath === '10.md' ? 'Ten' : 'Two');
+    await page.locator('.cm-content').click();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+    await expect(page.locator('.cm-content')).not.toContainText('Draft ');
+    await page.getByRole('button', { name: 'Меню книги', exact: true }).click();
+    await page.getByRole('button', { name: 'Закрыть книгу', exact: true }).click();
+    await page.locator('.recent-list__item').getByRole('button', { name: 'Открыть', exact: true }).click();
+    await expect.poll(async () => JSON.parse(await readFile(manifestPath, 'utf8')).chapters.map((chapter: {path:string}) => chapter.path)).toEqual(['2.md', '10.md']);
+  } finally {
+    await app.evaluate(({ app }) => app.exit(0)).catch(() => undefined);
+    await app.close().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+    await rm(userData, { recursive: true, force: true });
+  }
+});
+
 test('book management: rename, create, discover, cancel trash, remove/readd review and trash pair', async () => {
   const cache = path.join(homedir(), '.cache');
   await mkdir(cache, { recursive: true });

@@ -86,6 +86,41 @@ test('remove and re-add reuse validated legacy review identity and bytes across 
     review,
   );
 });
+
+test('reorder changes only the complete spine order and preserves missing chapters', async () => {
+  const { root, book } = await fixture();
+  await writeFile(path.join(root, '2.md'), '# Two\n');
+  await writeFile(path.join(root, '10.md'), '# Ten\n');
+  await manageBook(book, { type: 'add', paths: ['2.md', '10.md'] });
+  const [a, two, ten] = book.manifest.chapters;
+  await rm(path.join(root, '10.md'));
+  const sourceBefore = await readFile(path.join(root, 'a.md'));
+  const manifestBefore = JSON.parse(await readFile(path.join(root, '.pocket-editor.json'), 'utf8'));
+
+  await manageBook(book, { type: 'reorder', chapterIds: [ten!.id, a!.id, two!.id] });
+
+  const saved = JSON.parse(await readFile(path.join(root, '.pocket-editor.json'), 'utf8'));
+  expect(saved).toEqual({ ...manifestBefore, chapters: [manifestBefore.chapters[2], manifestBefore.chapters[0], manifestBefore.chapters[1]] });
+  expect(await readFile(path.join(root, 'a.md'))).toEqual(sourceBefore);
+  await expect(readFile(path.join(root, '10.md'))).rejects.toThrow();
+});
+
+test('reorder rejects duplicate, unknown, missing IDs and stale manifest, including no-op', async () => {
+  const { root, book } = await fixture();
+  await writeFile(path.join(root, 'b.md'), '# B\n');
+  await manageBook(book, { type: 'add', paths: ['b.md'] });
+  const ids = book.manifest.chapters.map(chapter => chapter.id);
+  const manifestPath = path.join(root, '.pocket-editor.json');
+  const before = await readFile(manifestPath, 'utf8');
+  for (const chapterIds of [[ids[0]!, ids[0]!], [ids[0]!, 'unknown'], [ids[0]!]]) {
+    await expect(manageBook(book, { type: 'reorder', chapterIds })).rejects.toThrow('Некорректный порядок глав');
+    expect(await readFile(manifestPath, 'utf8')).toBe(before);
+  }
+  const external = JSON.stringify({ ...JSON.parse(before), title: 'External' });
+  await writeFile(manifestPath, external);
+  await expect(manageBook(book, { type: 'reorder', chapterIds: ids })).rejects.toThrow(/manifest/i);
+  expect(await readFile(manifestPath, 'utf8')).toBe(external);
+});
 test('unsafe, ignored, duplicate and ambiguous additions do not mutate manifest', async () => {
   const { root, book } = await fixture();
   const before = await readFile(path.join(root, '.pocket-editor.json'), 'utf8');
