@@ -207,7 +207,11 @@ function denseReview(): { source: string; review: Review } {
   const edits: Review['edits'] = Array.from({ length: 24 }, (_, index) => ({
     id: randomUUID(),
     before: parts[index]!,
-    after: index === 2 ? '' : `новая редакция ${index}: ${'ещёболееобстоятельныйтекст'.repeat(4)}`,
+    after: index === 2
+      ? ''
+      : index === 3
+        ? `вставленный-фрагмент-${parts[index]}`
+        : `новая редакция ${index}: ${'ещёболееобстоятельныйтекст'.repeat(4)}`,
     anchor: index === 23 ? makeAnchor(wrong, { from: 0, to: wrong.length }) : makeAnchor(source, ranges[index]!),
   }));
   // Два участника конфликта при том же диапазоне.
@@ -682,6 +686,7 @@ test('плотная рецензия остаётся читаемой при �
     await expect(first.getByText('Стало', { exact: true })).toBeVisible();
     await expect(page.locator('.book__record-status', { hasText: 'конфликтует' })).toHaveCount(2);
     await expect(page.locator('.book__record-status', { hasText: 'недоступна' })).toHaveCount(1);
+    await expect(page.getByText('вставка', { exact: true })).toBeVisible();
     await expect(page.getByText('удаление', { exact: true })).toBeVisible();
     await expect(page.getByText('Предупреждение', { exact: true })).toBeVisible();
 

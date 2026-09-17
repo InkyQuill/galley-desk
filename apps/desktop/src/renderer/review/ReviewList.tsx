@@ -1,4 +1,4 @@
-import { recordsInReadingOrder } from '../editor/visual-range';
+import { recordsInReadingOrder, visualRecord } from '../editor/visual-range';
 import { IconPencil, IconBolt } from '@tabler/icons-react';
 import { EDIT_MARKER_COLOR, useMarkerTheme, signalColor } from '../editor/markers';
 // Правая панель рецензии: список правок и сигналов для перехода между ними.
@@ -47,6 +47,7 @@ export function ReviewList({ records, cardRecordId, onSelect, onCommand, onCardC
       <ul className="book__records">
         {recordsInReadingOrder(records).map((record) => {
           const status = statusLabel(record);
+          const presentation = visualRecord(record);
           return (
             <li key={record.id} style={{ display: 'grid', gap: '0.35rem' }}>
               <Tooltip content={recordLabel(record)}>
@@ -61,8 +62,8 @@ export function ReviewList({ records, cardRecordId, onSelect, onCommand, onCardC
                   <span className="book__record-summary">
                     {record.kind === 'edit' ? (
                       <>
-                        <span className="book__record-part"><span className="book__record-label">Было</span>{excerpt(record.before, 'вставка')}</span>
-                        <span className="book__record-part"><span className="book__record-label">Стало</span>{excerpt(record.after, 'удаление')}</span>
+                        <span className="book__record-part"><span className="book__record-label">Было</span>{excerpt(presentation.before, 'вставка')}</span>
+                        <span className="book__record-part"><span className="book__record-label">Стало</span>{excerpt(presentation.after, 'удаление')}</span>
                       </>
                     ) : (
                       <>
