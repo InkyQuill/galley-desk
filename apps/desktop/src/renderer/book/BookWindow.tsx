@@ -3,8 +3,8 @@ import type { ChapterAction } from './ChapterSidebar';
 import { ChapterDialogs } from './ChapterDialogs';
 import { RenameBookDialog } from './RenameBookDialog';
 import { Metadata } from './Metadata';
-import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconPencil, IconInfoCircle, IconX } from '@tabler/icons-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconPencil, IconInfoCircle, IconX, IconLayoutSidebar, IconLayoutSidebarRight } from '@tabler/icons-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { AppearanceSettings, BookView, Command, RecordView, Snapshot } from '../../shared/api';
 import type { ThemeDefinition } from '@inkyquill/galley-themes';
@@ -24,6 +24,10 @@ import { ReviewList } from '../review/ReviewList';
 import { SignalFlyout } from '../review/SignalFlyout';
 import { isZenShortcut, zenShortcutLabel } from './shortcuts';
 import { Tooltip } from '../ui/Tooltip';
+import type { LayoutSettings } from '../../shared/layout';
+import { SIDEBAR_BOUNDS } from '../../shared/layout';
+import { CENTER_MIN_WIDTH, RESIZER_WIDTH, fitLayout } from './layout';
+import { SidebarResizer } from './SidebarResizer';
 
 type Props = {
   book: BookView;
@@ -42,6 +46,10 @@ type Props = {
   appearanceError: string | null;
   /** Изменение из панели: App применяет на контейнере и сохраняет в appData. */
   onAppearanceChange: (next: AppearanceSettings) => void;
+  layout: LayoutSettings;
+  layoutError: string | null;
+  onLayoutChange: (next: LayoutSettings) => void;
+  onLayoutRetry: () => void;
 };
 
 /** Позиция чтения для восстановления при открытии книги. */
@@ -149,6 +157,10 @@ export function BookWindow({
   appearanceTheme,
   appearanceError,
   onAppearanceChange,
+  layout,
+  layoutError,
+  onLayoutChange,
+  onLayoutRetry,
 }: Props) {
   const [book, setBook] = useState(initialBook);
   const [chapterAction, setChapterAction] = useState<ChapterAction | null>(null);
@@ -208,6 +220,40 @@ export function BookWindow({
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
+  const chaptersButtonRef = useRef<HTMLButtonElement>(null);
+  const reviewButtonRef = useRef<HTMLButtonElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const overlayPanelRef = useRef<HTMLDivElement>(null);
+  const [availableWidth, setAvailableWidth] = useState(() => window.innerWidth);
+  const [layoutPreview, setLayoutPreview] = useState<LayoutSettings | null>(null);
+  const [chaptersHidden, setChaptersHidden] = useState(false);
+  const [reviewHidden, setReviewHidden] = useState(false);
+  const [sidebarOverlay, setSidebarOverlay] = useState<'chapters' | 'review' | null>(null);
+
+  useEffect(() => {
+    const element = bodyRef.current;
+    if (element === null) return;
+    const observer = new ResizeObserver(entries => {
+      const width = entries[0]?.contentRect.width;
+      if (width !== undefined) setAvailableWidth(width);
+    });
+    observer.observe(element);
+    setAvailableWidth(element.getBoundingClientRect().width);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (sidebarOverlay === null) return;
+    requestAnimationFrame(() => overlayPanelRef.current?.querySelector<HTMLElement>('button, input, [tabindex]')?.focus());
+    const dismiss = (event: PointerEvent): void => {
+      if (overlayPanelRef.current?.contains(event.target as Node)) return;
+      const side = sidebarOverlay;
+      setSidebarOverlay(null);
+      requestAnimationFrame(() => (side === 'chapters' ? chaptersButtonRef : reviewButtonRef).current?.focus());
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [sidebarOverlay]);
   useEffect(() => {
     if (!menuOpen) return;
     menuRef.current?.querySelector<HTMLButtonElement>('.book__menu-items button')?.focus();
@@ -303,8 +349,8 @@ export function BookWindow({
 
   // --- Zen и порядок Escape ---------------------------------------------------
 
-  const overlayRef = useRef({ popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi, modalOpen: chapterAction !== null || renameOpen, platform });
-  overlayRef.current = { popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi, modalOpen: chapterAction !== null || renameOpen, platform };
+  const overlayRef = useRef({ sidebarOverlay, popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi, modalOpen: chapterAction !== null || renameOpen, platform });
+  overlayRef.current = { sidebarOverlay, popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi, modalOpen: chapterAction !== null || renameOpen, platform };
 
   /**
    * Единственный toggle Zen -- вызывается кнопкой, пунктом меню и
@@ -323,6 +369,7 @@ export function BookWindow({
     setAppearanceOpen(false);
     setMenuOpen(false);
     setSearchOpen(false);
+    setSidebarOverlay(null);
     setZen(true);
   }, []);
 
@@ -347,9 +394,17 @@ export function BookWindow({
         return;
       }
       if (event.key !== 'Escape') return;
+      // Активный разделитель владеет Escape: его capture-listener отменяет
+      // preview и не даёт этому же нажатию закрыть другой слой.
+      if (document.documentElement.classList.contains('is-resizing-sidebar')) return;
       // Порядок: только всплывающие слои (попап обрабатывает и свой
       // onKeyDown — двойное закрытие идемпотентно). Zen сюда не входит:
       // Escape никогда не переключает Zen, только верхние слои.
+      if (overlay.sidebarOverlay !== null) {
+        setSidebarOverlay(null);
+        (overlay.sidebarOverlay === 'chapters' ? chaptersButtonRef : reviewButtonRef).current?.focus();
+        return;
+      }
       if (overlay.popup !== null) {
         setPopup(null);
         return;
@@ -744,6 +799,46 @@ export function BookWindow({
   // Подсказка кнопок Zen показывает shortcut отдельной строкой (Task 10);
   // до прихода platform (см. эффект windowState выше) -- вариант Linux/Windows.
   const zenShortcut = zenShortcutLabel(platform);
+  const preferredLayout = layoutPreview ?? layout;
+  const fittedLayout = useMemo(() => fitLayout(preferredLayout, availableWidth), [preferredLayout, availableWidth]);
+  useEffect(() => {
+    if (sidebarOverlay === null) return;
+    const stillResponsive = sidebarOverlay === 'chapters' ? fittedLayout.chaptersCollapsed : fittedLayout.reviewCollapsed;
+    if (stillResponsive) return;
+    const side = sidebarOverlay;
+    setSidebarOverlay(null);
+    requestAnimationFrame(() => (side === 'chapters' ? chaptersButtonRef : reviewButtonRef).current?.focus());
+  }, [fittedLayout, sidebarOverlay]);
+  const chaptersCollapsed = zen || chaptersHidden || fittedLayout.chaptersCollapsed;
+  const reviewCollapsed = zen || reviewHidden || fittedLayout.reviewCollapsed;
+  const bodyStyle = {
+    '--chapters-width': `${fittedLayout.chaptersWidth}px`,
+    '--review-width': `${fittedLayout.reviewWidth}px`,
+  } as CSSProperties;
+  const constrainWidth = (side: 'chapters' | 'review', value: number): number => {
+    const otherWidth = side === 'chapters' ? fittedLayout.reviewWidth : fittedLayout.chaptersWidth;
+    const available = availableWidth - CENTER_MIN_WIDTH - RESIZER_WIDTH * 2 - otherWidth;
+    return Math.max(SIDEBAR_BOUNDS.min, Math.min(SIDEBAR_BOUNDS.max, value, available));
+  };
+  const previewWidth = (side: 'chapters' | 'review', value: number): void => {
+    const nextValue = constrainWidth(side, value);
+    setLayoutPreview(current => ({ ...(current ?? layout), [side === 'chapters' ? 'chaptersWidth' : 'reviewWidth']: nextValue }));
+  };
+  const commitWidth = (side: 'chapters' | 'review', value: number): void => {
+    const nextValue = constrainWidth(side, value);
+    const next = { ...(layoutPreview ?? layout), [side === 'chapters' ? 'chaptersWidth' : 'reviewWidth']: nextValue };
+    setLayoutPreview(null);
+    onLayoutChange(next);
+  };
+  const toggleSidebar = (side: 'chapters' | 'review'): void => {
+    const responsiveCollapsed = side === 'chapters' ? fittedLayout.chaptersCollapsed : fittedLayout.reviewCollapsed;
+    if (responsiveCollapsed) {
+      setSidebarOverlay(current => current === side ? null : side);
+      return;
+    }
+    if (side === 'chapters') setChaptersHidden(hidden => !hidden);
+    else setReviewHidden(hidden => !hidden);
+  };
 
   return (
     <div className={zen ? 'book book--zen' : 'book'}>
@@ -774,6 +869,12 @@ export function BookWindow({
           )}
           <Tooltip content="Поиск по главе" shortcut="Ctrl+F">
             <button type="button" ref={searchButtonRef} aria-label="Поиск по главе" aria-expanded={searchOpen} onClick={() => setSearchOpen((open) => !open)}><IconSearch /></button>
+          </Tooltip>
+          <Tooltip content="Оглавление">
+            <button ref={chaptersButtonRef} type="button" aria-label="Оглавление" aria-pressed={!chaptersCollapsed || sidebarOverlay === 'chapters'} onClick={() => toggleSidebar('chapters')}><IconLayoutSidebar /></button>
+          </Tooltip>
+          <Tooltip content="Рецензия">
+            <button ref={reviewButtonRef} type="button" aria-label="Рецензия" aria-pressed={!reviewCollapsed || sidebarOverlay === 'review'} onClick={() => toggleSidebar('review')}><IconLayoutSidebarRight /></button>
           </Tooltip>
           <div className="book__view-toggle" aria-label="Режим просмотра">
             <Tooltip content="Текст"><button type="button" aria-label="Текст" aria-pressed={mode === 'text'} onClick={() => switchMode('text')}><IconFileText /></button></Tooltip>
@@ -841,10 +942,17 @@ export function BookWindow({
           {error}
         </p>
       )}
+      {layoutError !== null && (
+        <p className="app__error book__layout-error" role="alert">
+          {layoutError} <button type="button" onClick={onLayoutRetry}>Повторить сохранение ширины</button>
+        </p>
+      )}
       <div
-        className="book__body"
+        ref={bodyRef}
+        className={`book__body${chaptersCollapsed ? ' book__body--chapters-collapsed' : ''}${reviewCollapsed ? ' book__body--review-collapsed' : ''}`}
+        style={bodyStyle}
       >
-        {!zen && (
+        {!chaptersCollapsed && (
           <ChapterSidebar book={{ ...book, entries }} activeId={chapterId} disabled={metadataEditing || chapterAction !== null || renameOpen}
             onOpen={id => void switchChapter(id)}
             onAction={action => {
@@ -854,6 +962,7 @@ export function BookWindow({
               setChapterAction(action);
             }} />
         )}
+        {!chaptersCollapsed && <SidebarResizer side="chapters" value={fittedLayout.chaptersWidth} onPreview={value => previewWidth('chapters', value)} onCommit={value => commitWidth('chapters', value)} onCancel={() => setLayoutPreview(null)} />}
         <section className="book__content">
           {activeChapter !== null && <h2 className="book__chapter-title">{activeChapter.title || activeChapter.path}</h2>}
           {snapshot !== null && <Metadata key={chapterId} source={snapshot.sourceText} readOnly={readOnly || saveError!==null || snapshot.saveState!=='saved'} onEditing={setMetadataEditing} onSave={async(yaml,sourceText)=>{
@@ -932,7 +1041,8 @@ export function BookWindow({
             </div>
           )}
         </section>
-        {!zen && (
+        {!reviewCollapsed && <SidebarResizer side="review" value={fittedLayout.reviewWidth} onPreview={value => previewWidth('review', value)} onCommit={value => commitWidth('review', value)} onCancel={() => setLayoutPreview(null)} />}
+        {!reviewCollapsed && (
           <aside
             className="book__review"
             aria-label="Рецензия"
@@ -950,6 +1060,26 @@ export function BookWindow({
               onCardClose={() => setCardId(null)}
             />
           </aside>
+        )}
+        {!zen && sidebarOverlay !== null && (
+          <div ref={overlayPanelRef} className={`book__sidebar-overlay book__sidebar-overlay--${sidebarOverlay}`} role="dialog" aria-label={sidebarOverlay === 'chapters' ? 'Оглавление' : 'Рецензия'}>
+            <button type="button" className="book__sidebar-overlay-close" aria-label="Закрыть панель" onClick={() => {
+              const side = sidebarOverlay;
+              setSidebarOverlay(null);
+              (side === 'chapters' ? chaptersButtonRef : reviewButtonRef).current?.focus();
+            }}><IconX /></button>
+            {sidebarOverlay === 'chapters' ? (
+              <ChapterSidebar book={{ ...book, entries }} activeId={chapterId} disabled={metadataEditing || chapterAction !== null || renameOpen}
+                onOpen={id => { setSidebarOverlay(null); void switchChapter(id); }}
+                onAction={action => { setSidebarOverlay(null); actionTriggerRef.current = document.activeElement as HTMLElement; setChapterAction(action); }} />
+            ) : (
+              <aside className="book__review" aria-label="Рецензия">
+                <h2 className="book__panel-title">Рецензия</h2>
+                <ChapterNote readOnly={readOnly} key={chapterId ?? 'none'} value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />
+                <ReviewList readOnly={readOnly} records={snapshot?.records ?? []} cardRecordId={cardId} onSelect={selectRecord} onCommand={dispatchCommand} onCardClose={() => setCardId(null)} />
+              </aside>
+            )}
+          </div>
         )}
       </div>
       {!readOnly && mode === 'text' && flyout !== null && (

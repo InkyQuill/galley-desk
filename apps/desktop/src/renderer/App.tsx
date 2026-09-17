@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppearanceSettings, BookView, DeskApi, Recent } from '../shared/api';
+import { DEFAULT_LAYOUT, type LayoutSettings } from '../shared/layout';
 import type { ThemeDefinition } from '@inkyquill/galley-themes';
 import {
   DEFAULT_APPEARANCE,
@@ -43,6 +44,10 @@ export function App() {
   // содержимое — нейтральную подложку первого кадра даёт body (app.css).
   const [appearance, setAppearance] = useState<AppearanceSettings | null>(null);
   const [appearanceError, setAppearanceError] = useState<string | null>(null);
+  const [layout, setLayout] = useState<LayoutSettings | null>(null);
+  const [layoutError, setLayoutError] = useState<string | null>(null);
+  const layoutSaveQueue = useRef<Promise<void>>(Promise.resolve());
+  const latestLayout = useRef<LayoutSettings>(DEFAULT_LAYOUT);
   // Системная схема в состоянии + подписка matchMedia: «Системная» тема
   // следует за живой сменой схемы ОС, а не только при случайном ререндере.
   const [systemDark, setSystemDark] = useState(systemSchemeDark);
@@ -66,6 +71,21 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    window.desk.layout().then(value => {
+      if (cancelled) return;
+      latestLayout.current = value;
+      setLayout(value);
+    }).catch((cause: unknown) => {
+      if (cancelled) return;
+      latestLayout.current = { ...DEFAULT_LAYOUT };
+      setLayout({ ...DEFAULT_LAYOUT });
+      setLayoutError(errorText(cause));
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => subscribeSystemScheme(setSystemDark), []);
 
   const appearanceTheme = useMemo<ThemeDefinition | null>(
@@ -82,6 +102,24 @@ export function App() {
       setAppearanceError(errorText(cause));
     });
   }, []);
+
+  const persistLayout = useCallback((next: LayoutSettings): void => {
+    latestLayout.current = next;
+    setLayout(next);
+    setLayoutError(null);
+    layoutSaveQueue.current = layoutSaveQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        setLayoutError(null);
+        await window.desk.setLayout(next);
+        setLayoutError(null);
+      })
+      .catch((cause: unknown) => {
+        setLayoutError(errorText(cause));
+      });
+  }, []);
+
+  const retryLayout = useCallback((): void => persistLayout(latestLayout.current), [persistLayout]);
 
   const openBook = useCallback((view: BookView, recent?: Recent, warning?: string) => {
     setRestore(
@@ -104,7 +142,7 @@ export function App() {
     setRefreshKey((key) => key + 1);
   }, []);
 
-  if (appearance === null || appearanceTheme === null) {
+  if (appearance === null || appearanceTheme === null || layout === null) {
     return <div className="app-root" />;
   }
 
@@ -129,6 +167,10 @@ export function App() {
           appearanceTheme={appearanceTheme}
           appearanceError={appearanceError}
           onAppearanceChange={updateAppearance}
+          layout={layout}
+          layoutError={layoutError}
+          onLayoutChange={persistLayout}
+          onLayoutRetry={retryLayout}
           />
         )}
       </div>
