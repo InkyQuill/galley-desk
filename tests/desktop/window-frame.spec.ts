@@ -130,8 +130,28 @@ test('open book uses one 44px title bar and keeps compact actions reachable', as
   await expect(page.getByRole('button', { name: 'Поиск по главе' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Меню книги' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Закрыть окно' })).toBeVisible();
+
+  // The entire action group is no-drag: double-clicking status or an
+  // Appearance form control must not bubble into titlebar maximize.
+  await expect(page.locator('.book__save-state')).toBeVisible();
+  await page.locator('.book__save-state').dblclick();
+  await expect(page.getByRole('button', { name: 'Развернуть окно' })).toBeVisible();
   await page.getByRole('button', { name: 'Меню книги' }).click();
   await expect(page.getByRole('button', { name: 'Режим Zen' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Оформление' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Диагностика' })).toBeVisible();
+  await page.getByRole('button', { name: 'Оформление' }).click();
+  await page.getByLabel('Размер интерфейса (10–24)').dblclick();
+  await expect(page.getByRole('button', { name: 'Развернуть окно' })).toBeVisible();
+  await page.getByRole('button', { name: 'Закрыть оформление' }).click();
+
+  // Compact Diagnostics returns keyboard focus to the persistent menu
+  // trigger, rather than the hidden direct diagnostics button.
+  const menu = page.getByRole('button', { name: 'Меню книги' });
+  await menu.click();
+  await page.getByRole('button', { name: 'Диагностика' }).click();
+  await expect(page.getByRole('dialog', { name: 'Диагностика' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Диагностика' })).toHaveCount(0);
+  await expect(menu).toBeFocused();
 });

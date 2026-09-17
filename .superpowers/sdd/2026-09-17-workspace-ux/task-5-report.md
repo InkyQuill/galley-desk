@@ -102,3 +102,38 @@ the native appearance test inside the same isolated 1920x1080 Xvfb display.
   of custom Linux controls, but it was not executed on macOS.
 - The previously deferred Task 4 outside-click overlay focus issue remains outside
   this task, unchanged.
+
+## Review fix round 1
+
+Addressed both Important findings from `task-5-review.md`:
+
+- The title-bar double-click handler now rejects the complete no-drag action
+  subtree, native controls, Diagnostics, dialogs, and form/editable controls.
+  The compact packaged regression double-clicks both save status and an
+  Appearance number input and verifies the window remains restored.
+- Compact Diagnostics now carries an explicit return-focus callback from the
+  menu action to `TitleBar`; closing the dialog focuses the persistent visible
+  `Меню книги` trigger rather than the hidden direct Diagnostics button.
+
+Verification after the fix:
+
+```sh
+npm run typecheck
+npm run package
+env -u DISPLAY -u XAUTHORITY -u WAYLAND_DISPLAY -u NO_COLOR -u FORCE_COLOR \
+  XDG_RUNTIME_DIR=/run/user/1000 \
+  DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+  XDG_CURRENT_DESKTOP=KDE KDE_SESSION_VERSION=6 \
+  GTK_MODULES=colorreload-gtk-module:appmenu-gtk-module \
+  xvfb-run -a -s '-screen 0 1920x1080x24' sh -c \
+  'openbox >/tmp/galley-task5-fix1-openbox.log 2>&1 & obpid=$!; \
+   trap "kill $obpid 2>/dev/null || true" EXIT; \
+   npm run test:desktop -- tests/desktop/window-frame.spec.ts \
+     tests/desktop/diagnostics.spec.ts \
+     tests/desktop/search-and-appearance.spec.ts --workers=1'
+```
+
+Results: typecheck passed; package passed; **23 desktop tests passed (19.1s)**.
+After self-review corrected the callback/fallback branch, the compact focused
+regression was repeated with the same Xvfb/Openbox isolation and passed **1/1
+(1.1s)**; typecheck and `git diff --check` also passed.

@@ -884,7 +884,12 @@ export function BookWindow({
             {menuOpen && <div className="book__menu-items" aria-label="Действия книги" onBlur={(event) => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) setMenuOpen(false); }}>
               <button type="button" disabled={metadataEditing} onClick={() => { actionTriggerRef.current = document.activeElement as HTMLElement; setRenameOpen(true); setMenuOpen(false); }}><IconPencil />Переименовать книгу</button>
               <button type="button" onClick={() => { setAppearanceOpen((open) => !open); setMenuOpen(false); }}><IconAdjustments />Оформление</button>
-              <button type="button" className="book__menu-diagnostics" onClick={() => { window.dispatchEvent(new Event('galley-desk:open-diagnostics')); setMenuOpen(false); }}><IconInfoCircle />Диагностика</button>
+              <button type="button" className="book__menu-diagnostics" onClick={() => {
+                window.dispatchEvent(new CustomEvent('galley-desk:open-diagnostics', {
+                  detail: { returnFocus: () => menuButtonRef.current?.focus() },
+                }));
+                setMenuOpen(false);
+              }}><IconInfoCircle />Диагностика</button>
               <button type="button" className="book__menu-zen" onClick={() => { toggleZen(); setMenuOpen(false); }}><IconTarget />Режим Zen</button>
               <button type="button" className="book__close" onClick={() => void closeBook()}><IconBookOff />Закрыть книгу</button>
             </div>}

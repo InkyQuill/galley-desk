@@ -17,6 +17,7 @@ export function TitleBar({ title, children }: TitleBarProps) {
   const [state, setState] = useState<WindowState | null>(null);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const diagnosticsButtonRef = useRef<HTMLButtonElement>(null);
+  const diagnosticsReturnFocusRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -25,10 +26,16 @@ export function TitleBar({ title, children }: TitleBarProps) {
     return () => { active = false; unsubscribe(); };
   }, []);
 
-  useEffect(() => window.desk.onOpenDiagnosticsRequest(() => setDiagnosticsOpen(true)), []);
+  useEffect(() => window.desk.onOpenDiagnosticsRequest(() => {
+    diagnosticsReturnFocusRef.current = null;
+    setDiagnosticsOpen(true);
+  }), []);
 
   useEffect(() => {
-    const open = (): void => setDiagnosticsOpen(true);
+    const open = (event: Event): void => {
+      diagnosticsReturnFocusRef.current = (event as CustomEvent<{ returnFocus?: () => void }>).detail?.returnFocus ?? null;
+      setDiagnosticsOpen(true);
+    };
     window.addEventListener('galley-desk:open-diagnostics', open);
     return () => window.removeEventListener('galley-desk:open-diagnostics', open);
   }, []);
@@ -39,12 +46,20 @@ export function TitleBar({ title, children }: TitleBarProps) {
   // rather than relying on the <dialog> element's own (unused) auto-restore.
   const closeDiagnostics = useCallback(() => {
     setDiagnosticsOpen(false);
-    diagnosticsButtonRef.current?.focus();
+    const returnFocus = diagnosticsReturnFocusRef.current;
+    diagnosticsReturnFocusRef.current = null;
+    requestAnimationFrame(() => {
+      if (returnFocus !== null) returnFocus();
+      else diagnosticsButtonRef.current?.focus();
+    });
   }, []);
 
   const act = (action: WindowAction): void => { void window.desk.windowAction(action).then(setState).catch(() => undefined); };
   const toggleOnDoubleClick = (event: MouseEvent<HTMLElement>): void => {
-    if (state !== null && state.platform !== 'darwin' && !(event.target as Element).closest('button')) act('toggle-maximize');
+    const noDrag = (event.target as Element).closest(
+      '.titlebar__actions, .titlebar__diagnostics, .titlebar__controls, dialog, button, input, select, textarea, [contenteditable="true"]',
+    );
+    if (state !== null && state.platform !== 'darwin' && noDrag === null) act('toggle-maximize');
   };
 
   return (
@@ -60,7 +75,7 @@ export function TitleBar({ title, children }: TitleBarProps) {
           aria-label="Диагностика"
           aria-haspopup="dialog"
           aria-expanded={diagnosticsOpen}
-          onClick={() => setDiagnosticsOpen(true)}
+          onClick={() => { diagnosticsReturnFocusRef.current = null; setDiagnosticsOpen(true); }}
         >
           <IconInfoCircle />
         </button>
