@@ -149,6 +149,9 @@ test('chooseBook без манифеста создаёт совместимый
   const recents = await harness.recent();
   expect(recents).toHaveLength(1);
   expect(recents[0]!.missing).toBe(false);
+  // bookId сопровождает запись — им сверяется повторный выбор той же папки
+  // через диалог (история №1: одинаковое восстановление позиции).
+  expect(recents[0]!.bookId).toBe(view!.bookId);
 });
 
 test('отмена выбора папки возвращает null и ничего не открывает', async () => {
@@ -323,6 +326,9 @@ test('повторный выбор переносившейся папки об
   const recents = await harness.recent();
   expect(recents).toHaveLength(1);
   expect(recents[0]!.path).toBe(movedRoot);
+  // Тот же bookId под новым путём — ровно то, по чему renderer сопоставляет
+  // запись недавних после выбора папки через диалог.
+  expect(recents[0]!.bookId).toBe(first.bookId);
 });
 
 test('forgetRecent удаляет только запись, файлы остаются', async () => {

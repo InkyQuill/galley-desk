@@ -96,6 +96,7 @@ export function updateRecentPosition(
 export async function toRecentViews(books: RecentBook[]): Promise<Recent[]> {
   return Promise.all(
     books.map(async (book) => ({
+      bookId: book.bookId,
       path: book.path,
       title: book.title,
       missing: !(await exists(book.path)),

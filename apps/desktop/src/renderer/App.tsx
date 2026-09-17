@@ -34,6 +34,9 @@ function errorText(error: unknown): string {
 export function App() {
   const [book, setBook] = useState<BookView | null>(null);
   const [restore, setRestore] = useState<ReadingRestore | null>(null);
+  // Предупреждение открытия (например, recent() не ответил после выбора
+  // папки диалогом) — книга всё равно открыта, восстановления не будет.
+  const [openWarning, setOpenWarning] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   // Настройки оформления из appData; пока они не загружены, App не рисует
   // содержимое — нейтральную подложку первого кадра даёт body (app.css).
@@ -79,7 +82,7 @@ export function App() {
     });
   }, []);
 
-  const openBook = useCallback((view: BookView, recent?: Recent) => {
+  const openBook = useCallback((view: BookView, recent?: Recent, warning?: string) => {
     setRestore(
       recent?.lastChapterId
         ? {
@@ -90,11 +93,13 @@ export function App() {
           }
         : null,
     );
+    setOpenWarning(warning ?? null);
     setBook(view);
   }, []);
   const closeBook = useCallback(() => {
     setBook(null);
     setRestore(null);
+    setOpenWarning(null);
     setRefreshKey((key) => key + 1);
   }, []);
 
@@ -116,6 +121,7 @@ export function App() {
           <BookWindow
           book={book}
           restore={restore}
+          openWarning={openWarning}
           onClose={closeBook}
           onBookChange={setBook}
           appearance={appearance}

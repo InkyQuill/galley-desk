@@ -26,6 +26,9 @@ type Props = {
   book: BookView;
   /** Сохранённая позиция из записи недавних (восстановление после перезапуска). */
   restore?: ReadingRestore | null;
+  /** Предупреждение открытия (например, recent() не ответил после выбора
+   * папки диалогом) — книга уже открыта, но без восстановления позиции. */
+  openWarning?: string | null;
   onClose: () => void;
   onBookChange?: (book: BookView) => void;
   /** Настройки оформления: источник — App (один тематический контейнер). */
@@ -97,6 +100,18 @@ function firstOpenEntryId(book: BookView): string | null {
   return open?.id ?? book.entries[0]?.id ?? null;
 }
 
+/**
+ * Восстановленная/кэшированная глава годится только если она всё ещё есть в
+ * оглавлении и не помечена отсутствующей — состав оглавления определяет
+ * автор, поэтому здесь нет отдельного правила для `_index.md` или любого
+ * другого id: проверка одна и та же для всех записей.
+ */
+function isSelectableEntry(book: BookView, chapterId: string | null | undefined): chapterId is string {
+  if (chapterId == null) return false;
+  const entry = book.entries.find((candidate) => candidate.id === chapterId);
+  return entry !== undefined && !entry.missing;
+}
+
 /** Прямоугольник маркера/курсора в viewport-координатах (попап позиционируется fixed). */
 type AnchorRect = { x: number; y: number; bottom: number };
 
@@ -124,6 +139,7 @@ type PopupState =
 export function BookWindow({
   book: initialBook,
   restore = null,
+  openWarning = null,
   onClose,
   onBookChange,
   appearance,
@@ -133,13 +149,15 @@ export function BookWindow({
 }: Props) {
   const [book, setBook] = useState(initialBook);
   const [managementOpen, setManagementOpen] = useState(false);
+  const [openWarningDismissed, setOpenWarningDismissed] = useState(false);
   const cached = positionCache.get(book.bookId);
   // Сохранённая позиция из записи недавних сильнее внутрисессионного кэша;
-  // глава могла исчезнуть из манифеста — тогда восстановление игнорируется.
-  const validRestore =
-    restore !== null && book.entries.some((entry) => entry.id === restore.chapterId) ? restore : null;
+  // глава могла исчезнуть из манифеста или стать missing — тогда
+  // восстановление игнорируется (см. isSelectableEntry).
+  const validRestore = restore !== null && isSelectableEntry(book, restore.chapterId) ? restore : null;
+  const validCached = cached !== undefined && isSelectableEntry(book, cached.chapterId) ? cached : undefined;
   const [chapterId, setChapterId] = useState<string | null>(
-    validRestore?.chapterId ?? cached?.chapterId ?? firstOpenEntryId(book),
+    validRestore?.chapterId ?? validCached?.chapterId ?? firstOpenEntryId(book),
   );
   // Актуальная глава вне React-потока: поздние ack и снимки сравниваются с
   // ней, а не с устаревшим замыканием (гон смены главы, см. applySnapshot).
@@ -165,8 +183,8 @@ export function BookWindow({
   // отличает «это выделение поставил поиск» от ручного выбора пользователя,
   // чтобы снятие подсветки не стирало чужое выделение (mousedown сбрасывает).
   const searchHighlightActiveRef = useRef(false);
-  const anchorRef = useRef<number>(validRestore?.anchor ?? cached?.anchor ?? 0);
-  const pendingScroll = useRef<number | null>(validRestore?.scrollTop ?? cached?.scrollTop ?? null);
+  const anchorRef = useRef<number>(validRestore?.anchor ?? validCached?.anchor ?? 0);
+  const pendingScroll = useRef<number | null>(validRestore?.scrollTop ?? validCached?.scrollTop ?? null);
   // Ревизии последнего подтверждения по главам: expectedRevision берётся из
   // последнего ack, а не из устаревшего замыкания React.
   const revisionsRef = useRef(new Map<string, number>());
@@ -795,6 +813,12 @@ export function BookWindow({
           <IconTargetOff /><span>Выйти из Zen</span>
         </button>
       )}
+      {openWarning !== null && !openWarningDismissed && (
+        <p className="app__error" role="alert">
+          {openWarning}
+          <button type="button" onClick={() => setOpenWarningDismissed(true)}>Скрыть</button>
+        </p>
+      )}
       {error !== null && (
         <p className="app__error" role="alert">
           {error}
@@ -899,7 +923,7 @@ export function BookWindow({
                   onCommand={handleCommand}
                   onSelectionChange={rememberAnchor}
                   onScrollChange={rememberScroll}
-                  initialAnchor={validRestore?.anchor ?? cached?.anchor ?? null}
+                  initialAnchor={validRestore?.anchor ?? validCached?.anchor ?? null}
                   onSelectionWindow={handleSelectionWindow}
                   onRecordClick={openRecordAt}
                   flyoutFocusRef={flyoutFocusRef as MutableRefObject<(() => void) | null>}
