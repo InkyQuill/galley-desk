@@ -132,6 +132,25 @@ test('custom window close flushes pending text before destroying the window', as
   } finally { await forceStop(app); }
 });
 
+test('native window close waits for a dirty metadata discard decision', async () => {
+  const { app, page } = await launch();
+  try {
+    await page.getByRole('button', { name: 'Метаданные главы', exact: true }).click();
+    await page.getByLabel('YAML метаданных').fill('title: Unsaved');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
+    await expect(page.getByRole('alertdialog', { name: 'Отбросить изменения?' })).toBeVisible();
+    await expect(page.locator('.book')).toHaveJSProperty('inert', false);
+    await page.getByRole('button', { name: 'Продолжить редактирование' }).click();
+    await expect(page.getByLabel('YAML метаданных')).toHaveValue('title: Unsaved');
+    await expect(page.locator('.book')).toHaveJSProperty('inert', false);
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
+    await expect(page.getByRole('alertdialog', { name: 'Отбросить изменения?' })).toBeVisible();
+    const closed = page.waitForEvent('close');
+    await page.getByRole('button', { name: 'Отбросить' }).click();
+    await closed;
+  } finally { await forceStop(app); }
+});
+
 test('successful close stays inert until delayed response unmounts the book and clears populated apply history', async () => {
   const { app, page, bookRoot } = await launch();
   try {

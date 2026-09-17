@@ -90,7 +90,23 @@ body { margin: 0; background: Canvas; }
 .book__chapter-filter { width: 100%; margin-bottom: 10px; }
 .book__chapters-empty { color: var(--app-text-muted); }
 .book__content { min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 24px 28px 0; overflow: hidden; background: var(--app-bg); }
-.book__chapter-title { font-size: .9em; font-weight: 400; color: var(--app-text-muted); margin: 0; flex: none; }
+.book__chapter-heading { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; min-width: 0; flex: none; }
+.book__chapter-label { min-width: 0; text-align: center; }
+.book__chapter-label small { display: block; color: var(--app-text-muted); font-size: .75em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book__chapter-title { font-size: .9em; font-weight: 400; color: var(--app-text-muted); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book__metadata-anchor { position: absolute; right: 0; top: 50%; transform: translateY(-50%); z-index: 43; -webkit-app-region: no-drag; }
+.book__metadata-trigger { padding: 6px !important; color: var(--app-text-muted) !important; }
+.book__metadata-trigger--invalid { color: var(--app-error-text) !important; }
+.book__metadata-popover { position: absolute; right: 0; top: calc(100% + 8px); width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 80px); overflow: auto; padding: 18px; border-radius: 10px; background: var(--app-panel); box-shadow: var(--app-dialog-shadow); color: var(--app-text); text-align: left; font: var(--desk-ui-size)/1.5 var(--desk-ui-font); }
+.book__metadata-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.book__metadata-heading h3 { margin: 0; font-size: 1em; }
+.book__metadata-popover form { display: grid; gap: 10px; }
+.book__metadata-popover label { display: grid; gap: 6px; }
+.book__metadata-popover textarea { min-height: 11rem; font-family: ui-monospace, monospace; }
+.book__metadata-popover p { margin: 0; }
+.book__metadata-view pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0 0; font-family: ui-monospace, monospace; }
+.book__metadata-discard { position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 10px; padding: 24px; border-radius: inherit; background: var(--app-panel); text-align: center; }
+.book__metadata-discard p { flex-basis: 100%; font-weight: 600; }
 .book__text, .book__source, .book__comparison { flex: 1; min-height: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; margin: 0; padding: 0; font-family: var(--desk-book-font); font-size: var(--desk-book-size); line-height: 1.8; }
 .book__text { overflow: hidden; }
 .book__source, .book__comparison { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding-bottom: 48px; }
@@ -211,12 +227,6 @@ body { margin: 0; background: Canvas; }
 
 .book__chapter-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .book__chapter small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .6; font-size: .8em; }
-.book__metadata { font: calc(var(--desk-ui-size) * .85)/1.5 var(--desk-ui-font); margin: 0 1.5rem .5rem; flex: 0 1 auto; max-height: 40vh; overflow: auto; }
-.book__metadata-heading { display: flex; align-items: center; gap: .75rem; }
-.book__metadata button { display: inline-flex; align-items: center; gap: .25rem; margin-right: .5rem; }
-.book__metadata pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 8rem; overflow: auto; }
-.book__metadata textarea { display: block; width: 100%; min-height: 7rem; resize: vertical; font: inherit; }
-.book__metadata p { margin: .4rem 0; }
 
 .book__action-dialog { width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; padding: 20px; border: 0; border-radius: 12px; background: var(--app-panel); color: var(--app-text); box-shadow: var(--app-dialog-shadow); }
 .book__action-dialog::backdrop { background: rgb(0 0 0 / .35); }

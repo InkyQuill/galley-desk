@@ -2,7 +2,8 @@ import { ChapterSidebar } from './ChapterSidebar';
 import type { ChapterAction } from './ChapterSidebar';
 import { ChapterDialogs } from './ChapterDialogs';
 import { RenameBookDialog } from './RenameBookDialog';
-import { Metadata } from './Metadata';
+import { MetadataPopover } from './MetadataPopover';
+import type { MetadataPopoverHandle } from './MetadataPopover';
 import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconPencil, IconInfoCircle, IconX, IconLayoutSidebar, IconLayoutSidebarRight } from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
@@ -182,6 +183,7 @@ export function BookWindow({
   const chapterIdRef = useRef<string | null>(chapterId);
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [metadataEditing, setMetadataEditing] = useState(false);
+  const metadataRef = useRef<MetadataPopoverHandle>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   // Зеркало показанного снимка для решений вне React-потока (чип сбоя
   // сохранения при внешнем изменении — см. handleCommand).
@@ -311,6 +313,7 @@ export function BookWindow({
    */
   const switchChapter = useCallback(async (next: string): Promise<void> => {
     if (next === chapterIdRef.current) return;
+    if ((await metadataRef.current?.requestDismiss()) === false) return;
     try {
       await editorApi?.flushPending();
     } catch (cause) {
@@ -701,12 +704,18 @@ export function BookWindow({
 
   useEffect(() => window.desk.onCloseRequest(async (closing) => {
     const element = document.querySelector<HTMLElement>('.book');
-    if (element) element.inert = closing;
+    if (!closing) {
+      if (element) element.inert = false;
+      return;
+    }
     if (closing) {
       try {
+        if ((await metadataRef.current?.requestDismiss()) === false) throw new Error('Закрытие отменено: метаданные не завершены');
+        if (element) element.inert = true;
         await editorApi?.flushPending();
         if (saveError !== null) throw new Error(saveError);
       } catch (cause) {
+        if (element) element.inert = false;
         setError(errorText(cause));
         throw cause;
       }
@@ -714,6 +723,7 @@ export function BookWindow({
   }), [editorApi, saveError]);
 
   const closeBook = async (): Promise<void> => {
+    if ((await metadataRef.current?.requestDismiss()) === false) return;
     try {
       await window.desk.closeBook(book.bookId);
     } catch (cause) {
@@ -956,12 +966,13 @@ export function BookWindow({
         )}
         {!chaptersCollapsed && <SidebarResizer side="chapters" value={fittedLayout.chaptersWidth} onPreview={value => previewWidth('chapters', value)} onCommit={value => commitWidth('chapters', value)} onCancel={() => setLayoutPreview(null)} />}
         <section className="book__content">
-          {activeChapter !== null && <h2 className="book__chapter-title">{activeChapter.title || activeChapter.path}</h2>}
-          {snapshot !== null && <Metadata key={chapterId} source={snapshot.sourceText} readOnly={readOnly || saveError!==null || snapshot.saveState!=='saved'} onEditing={setMetadataEditing} onSave={async(yaml,sourceText)=>{
-            await editorApi?.flushPending();
-            await handleCommand({type:'metadata',yaml,sourceText});
-            setEditorEpoch(epoch=>epoch+1);
-          }}/>}
+          {activeChapter !== null && <div className="book__chapter-heading">
+            <div className="book__chapter-label"><h2 className="book__chapter-title">{activeChapter.title || activeChapter.path}</h2><small>{activeChapter.path.split('/').pop()}</small></div>
+            {snapshot !== null && <MetadataPopover ref={metadataRef} key={chapterId} source={snapshot.sourceText} readOnly={readOnly || saveError!==null || snapshot.saveState!=='saved'} onEditing={setMetadataEditing} onSave={async(yaml,sourceText)=>{
+              await editorApi?.flushPending();
+              await handleCommand({type:'metadata',yaml,sourceText});
+              setEditorEpoch(epoch=>epoch+1);
+            }}/>}</div>}
           {snapshot !== null && searchOpen && (
             // Поиск по главе: область подписана и зависит от вида (Текст/
             // Сравнение — snapshot.text, Исходник — snapshot.sourceText).
