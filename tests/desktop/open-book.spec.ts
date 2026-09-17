@@ -408,6 +408,53 @@ test('глава, исчезнувшая из оглавления, не вос�
   }
 });
 
+test('книга без доступных глав открывается без восстановления и без падения — что через диалог, что через «Недавние»', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-no-chapters-');
+  // Ни одного .md файла верхнего уровня — discover() даёт пустой список глав,
+  // манифест создаётся с chapters: [] (packages/book-storage/src/book.ts).
+  const session = await launch(bookRoot, { 'заметка.txt': 'не глава\n' });
+  try {
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+
+    // Окно книги открылось (заголовок виден), но глав для выбора нет и
+    // восстанавливать нечего — без падения и без ложной активной главы.
+    await expect(session.page.getByRole('heading', { name: path.basename(bookRoot) })).toBeVisible();
+    await expect(session.page.getByRole('button', { name: 'Меню книги' })).toBeVisible();
+    await expect(session.page.locator('.book__chapter')).toHaveCount(0);
+    await expect(session.page.locator('.book__chapter--active')).toHaveCount(0);
+    await expect(session.page.getByRole('alert')).toHaveCount(0);
+
+    const manifest = JSON.parse(await readFile(path.join(bookRoot, '.pocket-editor.json'), 'utf8')) as {
+      chapters: unknown[];
+    };
+    expect(manifest.chapters).toHaveLength(0);
+
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
+    await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+
+    // Тот же результат через «Недавние»: тоже без падения, без активной главы.
+    await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
+    await expect(session.page.getByRole('heading', { name: path.basename(bookRoot) })).toBeVisible();
+    await expect(session.page.locator('.book__chapter')).toHaveCount(0);
+    await expect(session.page.getByRole('alert')).toHaveCount(0);
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
+    await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+
+    // И снова через диалог — тот же результат (dialog/Recent parity —
+    // главная мысль истории №1 — держится и на нулевом наборе глав).
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.getByRole('heading', { name: path.basename(bookRoot) })).toBeVisible();
+    await expect(session.page.locator('.book__chapter')).toHaveCount(0);
+    await expect(session.page.getByRole('alert')).toHaveCount(0);
+  } finally {
+    await closeApp(session);
+  }
+});
+
 test('недоступная папка помечается, забывание сохраняет файлы', async () => {
   const bookRoot = await makeTempDir('galley-e2e-missing-');
   const session = await launch(bookRoot, { 'Глава.md': 'текст\n' });
