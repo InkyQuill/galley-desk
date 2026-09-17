@@ -14,16 +14,22 @@ export type SearchHighlightRange = { from: number; to: number } | null;
 /** Устанавливает диапазон подсветки или снимает её (null). */
 export const setSearchHighlight = StateEffect.define<SearchHighlightRange>();
 
-function decorate(range: SearchHighlightRange): DecorationSet {
-  if (range === null || range.from >= range.to) return Decoration.none;
-  return Decoration.set([Decoration.mark({ class: 'gd-search-highlight' }).range(range.from, range.to)]);
+/** Диапазон клэмпится к длине документа: защита от устаревших координат
+ * (сам revealRange уже клэмпит на момент диспатча, но поле не должно
+ * зависеть от того, что все будущие вызыватели сделают то же самое). */
+function decorate(range: SearchHighlightRange, docLength: number): DecorationSet {
+  if (range === null) return Decoration.none;
+  const from = Math.max(0, Math.min(range.from, docLength));
+  const to = Math.max(0, Math.min(range.to, docLength));
+  if (from >= to) return Decoration.none;
+  return Decoration.set([Decoration.mark({ class: 'gd-search-highlight' }).range(from, to)]);
 }
 
 const searchHighlightField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(decorations, tr) {
     for (const effect of tr.effects) {
-      if (effect.is(setSearchHighlight)) return decorate(effect.value);
+      if (effect.is(setSearchHighlight)) return decorate(effect.value, tr.state.doc.length);
     }
     return decorations.map(tr.changes);
   },

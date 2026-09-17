@@ -82,7 +82,14 @@ function revealTextOffset(container: HTMLElement, from: number, to: number): voi
   const selection = window.getSelection();
   selection?.removeAllRanges();
   selection?.addRange(range);
-  start.text.parentElement?.scrollIntoView({ block: 'center' });
+  // Центрируем находку в самом контейнере, а не полагаемся на
+  // parentElement.scrollIntoView: в «Исходнике» текстовые узлы — прямые дети
+  // скроллируемого <pre> (parentElement === container), и scrollIntoView на
+  // самом себе не двигает его собственный scrollTop -- находка оставалась
+  // визуально вне viewport, хотя и была выделена.
+  const rangeRect = range.getBoundingClientRect();
+  const containerRect = container.getBoundingClientRect();
+  container.scrollTop += rangeRect.top - containerRect.top - containerRect.height / 2 + rangeRect.height / 2;
 }
 
 function firstOpenEntryId(book: BookView): string | null {

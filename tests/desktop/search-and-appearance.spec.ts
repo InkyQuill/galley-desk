@@ -247,6 +247,139 @@ test('в «Сравнении» находка во введённой част�
   }
 });
 
+test('смена главы во время поиска сбрасывает переход к первой находке новой главы; смена ревизии той же главы -- только клэмп', async () => {
+  const paragraph = 'кот спит на подоконнике.\n\n';
+  const session = await launchWithBook({
+    'Глава 1.md': `# Глава первая\n\n${paragraph.repeat(10)}`,
+    'Глава 2.md': `# Глава вторая\n\n${paragraph.repeat(3)}`,
+  });
+  const { page, openByDialog } = session;
+  try {
+    await openByDialog();
+    await expect(page.getByRole('button', { name: 'Глава первая' })).toBeVisible();
+    await page.getByRole('button', { name: 'Глава первая' }).click();
+    await expect(page.locator('.cm-content')).toContainText('Глава первая');
+
+    await page.keyboard.press('Control+f');
+    const searchField = page.getByRole('textbox', { name: 'Поиск по главе' });
+    await searchField.fill('кот');
+    await expect(page.locator('.book__search-counter')).toHaveText('1/10');
+
+    // Уходим на 4-ю находку в «Главе первой» (active=3 из 10).
+    await page.getByRole('button', { name: 'Следующее совпадение' }).click();
+    await page.getByRole('button', { name: 'Следующее совпадение' }).click();
+    await page.getByRole('button', { name: 'Следующее совпадение' }).click();
+    await expect(page.locator('.book__search-counter')).toHaveText('4/10');
+
+    // Смена главы: BookWindow.switchChapter синхронно обнуляет snapshot,
+    // пока новая глава не загрузится (см. switchChapter в BookWindow.tsx) --
+    // ChapterSearch гейтится на `snapshot !== null`, поэтому размонтируется
+    // и монтируется заново для новой главы: активный поиск НЕ переносит
+    // старый индекс/запрос старой главы (никакого «4/3» или «4/10» на
+    // чужом тексте). Панель поиска снова открыта и готова к вводу с чистого
+    // листа -- ровно то поведение, которое проп chapterId на ChapterSearch
+    // обязан гарантировать и для случая, когда экземпляр не размонтируется
+    // (см. эффект по [chapterId, area, query] в ChapterSearch.tsx).
+    await page.getByRole('button', { name: 'Глава вторая' }).click();
+    await expect(page.locator('.cm-content')).toContainText('Глава вторая');
+    await expect(searchField).toHaveValue('');
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(0);
+
+    // Поиск в «Главе второй» с нуля: свежая находка новой главы (1/3), не
+    // старый счётчик и не текст прежней главы.
+    await searchField.fill('кот');
+    await expect(page.locator('.book__search-counter')).toHaveText('1/3');
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(1);
+    await expect(searchField).toBeFocused();
+
+    // В «Главе второй» уходим на последнюю находку (active=2 из 3).
+    await page.getByRole('button', { name: 'Следующее совпадение' }).click();
+    await page.getByRole('button', { name: 'Следующее совпадение' }).click();
+    await expect(page.locator('.book__search-counter')).toHaveText('3/3');
+
+    // Смена РЕВИЗИИ той же главы (ввод текста добавляет 4-ю находку) --
+    // в отличие от смены главы, здесь нет прыжка к первой находке: активный
+    // индекс остаётся на месте (клэмп, не reset), 3-й из теперь 4-х.
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('ControlOrMeta+End');
+    await page.keyboard.type('кот спит.\n');
+    await expect(page.locator('.book__search-counter')).toHaveText('3/4');
+  } finally {
+    await closeApp(session);
+  }
+});
+
+test('поиск в «Сравнении»/«Исходнике»: первая находка ниже viewport подсвечивается сразу, фокус остаётся в поле, guard не стирает выделение пользователя', async () => {
+  const filler = 'наполнитель без совпадений.\n\n';
+  const paragraph = 'кот спит на подоконнике.\n\n';
+  const chapterText = `# Заголовок\n\n${filler.repeat(30)}${paragraph.repeat(30)}`;
+  const session = await launchWithBook({ 'Глава 1.md': chapterText });
+  const { page, openByDialog } = session;
+  try {
+    await openByDialog();
+    await expect(page.getByRole('button', { name: 'Заголовок' })).toBeVisible();
+    await page.getByRole('button', { name: 'Заголовок' }).click();
+    await expect(page.locator('.cm-content')).toBeVisible();
+
+    for (const [buttonName, containerClass] of [
+      ['Исходник', '.book__source'],
+      ['Сравнение', '.book__comparison'],
+    ] as const) {
+      await page.getByRole('button', { name: buttonName }).click();
+      await page.keyboard.press('Control+f');
+      const searchField = page.getByRole('textbox', { name: 'Поиск по главе' });
+
+      // Первая находка — только после 30 абзацев-«наполнителей», далеко
+      // ниже исходного viewport: сразу 1/30, выделение и фокус в поле, без
+      // клика «Далее» (история №8, теперь и для DOM-видов).
+      await searchField.fill('кот');
+      await expect(page.locator('.book__search-counter')).toHaveText('1/30');
+      const selected = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+      expect(selected).toBe('кот');
+      await expect(searchField).toBeFocused();
+      const scrollTop = await page.locator(containerClass).evaluate((el) => el.scrollTop);
+      expect(scrollTop).toBeGreaterThan(0);
+
+      // Ручное действие пользователя (mousedown) в этом виде сбрасывает
+      // searchHighlightActiveRef -- дальнейшее снятие поисковой подсветки
+      // (пустой запрос) не должно тронуть чужое выделение.
+      await page.locator(containerClass).click({ position: { x: 5, y: 5 } });
+      await page.evaluate((selector) => {
+        const el = document.querySelector(selector)!;
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const textNode = walker.nextNode() as Text;
+        const range = document.createRange();
+        range.setStart(textNode, 0);
+        range.setEnd(textNode, Math.min(3, textNode.data.length));
+        const sel = window.getSelection()!;
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }, containerClass);
+      const manualSelection = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+      expect(manualSelection.length).toBeGreaterThan(0);
+
+      // Очищаем запрос без фокусировки поля: обычный .fill('') сам по себе
+      // фокусирует input, а фокус на текстовом поле уже сам по себе гасит
+      // window.getSelection() в браузере -- это увело бы тест от того, что
+      // проверяется (наш guard), к постороннему эффекту фокуса. Меняем
+      // value программно и диспатчим 'input', как сделал бы React onChange.
+      await page.evaluate(() => {
+        const input = document.querySelector<HTMLInputElement>('.book__search-input')!;
+        const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+        setValue.call(input, '');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      await expect(page.locator('.book__search-counter')).toHaveText('');
+      const afterClear = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+      expect(afterClear).toBe(manualSelection);
+
+      await page.getByRole('button', { name: 'Закрыть поиск' }).click();
+    }
+  } finally {
+    await closeApp(session);
+  }
+});
+
 test('фильтр глав скрывает лишние записи и не меняет манифест', async () => {
   const session = await launchWithBook({
     'Медведь.md': 'текст\n',
