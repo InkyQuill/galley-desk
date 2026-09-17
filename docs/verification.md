@@ -18,7 +18,7 @@
 | Атомарный Undo/Redo | PASS: середина слова и граница абзаца; точные records после Undo/Redo, decoded sidecar после reopen |
 | light/dark × 900/1280/1920 × 100/125% | PASS, 12 снимков |
 | Zen, меню, Discovery, sort preview, metadata, tooltip, поиск, плотная рецензия, comparison | PASS, сохранены снимки |
-| Реальная книга | PASS на временной копии: 27 Markdown, 8 sidecar, 144 records; истории 1 и 6–12 |
+| Реальная книга | PASS на временной копии: 27 Markdown, 8 sidecar, 144 records; истории 1 и 6–12 исполнены и проверены самим capture-скриптом |
 | SHA256 дерева исходной книги до/после | PASS: `55253e0c7ff59af1ccac74ef4cefa6d0df90fd9e5089de58e912f334d5920046` |
 | Реальный macOS и системная Linux IME | **not-run** |
 
@@ -26,6 +26,13 @@
 исправленным. Форматы manifest/sidecar не менялись; macOS runtime, native
 picker/clipboard/IME и Cmd-акселераторы на настоящем Mac этой Linux-проверкой
 не подтверждены.
+
+Повторный real-book walkthrough проверил picker/Recent parity, Zen через два
+Escape и shortcut, keyboard tooltip, focus и первую подсветку поиска,
+filename-фильтр, 36 плотных записей, переходы Text/Comparison с закрытием и
+Recent reopen по независимому видимому ряду, а также точные middle-word и
+paragraph-boundary Undo/Redo. Результаты записаны по историям в
+[`capture-result.json`](reviews/evidence/workspace-ux/task-13/capture-result.json).
 
 ## Исправления после проверки на реальных книгах, 2026-09-16
 

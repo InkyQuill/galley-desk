@@ -64,14 +64,14 @@ SHA256 дерева источника до и после совпал:
 
 | История | Результат и evidence |
 | --- | --- |
-| №1, folder/recent parity | PASS: `open-book.spec.ts`; 27-главная копия открыта picker-stub; sidebar в matrix/contact sheet |
-| №6, Zen | PASS: `search-and-appearance.spec.ts`; [Zen](evidence/workspace-ux/task-13/real-book-zen.png) |
-| №7, общий Tooltip | PASS: `tooltips.spec.ts`; [themed tooltip](evidence/workspace-ux/task-13/real-book-themed-tooltip.png) |
-| №8, первая находка | PASS: `search-and-appearance.spec.ts`; [search](evidence/workspace-ux/task-13/real-book-search-first-match.png) |
-| №9, фильтр/sidebar | PASS: `search-and-appearance.spec.ts`; matrix и 27 глав в реальной копии |
-| №10, плотная рецензия | PASS: `review-actions.spec.ts`; [dense review](evidence/workspace-ux/task-13/real-book-dense-review.png) |
-| №11, reading position | PASS: `comparison-position.spec.ts`; [comparison middle](evidence/workspace-ux/task-13/real-book-comparison-middle.png) |
-| №12, atomic Undo | PASS: два новых `edit-and-reopen.spec.ts` сценария, оба в полном native suite |
+| №1, folder/recent parity | PASS на реальной копии: picker открыл книгу, Recent повторно открыл ту же активную главу; `capture-result.json` story 1 |
+| №6, Zen | PASS на реальной копии: два Escape сохранили Zen, `Ctrl+Alt+Z` вышел; [Zen](evidence/workspace-ux/task-13/real-book-zen.png), story 6 |
+| №7, общий Tooltip | PASS на реальной копии: общий themed tooltip появился от keyboard focus; [tooltip](evidence/workspace-ux/task-13/real-book-themed-tooltip.png), story 7 |
+| №8, первая находка | PASS на реальной копии: input сохранил focus, единственная подсветка первой находки видима; [search](evidence/workspace-ux/task-13/real-book-search-first-match.png), story 8 |
+| №9, фильтр/sidebar | PASS на реальной копии: filename-фильтр сократил 27 глав до `chapter-015.md`, очистка вернула 27; story 9 |
+| №10, плотная рецензия | PASS на реальной копии: `chapter-003.md` отрисовал все 36 записей; [dense review](evidence/workspace-ux/task-13/real-book-dense-review.png), story 10 |
+| №11, reading position | PASS на реальной копии: Text → Comparison → close → Recent reopen → Comparison → Text сохранили тот же видимый центральный ряд; [comparison](evidence/workspace-ux/task-13/real-book-comparison-middle.png), story 11 |
+| №12, atomic Undo | PASS на реальной копии: middle-word и paragraph-boundary дали точный текст и records после Undo/Redo; story 12 |
 
 Пересечения dirty metadata/remove, resize/position, sort/filter, pending
 close, Zen из popup и двойной Escape, tooltip/Escape/search, поиск/view,

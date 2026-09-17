@@ -2,11 +2,22 @@
   "source": "/home/inky/Документы/test-book",
   "sourceHashBefore": "55253e0c7ff59af1ccac74ef4cefa6d0df90fd9e5089de58e912f334d5920046",
   "sourceHashAfter": "55253e0c7ff59af1ccac74ef4cefa6d0df90fd9e5089de58e912f334d5920046",
-  "copiedBook": "galley-task13-real-book-d9gfBr",
+  "copiedBook": "galley-task13-real-book-oaqVF5",
   "markdownFiles": 27,
   "reviewFiles": 8,
   "records": 144,
+  "stories": {
+    "1": "picker and Recent reopened the same active real-book chapter",
+    "6": "Zen survived two Escapes and exited through the dedicated shortcut",
+    "7": "shared themed tooltip was visible from keyboard focus",
+    "8": "search retained input focus and selected the first real match",
+    "9": "filename filter reduced the real 27-chapter spine to chapter-015.md",
+    "10": "chapter-003 rendered all 36 review records",
+    "11": "Text/Comparison and close/Recent reopen restored the same visible text anchor",
+    "12": "middle-word and paragraph-boundary groups passed exact Undo/Redo record checks"
+  },
   "screenshots": [
+    "contact-sheet.png",
     "matrix-dark-1280-100.png",
     "matrix-dark-1280-125.png",
     "matrix-dark-1920-100.png",
@@ -27,6 +38,7 @@
     "real-book-sidebar-menu.png",
     "real-book-sort-preview.png",
     "real-book-themed-tooltip.png",
-    "real-book-zen.png"
+    "real-book-zen.png",
+    "task-11-dense-review.png"
   ]
 }
