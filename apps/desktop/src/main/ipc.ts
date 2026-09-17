@@ -430,6 +430,9 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
   // Валидация значения происходит в сервисе (validateAppearance принимает
   // неизвестные данные); на границе это лишь формальная типизация.
   handle('desk:set-appearance', (_event, args) => service.setAppearance(args[0] as import('../shared/api').AppearanceSettings));
+  handle('desk:layout', () => service.layout());
+  // The service validates this untrusted object before persistence.
+  handle('desk:set-layout', (_event, args) => service.setLayout(args[0] as import('../shared/layout').LayoutSettings));
   handle('desk:save-position', (_event, args) =>
     service.savePosition(asStringArg(args[0]), asStringArg(args[1]), asNumberArg(args[2]), asNumberArg(args[3])));
   handle('desk:discover-chapters', (_event, args) => service.discoverChapters(asStringArg(args[0])));

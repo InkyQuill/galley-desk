@@ -1,5 +1,6 @@
 // apps/desktop/src/shared/api.ts
 import type { DiagnosticInput } from './diagnostics';
+import type { LayoutSettings } from './layout';
 export type Entry = {id:string; path:string; title:string; missing:boolean};
 export type RecordView = {id:string; kind:'edit'|'signal'; status:'active'|'unavailable'|'conflicting';
   reason:string; from:number|null; to:number|null; before:string; after:string;
@@ -42,6 +43,8 @@ export interface DeskApi {
   onCloseRequest(listener:(closing:boolean)=>Promise<void>):()=>void;
   appearance():Promise<AppearanceSettings>;
   setAppearance(value:AppearanceSettings):Promise<void>;
+  layout():Promise<LayoutSettings>;
+  setLayout(value:LayoutSettings):Promise<void>;
   savePosition(bookId:string,chapterId:string,anchor:number,scrollTop:number):Promise<void>;
   chooseBook():Promise<BookView|null>;
   recent():Promise<Recent[]>;

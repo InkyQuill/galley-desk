@@ -329,6 +329,33 @@ test('window controls accept only explicit actions from the trusted top frame', 
   expect(windowAction).toHaveBeenCalledWith(sender, 'close');
 });
 
+test('layout IPC preserves sender validation and rejects invalid widths in main', async () => {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
+  const trusted = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
+  const foreign = { sender, senderFrame: { parent: null, url: 'https://example.com/' } };
+  const { validateLayout } = await import('./settings');
+  const setLayout = vi.fn(async (value: unknown) => { validateLayout(value); });
+  const layout = vi.fn(async () => ({ chaptersWidth: 315, reviewWidth: 336 }));
+  vi.mocked(ipcMain.handle).mockClear();
+  registerDeskIpc({
+    service: { subscribe: vi.fn(), layout, setLayout } as unknown as BookService,
+    broadcast: vi.fn(), openExternal: vi.fn(),
+  });
+  const getHandler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === 'desk:layout')![1];
+  const setHandler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === 'desk:set-layout')![1];
+
+  await expect(getHandler(trusted as never)).resolves.toEqual({
+    ok: true, value: { chaptersWidth: 315, reviewWidth: 336 },
+  });
+  await expect(setHandler(trusted as never, { chaptersWidth: 400.5, reviewWidth: 360 }))
+    .resolves.toMatchObject({ ok: false, code: 'SAVE_FAILED' });
+  expect(setLayout).toHaveBeenCalledOnce();
+  await expect(setHandler(foreign as never, { chaptersWidth: 400, reviewWidth: 360 }))
+    .rejects.toThrow('IPC rejected');
+  expect(setLayout).toHaveBeenCalledOnce();
+});
+
 // --- diagnostics panel: info snapshot + two safe, argument-free actions -----
 //
 // The renderer never supplies a path or free text here; main alone decides

@@ -40,6 +40,7 @@ import type {
   Recent,
   Snapshot,
 } from '../shared/api';
+import type { LayoutSettings } from '../shared/layout';
 import type { Logger } from './diagnostics/logger';
 import { IpcError, toIpcError, validateCommand } from './ipc';
 import {
@@ -118,6 +119,8 @@ export type BookService = {
   discoverChapters(bookId: string): Promise<ChapterDiscovery>;
   appearance(): Promise<AppearanceSettings>;
   setAppearance(value: AppearanceSettings): Promise<void>;
+  layout(): Promise<LayoutSettings>;
+  setLayout(value: LayoutSettings): Promise<void>;
   savePosition(bookId: string, chapterId: string, anchor: number, scrollTop: number): Promise<void>;
   chooseBook(): Promise<BookView | null>;
   recent(): Promise<Recent[]>;
@@ -657,6 +660,23 @@ export function createBookService(deps: BookServiceDeps): BookService {
         );
       }
       await settings.saveAppearance(appData, validated);
+    },
+
+    async layout(): Promise<LayoutSettings> {
+      return (await settings.loadSettings(appData)).layout;
+    },
+
+    async setLayout(value: LayoutSettings): Promise<void> {
+      let validated: LayoutSettings;
+      try {
+        validated = settings.validateLayout(value);
+      } catch (cause) {
+        throw new IpcError(
+          'SAVE_FAILED',
+          cause instanceof Error ? cause.message : 'Настройки ширины не приняты',
+        );
+      }
+      await settings.saveLayout(appData, validated);
     },
 
     async savePosition(bookId: string, chapterId: string, anchor: number, scrollTop: number): Promise<void> {

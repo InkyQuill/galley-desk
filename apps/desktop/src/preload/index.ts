@@ -14,6 +14,7 @@ import type {
   WindowState,
 } from '../shared/api';
 import type { DiagnosticInput } from '../shared/diagnostics';
+import type { LayoutSettings } from '../shared/layout';
 
 /** Ответ основного процесса: ошибки приходят конвертом со стабильным кодом. */
 type IpcEnvelope<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
@@ -45,6 +46,8 @@ const desk: DeskApi = {
   },
   appearance: () => call<AppearanceSettings>('desk:appearance'),
   setAppearance: (value) => call<void>('desk:set-appearance', value),
+  layout: () => call<LayoutSettings>('desk:layout'),
+  setLayout: (value) => call<void>('desk:set-layout', value),
   savePosition: (bookId, chapterId, anchor, scrollTop) =>
     call<void>('desk:save-position', bookId, chapterId, anchor, scrollTop),
   chooseBook: () => call<BookView | null>('desk:choose-book'),
