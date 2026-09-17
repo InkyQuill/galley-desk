@@ -339,7 +339,7 @@ test('оформление: тема красит контейнер, настр
   }
 });
 
-test('Zen: панели и topbar скрыты, Escape сначала закрывает popup, затем выходит', async () => {
+test('Zen: панели и topbar скрыты; Escape закрывает popup, но никогда не переключает Zen -- выход только кнопкой, меню или shortcut', async () => {
   const chapterText = '# Заголовок\n\nкот спит на подоконнике.\n';
   const session = await launchWithBook({ 'Глава 1.md': chapterText });
   const { page, bookRoot, userData, openByDialog } = session;
@@ -348,6 +348,9 @@ test('Zen: панели и topbar скрыты, Escape сначала закры
   await closeApp(session);
   await writeEditSidecar(bookRoot, 'Глава 1.md', chapterText, 'кот спит', 'кит спит');
 
+  // Ctrl+Alt+Z (Linux/Windows) / Cmd+Alt+Z (macOS) -- см. shortcuts.ts.
+  const zenShortcut = process.platform === 'darwin' ? 'Meta+Alt+z' : 'Control+Alt+z';
+
   const { app, page: zenPage } = await relaunch(userData);
   try {
     await zenPage.getByRole('button', { name: 'Открыть', exact: true }).click();
@@ -355,33 +358,48 @@ test('Zen: панели и topbar скрыты, Escape сначала закры
     await expect(zenPage.locator('.cm-content')).toBeVisible();
 
     // Вход в Zen: topbar/панели скрыты, выход виден всегда.
-    await zenPage.getByRole('button', { name: 'Режим Zen' }).click();
+    await zenPage.getByRole('button', { name: 'Режим Zen', exact: true }).click();
     await expect(zenPage.locator('.book__header')).toHaveCount(0);
     await expect(zenPage.getByRole('navigation', { name: 'Оглавление' })).toHaveCount(0);
     await expect(zenPage.getByRole('complementary', { name: 'Рецензия' })).toHaveCount(0);
     await expect(zenPage.locator('.book__zen-exit')).toBeVisible();
+    await expect(zenPage.locator('.book--zen')).toBeVisible();
     await expect(zenPage.locator('.cm-content')).toBeVisible();
+
+    // Escape дважды без открытых слоёв не выходит из Zen -- Zen никогда не
+    // переключается Escape (история №6 / task 7).
+    await zenPage.keyboard.press('Escape');
+    await zenPage.keyboard.press('Escape');
+    await expect(zenPage.locator('.book--zen')).toBeVisible();
 
     // Попап открывается и в Zen (клик по маркеру правки в тексте).
     await zenPage.getByRole('button', { name: 'Правка', exact: true }).first().click();
     const dialog = zenPage.getByRole('dialog', { name: 'Правка' });
     await expect(dialog).toBeVisible();
 
-    // Первый Escape закрывает попап, Zen остаётся.
+    // Escape закрывает попап, Zen остаётся; ещё один Escape тоже не выходит.
     await zenPage.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     await expect(zenPage.getByRole('tooltip', { name: 'До правки' })).toHaveCount(0);
-    await expect(zenPage.locator('.book__zen-exit')).toBeVisible();
-
-    // Второй Escape выходит из Zen.
+    await expect(zenPage.locator('.book--zen')).toBeVisible();
     await zenPage.keyboard.press('Escape');
-    await expect(zenPage.locator('.book__header')).toBeVisible();
+    await expect(zenPage.locator('.book--zen')).toBeVisible();
+    await expect(zenPage.locator('.book__header')).toHaveCount(0);
 
-    // Постоянная кнопка выхода тоже работает.
-    await zenPage.getByRole('button', { name: 'Режим Zen' }).click();
-    await expect(zenPage.locator('.book__zen-exit')).toBeVisible();
+    // Постоянная кнопка выхода работает (тот же toggle, что и вход).
     await zenPage.getByRole('button', { name: 'Выйти из Zen' }).click();
     await expect(zenPage.locator('.book__header')).toBeVisible();
+
+    // Shortcut переключает Zen туда и обратно, независимо от Escape.
+    await zenPage.keyboard.press(zenShortcut);
+    await expect(zenPage.locator('.book--zen')).toBeVisible();
+    await zenPage.keyboard.press(zenShortcut);
+    await expect(zenPage.locator('.book__header')).toBeVisible();
+
+    // Пункт меню тоже переключает Zen через тот же toggle.
+    await zenPage.getByRole('button', { name: 'Меню книги' }).click();
+    await zenPage.locator('.book__menu-items').getByRole('button', { name: 'Режим Zen', exact: true }).click();
+    await expect(zenPage.locator('.book--zen')).toBeVisible();
   } finally {
     await app.close();
   }
@@ -436,13 +454,13 @@ test('размер книги не меняет интерфейс; оба ло�
 });
 
 
-test('Escape на кнопках поиска очищает запрос, закрывает поиск и лишь затем выходит из Zen', async () => {
+test('Escape на кнопках поиска очищает запрос и закрывает поиск, но не выходит из Zen', async () => {
   const session = await launchWithBook({ 'Глава.md': 'кот спит\n' });
   try {
     await session.openByDialog();
     const { page } = session;
     await expect(page.locator('.cm-content')).toBeVisible();
-    await page.getByRole('button', { name: 'Режим Zen' }).click();
+    await page.getByRole('button', { name: 'Режим Zen', exact: true }).click();
     await page.keyboard.press('Control+f');
     const field = page.getByRole('textbox', { name: 'Поиск по главе' });
     await field.fill('кот');
@@ -453,7 +471,10 @@ test('Escape на кнопках поиска очищает запрос, за�
     await page.keyboard.press('Escape');
     await expect(field).toHaveCount(0);
     await expect(page.locator('.book__zen-exit')).toBeVisible();
+    // Дальнейший Escape не выходит из Zen -- переключение отделено от Escape;
+    // выход только явным toggle (кнопка/меню/shortcut, см. предыдущий тест).
     await page.keyboard.press('Escape');
-    await expect(page.locator('.book__header')).toBeVisible();
+    await expect(page.locator('.book--zen')).toBeVisible();
+    await expect(page.locator('.book__zen-exit')).toBeVisible();
   } finally { await closeApp(session); }
 });

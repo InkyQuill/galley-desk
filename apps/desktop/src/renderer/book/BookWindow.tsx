@@ -19,6 +19,7 @@ import { RecordPopup } from '../review/RecordPopup';
 import type { PopupPosition } from '../review/RecordPopup';
 import { ReviewList } from '../review/ReviewList';
 import { SignalFlyout } from '../review/SignalFlyout';
+import { isZenShortcut } from './shortcuts';
 
 type Props = {
   book: BookView;
@@ -107,9 +108,10 @@ type PopupState =
  * здесь; панели принадлежат только список и карточки без якоря — без форм.
  * Плюс: поиск по главе (область зависит от вида), фильтр оглавления
  * (только отображение, манифест не меняется), режим Zen (панели и topbar
- * скрыты, постоянная кнопка выхода; Escape сначала закрывает popup) и
- * настройки оформления (панель в окне; тема/шрифт живут на контейнере App,
- * в книгах не пишут).
+ * скрыты, постоянная кнопка выхода; переключается кнопкой, пунктом меню или
+ * Ctrl/Cmd+Alt+Z -- Escape его никогда не переключает, только закрывает
+ * верхние слои вроде popup) и настройки оформления (панель в окне; тема/шрифт
+ * живут на контейнере App, в книгах не пишут).
  */
 export function BookWindow({
   book: initialBook,
@@ -182,9 +184,21 @@ export function BookWindow({
   useEffect(() => {
     if (searchOpen) document.querySelector<HTMLInputElement>('.book__search-input')?.focus();
   }, [searchOpen]);
-  // Zen: панели и topbar скрыты; выход — постоянная кнопка или Escape
-  // (сначала закрываются popup/flyout/карточка, затем сам Zen).
+  // Zen: панели и topbar скрыты; переключение отделено от Escape (см. секцию
+  // «Zen и порядок Escape» ниже по файлу) -- кнопка/меню/Ctrl+Alt+Z дают один
+  // toggle, Escape по-прежнему закрывает popup/flyout/карточку, но Zen не трогает.
   const [zen, setZen] = useState(false);
+  // Платформа для guard'а shortcut'а (Ctrl+Alt+Z / Cmd+Alt+Z) -- источник
+  // тот же windowState, что использует TitleBar; полностью инициализируется
+  // до первого нажатия не гарантированно, поэтому shortcut просто не
+  // сработает до прихода значения (нет платформы -- нет ложного толкования).
+  const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
+  useEffect(() => {
+    let active = true;
+    void window.desk.windowState().then(state => { if (active) setPlatform(state.platform); }).catch(() => undefined);
+    const unsubscribe = window.desk.onWindowState(state => { if (active) setPlatform(state.platform); });
+    return () => { active = false; unsubscribe(); };
+  }, []);
   // Фильтр оглавления по названиям глав: только отображение, манифест не меняется.
   const [chapterFilter, setChapterFilter] = useState('');
   // Функция фокуса flyout для Tab-пути из редактора (регистрирует SignalFlyout).
@@ -255,8 +269,29 @@ export function BookWindow({
 
   // --- Zen и порядок Escape ---------------------------------------------------
 
-  const overlayRef = useRef({ popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi });
-  overlayRef.current = { popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi };
+  const overlayRef = useRef({ popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi, managementOpen, platform });
+  overlayRef.current = { popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi, managementOpen, platform };
+
+  /**
+   * Единственный toggle Zen -- вызывается кнопкой, пунктом меню и
+   * shortcut'ом. Вход воспроизводит прежнее поведение enterZen (гасит слои
+   * без якоря, popup остаётся), выход просто снимает флаг: снимок и черновик
+   * (Metadata/ReviewEditor) не размонтируются переключением Zen, поэтому
+   * dirty-состояние формы переживает toggle в любую сторону.
+   */
+  const toggleZen = useCallback((): void => {
+    if (overlayRef.current.zen) {
+      setZen(false);
+      return;
+    }
+    setFlyout(null);
+    setCardId(null);
+    setAppearanceOpen(false);
+    setMenuOpen(false);
+    setSearchOpen(false);
+    setZen(true);
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
@@ -266,10 +301,21 @@ export function BookWindow({
         document.querySelector<HTMLInputElement>('.book__search-input')?.focus();
         return;
       }
-      if (event.key !== 'Escape') return;
       const overlay = overlayRef.current;
-      // Порядок: сначала всплывающие слои (попап обрабатывает и свой
-      // onKeyDown — двойное закрытие идемпотентно), затем сам Zen.
+      // Ctrl/Cmd+Alt+Z переключает Zen независимо от Escape (см. ниже) --
+      // платформа ещё не пришла -- shortcut просто не срабатывает, ложных
+      // толкований по умолчанию (ctrl/meta === false) это не даёт. Открытый
+      // модальный <dialog> (управление книгой) гасит toggle: он уже владеет
+      // модальным фокусом, скрытый переход в Zen за ним не нужен.
+      if (overlay.platform !== null && isZenShortcut(event, overlay.platform)) {
+        event.preventDefault();
+        if (!overlay.managementOpen) toggleZen();
+        return;
+      }
+      if (event.key !== 'Escape') return;
+      // Порядок: только всплывающие слои (попап обрабатывает и свой
+      // onKeyDown — двойное закрытие идемпотентно). Zen сюда не входит:
+      // Escape никогда не переключает Zen, только верхние слои.
       if (overlay.popup !== null) {
         setPopup(null);
         return;
@@ -302,13 +348,12 @@ export function BookWindow({
         event.stopPropagation();
         return;
       }
-      if (overlay.zen) setZen(false);
     };
-    // Capture-фаза: Galley может перехватывать Escape в bubbling-фазе,
-    // а гарантированный порядок «popup → Zen» обязан работать при любом фокусе.
+    // Capture-фаза: Galley может перехватывать Escape/shortcut в
+    // bubbling-фазе, а гарантированный порядок обязан работать при любом фокусе.
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, []);
+  }, [toggleZen]);
 
   // --- поиск -------------------------------------------------------------------
 
@@ -578,16 +623,6 @@ export function BookWindow({
     setCardId(null);
   }, [editorApi]);
 
-  /** Вход в Zen: панели рецензии скрыты, слои без якоря гасятся (попап живёт). */
-  const enterZen = useCallback((): void => {
-    setFlyout(null);
-    setCardId(null);
-    setAppearanceOpen(false);
-    setMenuOpen(false);
-    setSearchOpen(false);
-    setZen(true);
-  }, []);
-
   const handleSelectionWindow = useCallback(
     (range: { from: number; to: number; x: number; y: number; bottom: number } | null) => {
       setFlyout(range);
@@ -688,12 +723,13 @@ export function BookWindow({
             <button type="button" title="Сравнение" aria-label="Сравнение" aria-pressed={mode === 'comparison'} onClick={() => switchMode('comparison')}><IconColumns2 /></button>
             <button type="button" title="Исходник" aria-label="Исходник" aria-pressed={mode === 'source'} onClick={() => switchMode('source')}><IconCode /></button>
           </div>
-          <button type="button" title="Режим Zen" aria-label="Режим Zen" onClick={enterZen}><IconTarget /></button>
+          <button type="button" title="Режим Zen" aria-label="Режим Zen" onClick={toggleZen}><IconTarget /></button>
           <div className="book__menu" ref={menuRef}>
             <button type="button" ref={menuButtonRef} title="Меню книги" aria-label="Меню книги" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><IconDots /></button>
             {menuOpen && <div className="book__menu-items" aria-label="Действия книги" onBlur={(event) => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) setMenuOpen(false); }}>
               <button type="button" disabled={metadataEditing} onClick={() => { setManagementOpen(true); setMenuOpen(false); }}><IconBook />Управление книгой</button>
               <button type="button" onClick={() => { setAppearanceOpen((open) => !open); setMenuOpen(false); }}><IconAdjustments />Оформление</button>
+              <button type="button" onClick={() => { toggleZen(); setMenuOpen(false); }}><IconTarget />Режим Zen</button>
               <button type="button" className="book__close" onClick={() => void closeBook()}><IconBookOff />Закрыть книгу</button>
             </div>}
           </div>
@@ -715,12 +751,14 @@ export function BookWindow({
       )}
       {zen && (
         // Постоянная доступная кнопка выхода: топбар скрыт, управление Zen
-        // остаётся на экране всегда (плюс Escape — после закрытия popup).
+        // остаётся на экране всегда. Escape её не заменяет (Zen не входит в
+        // цепочку Escape) -- выход только этой кнопкой, пунктом меню (после
+        // выхода топбар/меню снова видны) или Ctrl/Cmd+Alt+Z.
         <button
           type="button"
           className="book__zen-exit"
-          onClick={() => setZen(false)}
-          title="Выйти из Zen (Esc)"
+          onClick={toggleZen}
+          title="Выйти из Zen"
         >
           <IconTargetOff /><span>Выйти из Zen</span>
         </button>
