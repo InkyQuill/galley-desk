@@ -8,6 +8,7 @@ import type {
   ChapterDiscovery,
   Command,
   DeskApi,
+  DiagnosticInfo,
   Recent,
   Snapshot,
   WindowState,
@@ -65,6 +66,14 @@ const desk: DeskApi = {
     return () => { ipcRenderer.removeListener('desk:window-state-changed', handler); };
   },
   reportDiagnostic: (input: DiagnosticInput) => call<void>('desk:report-diagnostic', input),
+  diagnosticInfo: () => call<DiagnosticInfo>('desk:diagnostic-info'),
+  openLogsFolder: () => call<void>('desk:open-logs-folder'),
+  copyDiagnosticInfo: () => call<void>('desk:copy-diagnostic-info'),
+  onOpenDiagnosticsRequest: (listener) => {
+    const handler = (): void => listener();
+    ipcRenderer.on('desk:open-diagnostics', handler);
+    return () => { ipcRenderer.removeListener('desk:open-diagnostics', handler); };
+  },
   onSnapshot: (listener) => {
     // Подписка удаляет ровно свой обработчик, не чужие.
     const handler = (_event: unknown, snapshot: Snapshot): void => listener(snapshot);

@@ -326,3 +326,123 @@ test('window controls accept only explicit actions from the trusted top frame', 
   });
   expect(windowAction).toHaveBeenCalledWith(sender, 'close');
 });
+
+// --- diagnostics panel: info snapshot + two safe, argument-free actions -----
+//
+// The renderer never supplies a path or free text here; main alone decides
+// the logs directory and composes the clipboard text. These tests prove
+// that guarantee holds even when a compromised renderer sends extra invoke
+// arguments (e.g. a path) -- they must be silently ignored, never acted on.
+
+import { formatDiagnosticInfo } from './ipc';
+import type { DiagnosticInfo } from '../shared/api';
+import type { DiagnosticsInfoDeps } from './ipc';
+
+const DIAGNOSTIC_BASE: Omit<DiagnosticInfo, 'logging'> = {
+  appVersion: '1.2.3', build: 'abc123f', platform: 'linux', arch: 'x64',
+  electron: '30.0.0', editor: '0.15.0', themes: '0.15.0',
+};
+
+function diagnosticsInfoHarness(overrides: Partial<DiagnosticsInfoDeps> = {}) {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
+  const trusted = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
+  const ensureLogsDirectory = vi.fn(async () => undefined);
+  const openPath = vi.fn(async () => '');
+  const writeClipboardText = vi.fn();
+  const logger = { write: vi.fn(), fatal: vi.fn(), flush: vi.fn(), status: () => 'ready' as const };
+  const diagnostics: DiagnosticsInfoDeps = {
+    base: DIAGNOSTIC_BASE,
+    logsDirectory: '/tmp/desk-logs-test',
+    ensureLogsDirectory,
+    openPath,
+    writeClipboardText,
+    ...overrides,
+  };
+  vi.mocked(ipcMain.handle).mockClear();
+  registerDeskIpc({
+    service: { subscribe: vi.fn() } as unknown as BookService,
+    broadcast: vi.fn(), openExternal: vi.fn(), logger, diagnostics,
+  });
+  const handlerFor = (channel: string) => vi.mocked(ipcMain.handle).mock.calls.find(([c]) => c === channel)![1];
+  return { trusted, handlerFor, ensureLogsDirectory, openPath, writeClipboardText, logger, diagnostics };
+}
+
+test('formatDiagnosticInfo composes only the six documented fields plus logging status', () => {
+  const text = formatDiagnosticInfo({ ...DIAGNOSTIC_BASE, logging: 'ready' });
+  expect(text).toContain('1.2.3');
+  expect(text).toContain('abc123f');
+  expect(text).toContain('linux');
+  expect(text).toContain('x64');
+  expect(text).toContain('30.0.0');
+  expect(text).toContain('0.15.0');
+  expect(text).toContain('ведётся');
+});
+
+test('diagnostic-info returns exactly the six documented fields plus live logging status', async () => {
+  const h = diagnosticsInfoHarness();
+  const result = await h.handlerFor('desk:diagnostic-info')(h.trusted as never);
+  expect(result).toEqual({ ok: true, value: { ...DIAGNOSTIC_BASE, logging: 'ready' } });
+  expect(Object.keys((result as { value: DiagnosticInfo }).value).sort()).toEqual(
+    ['appVersion', 'arch', 'build', 'editor', 'electron', 'logging', 'platform', 'themes'].sort(),
+  );
+});
+
+test('diagnostic-info reflects an unavailable logger when none is configured', async () => {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
+  const trusted = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
+  vi.mocked(ipcMain.handle).mockClear();
+  registerDeskIpc({
+    service: { subscribe: vi.fn() } as unknown as BookService,
+    broadcast: vi.fn(), openExternal: vi.fn(),
+    diagnostics: { base: DIAGNOSTIC_BASE, logsDirectory: '/tmp/x', ensureLogsDirectory: vi.fn(), openPath: vi.fn(), writeClipboardText: vi.fn() },
+  });
+  const handler = vi.mocked(ipcMain.handle).mock.calls.find(([c]) => c === 'desk:diagnostic-info')![1];
+  const result = await handler(trusted as never);
+  expect(result).toMatchObject({ ok: true, value: { logging: 'unavailable' } });
+});
+
+test('diagnostics channels fail explicitly (not by throwing at registration) when no diagnostics deps are configured', async () => {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
+  const trusted = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
+  vi.mocked(ipcMain.handle).mockClear();
+  registerDeskIpc({ service: { subscribe: vi.fn() } as unknown as BookService, broadcast: vi.fn(), openExternal: vi.fn() });
+  const handler = vi.mocked(ipcMain.handle).mock.calls.find(([c]) => c === 'desk:diagnostic-info')![1];
+  const result = await handler(trusted as never);
+  expect(result).toMatchObject({ ok: false });
+});
+
+test('open-logs-folder creates the directory then opens exactly it, ignoring any renderer-supplied path argument', async () => {
+  const h = diagnosticsInfoHarness();
+  const handler = h.handlerFor('desk:open-logs-folder');
+  const result = await handler(h.trusted as never, '/etc/passwd', { path: '/etc/passwd' });
+  expect(result).toEqual({ ok: true, value: undefined });
+  expect(h.ensureLogsDirectory).toHaveBeenCalledWith(h.diagnostics.logsDirectory);
+  expect(h.openPath).toHaveBeenCalledWith(h.diagnostics.logsDirectory);
+  expect(h.openPath).not.toHaveBeenCalledWith('/etc/passwd');
+});
+
+test('open-logs-folder surfaces a directory-creation failure explicitly instead of failing silently', async () => {
+  const h = diagnosticsInfoHarness({ ensureLogsDirectory: vi.fn(async () => { throw new Error('EACCES'); }) });
+  const result = await h.handlerFor('desk:open-logs-folder')(h.trusted as never);
+  expect(result).toMatchObject({ ok: false });
+  expect(h.openPath).not.toHaveBeenCalled();
+});
+
+test('open-logs-folder surfaces a shell.openPath failure instead of reporting success', async () => {
+  const h = diagnosticsInfoHarness({ openPath: vi.fn(async () => 'No application found') });
+  const result = await h.handlerFor('desk:open-logs-folder')(h.trusted as never);
+  expect(result).toMatchObject({ ok: false });
+});
+
+test('copy-diagnostic-info writes a plain-text summary to the clipboard, never the logs path', async () => {
+  const h = diagnosticsInfoHarness();
+  const result = await h.handlerFor('desk:copy-diagnostic-info')(h.trusted as never, '/some/other/path');
+  expect(result).toEqual({ ok: true, value: undefined });
+  expect(h.writeClipboardText).toHaveBeenCalledOnce();
+  const [text] = h.writeClipboardText.mock.calls[0]!;
+  expect(text).not.toContain(h.diagnostics.logsDirectory);
+  for (const value of Object.values(DIAGNOSTIC_BASE)) expect(text).toContain(String(value));
+});

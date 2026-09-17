@@ -151,6 +151,122 @@ test('a forced renderer-only crash is logged as renderer-gone with the enum reas
   }
 });
 
+// --- Task 3: diagnostics panel UI (info + two safe actions) ----------------
+//
+// The titlebar's "Диагностика" button (renderer/TitleBar.tsx) is the single
+// entry point mounted above both the welcome/recent-books screen and an
+// open book, so these scenarios exercise both contexts through the same
+// button rather than duplicating it.
+
+async function launchWelcome() {
+  const userData = await temp('desk-diag-profile-');
+  const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, GALLEY_DESK_USER_DATA: userData } });
+  const page = await app.firstWindow();
+  await expect(page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+  return { app, page, userData };
+}
+
+test('the diagnostics panel opens from the welcome screen by keyboard, shows read-only info with logging status, and Escape returns focus to the button that opened it', async () => {
+  const { app, page } = await launchWelcome();
+  try {
+    const trigger = page.getByRole('button', { name: 'Диагностика' });
+    await trigger.focus();
+    await trigger.press('Enter');
+    const dialog = page.getByRole('dialog', { name: 'Диагностика' });
+    await expect(dialog).toBeVisible();
+    // Read-only info includes a live logging status, never a path.
+    await expect(dialog.getByText(/Ведётся|Недоступен/)).toBeVisible();
+    await expect(dialog).not.toContainText('logs');
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+  } finally {
+    await forceStop(app);
+  }
+});
+
+test('the diagnostics panel opens the same way from an open book, and Escape again returns focus to the titlebar button', async () => {
+  const { app, page } = await launch();
+  try {
+    const trigger = page.getByRole('button', { name: 'Диагностика' });
+    await trigger.click();
+    const dialog = page.getByRole('dialog', { name: 'Диагностика' });
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+  } finally {
+    await forceStop(app);
+  }
+});
+
+test('the copy-info action is reachable and activatable by keyboard alone, and requires its own explicit press', async () => {
+  const { app, page } = await launchWelcome();
+  try {
+    await app.evaluate(({ clipboard }) => {
+      clipboard.writeText('sentinel-before-copy');
+    });
+    await page.getByRole('button', { name: 'Диагностика' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Диагностика' });
+    await expect(dialog).toBeVisible();
+    // Opening the panel alone must not have copied anything yet.
+    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe('sentinel-before-copy');
+    const copyButton = dialog.getByRole('button', { name: 'Скопировать сведения' });
+    await copyButton.focus();
+    await copyButton.press('Enter');
+    await expect(dialog.getByRole('status')).toBeVisible();
+    const copied = await app.evaluate(({ clipboard }) => clipboard.readText());
+    expect(copied).toContain('Galley Desk');
+  } finally {
+    await forceStop(app);
+  }
+});
+
+test('a shell.openPath failure is shown visibly in the panel, not just logged to the console', async () => {
+  const { app, page } = await launchWelcome();
+  try {
+    await app.evaluate(({ shell }) => {
+      shell.openPath = async () => 'No application is registered to open this file';
+    });
+    await page.getByRole('button', { name: 'Диагностика' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Диагностика' });
+    const openFolderButton = dialog.getByRole('button', { name: 'Открыть папку журнала' });
+    await openFolderButton.focus();
+    await openFolderButton.press('Enter');
+    await expect(dialog.getByRole('alert')).toBeVisible();
+  } finally {
+    await forceStop(app);
+  }
+});
+
+test('passing an arbitrary path over the open-logs-folder channel does not change the directory that gets opened', async () => {
+  const { app, page, userData } = await launchWelcome();
+  try {
+    const opened: string[] = [];
+    await app.evaluate(({ shell }) => {
+      const calls: string[] = ((globalThis as unknown as { __openPathCalls?: string[] }).__openPathCalls ??= []);
+      shell.openPath = async (target: string) => {
+        calls.push(target);
+        return '';
+      };
+    });
+    // Simulate a compromised renderer sending an arbitrary extra argument on
+    // the same channel the real preload uses -- the exposed desk.openLogsFolder()
+    // itself takes no parameter, so this goes through the page's own
+    // ipcRenderer-free contextBridge surface exactly as a real attacker would
+    // be limited to: calling the exposed method with extra JS arguments,
+    // which the function signature simply ignores.
+    await page.evaluate(() => (window.desk.openLogsFolder as (...args: unknown[]) => Promise<void>)('/etc/passwd'));
+    const calls = await app.evaluate(() => (globalThis as unknown as { __openPathCalls?: string[] }).__openPathCalls ?? []);
+    opened.push(...calls);
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).not.toBe('/etc/passwd');
+    expect(opened[0]).toBe(path.join(userData, 'logs'));
+  } finally {
+    await forceStop(app);
+  }
+});
+
 test('a clean quit writes session-start and session-end without hanging the app', async () => {
   const { app, page, userData } = await launch();
   await page.getByRole('button', { name: 'Меню книги' }).click();

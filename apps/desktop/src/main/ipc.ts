@@ -8,7 +8,7 @@ import type { WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
-import type { Command, WindowAction, WindowState } from '../shared/api';
+import type { Command, DiagnosticInfo, WindowAction, WindowState } from '../shared/api';
 import {
   IPC_ERROR_CODES,
   isDiagnosticFrame,
@@ -241,6 +241,48 @@ function createDiagnosticRateLimiter(): (sender: WebContents) => boolean {
   };
 }
 
+// --- diagnostics panel (read-only info + two safe actions) ------------------
+//
+// The renderer only ever asks "what is the current state?" and "do this
+// fixed action"; it never supplies a path, a directory or free text that
+// main would then act on. `base` is computed once in main.ts from trusted
+// process/build info (never from IPC); `logging` is read live from the
+// Logger's own status() on every call so the panel reflects reality even if
+// the log file becomes unavailable mid-session.
+
+export type DiagnosticsInfoDeps = {
+  /** Everything except `logging`, which is derived live from the logger. */
+  base: Omit<DiagnosticInfo, 'logging'>;
+  /** Directory main alone chooses; never influenced by any IPC argument. */
+  logsDirectory: string;
+  ensureLogsDirectory: (directory: string) => Promise<void>;
+  /** shell.openPath-shaped: resolves to '' on success, otherwise a
+   * human-readable failure reason that must reach the caller, not just stderr. */
+  openPath: (directory: string) => Promise<string>;
+  writeClipboardText: (text: string) => void;
+};
+
+function currentDiagnosticInfo(deps: DeskIpcDeps): DiagnosticInfo {
+  if (deps.diagnostics === undefined) throw new IpcError('SAVE_FAILED', 'Диагностика недоступна');
+  return { ...deps.diagnostics.base, logging: deps.logger?.status() ?? 'unavailable' };
+}
+
+/**
+ * Plain-text clipboard summary: exactly the six documented fields plus live
+ * logging status, one per line. Never a path, never book content — there is
+ * nothing else in a {@linkcode DiagnosticInfo} to include.
+ */
+export function formatDiagnosticInfo(info: DiagnosticInfo): string {
+  return [
+    `Galley Desk ${info.appVersion} (build ${info.build})`,
+    `Платформа: ${info.platform} (${info.arch})`,
+    `Electron: ${info.electron}`,
+    `Редактор: ${info.editor}`,
+    `Темы: ${info.themes}`,
+    `Журнал: ${info.logging === 'ready' ? 'ведётся' : 'недоступен'}`,
+  ].join('\n');
+}
+
 // --- sender validation -------------------------------------------------------
 
 /**
@@ -300,6 +342,8 @@ export type DeskIpcDeps = {
   windowAction?: (contents: WebContents, action: WindowAction) => WindowState;
   /** Диагностический журнал; опционален (сбой создания логгера не блокирует IPC). */
   logger?: Logger;
+  /** Diagnostics panel read-only info + safe actions; опционален так же, как logger. */
+  diagnostics?: DiagnosticsInfoDeps;
 };
 
 /**
@@ -438,6 +482,28 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
     if (deps.logger === undefined) return undefined;
     deps.logger.write(validateRendererDiagnostic(args[0]));
     return undefined;
+  });
+  // The three channels below take no meaningful argument on purpose: every
+  // handler ignores whatever the caller sent (`_args`) and main alone
+  // decides the directory/text. A compromised renderer invoking these with
+  // an arbitrary path can never redirect them -- there is no parameter path
+  // through which one could.
+  handle('desk:diagnostic-info', () => currentDiagnosticInfo(deps));
+  handle('desk:open-logs-folder', async () => {
+    const diagnostics = deps.diagnostics;
+    if (diagnostics === undefined) throw new IpcError('SAVE_FAILED', 'Диагностика недоступна');
+    try {
+      await diagnostics.ensureLogsDirectory(diagnostics.logsDirectory);
+    } catch {
+      throw new IpcError('SAVE_FAILED', 'Не удалось создать папку журнала');
+    }
+    const failure = await diagnostics.openPath(diagnostics.logsDirectory);
+    if (failure !== '') throw new IpcError('SAVE_FAILED', 'Не удалось открыть папку журнала');
+  });
+  handle('desk:copy-diagnostic-info', () => {
+    const diagnostics = deps.diagnostics;
+    if (diagnostics === undefined) throw new IpcError('SAVE_FAILED', 'Диагностика недоступна');
+    diagnostics.writeClipboardText(formatDiagnosticInfo(currentDiagnosticInfo(deps)));
   });
   handle('desk:resolve-external', (_event, args) => {
     const choice = args[2];

@@ -1,7 +1,8 @@
 /// <reference types="@electron-forge/plugin-vite/forge-vite-env" />
-import { app, BrowserWindow, dialog, Menu, protocol, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, Menu, protocol, shell } from 'electron';
 import type { WebContents } from 'electron';
 import path from 'node:path';
+import { mkdir } from 'node:fs/promises';
 import { createBookService } from './book-service';
 import { createLogger } from './diagnostics/logger';
 import type { Logger } from './diagnostics/logger';
@@ -116,7 +117,8 @@ if (!app.requestSingleInstanceLock()) {
   // renderer crash, uncaught exception) has somewhere to go. A logger that
   // fails to initialize degrades to `unavailable` internally (see
   // diagnostics/logger.ts) -- it never throws and never blocks the app.
-  const logger: Logger = createLogger(path.join(app.getPath('userData'), 'logs'), {
+  const logsDirectory = path.join(app.getPath('userData'), 'logs');
+  const logger: Logger = createLogger(logsDirectory, {
     appVersion: app.getVersion(),
     build: typeof BUILD_REVISION === 'string' ? BUILD_REVISION : 'unknown',
     electron: process.versions.electron,
@@ -127,6 +129,20 @@ if (!app.requestSingleInstanceLock()) {
     arch: process.arch,
   });
   logger.write({ event: 'session-start', level: 'info', process: 'main' });
+
+  // Diagnostics panel (Task 3): the exact six fields the panel is allowed to
+  // show, computed once from the same trusted process/build info as the
+  // logger's own metadata above -- never from IPC. `logging` is added live
+  // in ipc.ts from `logger.status()` on every request, not baked in here.
+  const diagnosticsBase = {
+    appVersion: app.getVersion(),
+    build: typeof BUILD_REVISION === 'string' ? BUILD_REVISION : 'unknown',
+    platform: process.platform,
+    arch: process.arch,
+    electron: process.versions.electron,
+    editor: EDITOR_VERSION,
+    themes: THEMES_VERSION,
+  };
 
   // Observes only -- never suppresses Node's normal fatal-crash behavior.
   // A handler on 'uncaughtException' (not 'uncaughtExceptionMonitor') would
@@ -162,9 +178,36 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    // Frameless Linux chrome must not retain Electron's Alt-activated menu.
-    // macOS keeps the conventional application menu and keyboard roles.
-    if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
+    // Frameless Linux chrome must not retain Electron's Alt-activated menu;
+    // Diagnostics is reached there via the in-window entry point (titlebar
+    // button) instead -- see renderer/TitleBar.tsx. macOS keeps the
+    // conventional application menu (role-based, so Cmd+C/V/Q etc. keep
+    // working) plus a Help > Диагностика item wired to the same panel.
+    if (process.platform === 'darwin') {
+      const template: Electron.MenuItemConstructorOptions[] = [
+        { role: 'appMenu' },
+        { role: 'fileMenu' },
+        { role: 'editMenu' },
+        { role: 'viewMenu' },
+        { role: 'windowMenu' },
+        {
+          role: 'help',
+          submenu: [
+            {
+              label: 'Диагностика',
+              accelerator: 'CmdOrCtrl+Shift+D',
+              click: () => {
+                const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+                target?.webContents.send('desk:open-diagnostics');
+              },
+            },
+          ],
+        },
+      ];
+      Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+    } else {
+      Menu.setApplicationMenu(null);
+    }
     const service = createBookService({
       appData: app.getPath('userData'),
       logger,
@@ -210,6 +253,15 @@ if (!app.requestSingleInstanceLock()) {
     registerDeskIpc({
       service,
       logger,
+      diagnostics: {
+        base: diagnosticsBase,
+        logsDirectory,
+        // Обёртки (не ссылки на метод): подмена shell.openPath/fs в тестах
+        // перехватывается, так как свойство читается в момент вызова.
+        ensureLogsDirectory: async (directory) => { await mkdir(directory, { recursive: true }); },
+        openPath: (directory) => shell.openPath(directory),
+        writeClipboardText: (text) => clipboard.writeText(text),
+      },
       // Обёртка (а не ссылка на метод): подмена shell.openExternal в тестах
       // перехватывается, так как свойство читается в момент вызова.
       openExternal: (url) => shell.openExternal(url),

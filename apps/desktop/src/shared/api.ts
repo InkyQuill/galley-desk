@@ -27,6 +27,14 @@ export type BookChange =
 export type ChapterDiscovery = {book:BookView;files:{path:string}[]};
 export type WindowAction = 'minimize'|'toggle-maximize'|'close';
 export type WindowState = {maximized:boolean;platform:NodeJS.Platform};
+/** Read-only, non-sensitive build/runtime facts shown in the Diagnostics
+ * panel. Exactly these fields plus `logging` — never a filesystem path,
+ * never book content. main computes this; the renderer never invents it. */
+export type DiagnosticInfo = {
+  appVersion: string; build: string; platform: string; arch: string;
+  electron: string; editor: string; themes: string;
+  logging: 'ready' | 'unavailable';
+};
 export interface DeskApi {
   manageBook(bookId:string,change:BookChange):Promise<BookView>;
   discoverChapters(bookId:string):Promise<ChapterDiscovery>;
@@ -51,4 +59,16 @@ export interface DeskApi {
    * never trusts renderer-side sanitization. Rejections must be swallowed by
    * the caller (see renderer/diagnostics/report-error.ts). */
   reportDiagnostic(input:DiagnosticInput):Promise<void>;
+  /** Read-only snapshot for the Diagnostics panel; main revalidates nothing
+   * from the renderer here — there is no argument to tamper with. */
+  diagnosticInfo():Promise<DiagnosticInfo>;
+  /** main alone picks the logs directory (creating it first if missing) and
+   * calls shell.openPath; no path parameter exists to redirect this. */
+  openLogsFolder():Promise<void>;
+  /** main alone composes the clipboard text from diagnosticInfo(); no book
+   * text, comments or paths are ever part of it. */
+  copyDiagnosticInfo():Promise<void>;
+  /** Pushed by the main-process app menu's "Диагностика" item (macOS); the
+   * renderer decides how/where to show the panel. */
+  onOpenDiagnosticsRequest(listener:()=>void):()=>void;
 }
