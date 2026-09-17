@@ -263,6 +263,48 @@ test('report-diagnostic rate-limits a flood of renderer reports server-side, ind
   expect((h.logger as Logger).write).toHaveBeenCalledTimes(20);
 });
 
+test('report-diagnostic caps a true rolling 1s window, not a fixed bucket that resets at a boundary', async () => {
+  // A fixed window anchored at the sender's first call would reset its count
+  // to zero once `now - windowStart >= 1000`, letting a sender burst ~20
+  // calls right before that boundary and another ~20 right after -- up to
+  // 2x the advertised rate within a real rolling second. Prove the limiter
+  // instead evicts only calls actually older than 1000ms, so calls spaced
+  // across a simulated window boundary are still capped at 20 in total.
+  vi.useFakeTimers();
+  try {
+    const h = diagnosticHarness();
+    vi.setSystemTime(0);
+    await h.invoke({ event: 'unhandled-renderer', level: 'error' });
+    // Fill the rest of the cap just before where a fixed window would reset.
+    vi.setSystemTime(990);
+    for (let i = 0; i < 19; i += 1) {
+      // eslint-disable-next-line no-await-in-loop -- timestamps must advance sequentially, not concurrently
+      await h.invoke({ event: 'unhandled-renderer', level: 'error' });
+    }
+    expect((h.logger as Logger).write).toHaveBeenCalledTimes(20);
+
+    // Cross the 1000ms mark from the *first* call. A fixed window would treat
+    // this as a fresh bucket and accept a full new burst of 20. Only the
+    // t=0 call is actually stale at t=1001 (cutoff=1); the 19 calls at
+    // t=990 are still within the rolling second, so only one more call
+    // should fit under the cap.
+    vi.setSystemTime(1001);
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => h.invoke({ event: 'unhandled-renderer', level: 'error' })),
+    );
+    expect(results.every((r) => (r as { ok: boolean }).ok)).toBe(true);
+    expect((h.logger as Logger).write).toHaveBeenCalledTimes(21);
+
+    // Once the 19-call burst from t=990 has also aged past 1000ms, the
+    // window is genuinely clear again and a fresh call is accepted.
+    vi.setSystemTime(1991);
+    await h.invoke({ event: 'unhandled-renderer', level: 'error' });
+    expect((h.logger as Logger).write).toHaveBeenCalledTimes(22);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test('window controls accept only explicit actions from the trusted top frame', async () => {
   vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
   const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });

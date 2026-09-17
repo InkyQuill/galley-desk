@@ -98,6 +98,54 @@ test('an unhandled renderer promise rejection is logged the same way', async () 
   }
 });
 
+test('a forced renderer-only crash is logged as renderer-gone with the enum reason/exit code, and the app recovers without hanging', async () => {
+  const { app, userData } = await launch();
+  try {
+    // Force-crash ONLY the renderer process (never the main process) via
+    // Electron's own webContents module, reached through Playwright's
+    // main-process `evaluate` bridge -- the same mechanism the existing
+    // harness already uses for `dialog` above. `forcefullyCrashRenderer()`
+    // kills the renderer's OS process, which Chromium/Electron then reports
+    // through the main process's `render-process-gone` event exactly like a
+    // real renderer crash would.
+    await app.evaluate(({ webContents }) => {
+      const [contents] = webContents.getAllWebContents();
+      contents.forcefullyCrashRenderer();
+    });
+
+    await expect.poll(() => readLogOrEmpty(logPath(userData))).toContain('renderer-gone');
+    const contents = await readFile(logPath(userData), 'utf8');
+    const record = contents
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((entry) => entry.event === 'renderer-gone');
+    expect(record).toMatchObject({ level: 'error', process: 'main' });
+    // Only the closed enum reason/exit-code pair, e.g. "crashed(0)" --
+    // never a message, URL or path. No arbitrary renderer-supplied text
+    // reaches the log.
+    expect(record?.code).toMatch(/^[a-z-]+\(-?\d+\)$/);
+
+    // The main process is unaffected by the renderer's death: quitting the
+    // app right after the crash must still complete promptly, not hang.
+    // Playwright's `page` handle for the now-dead renderer target is itself
+    // "crashed" and cannot be reused (e.g. `page.reload()` rejects with
+    // "Page crashed"), so app-level recovery is proven the way the brief
+    // allows -- via a bounded, non-hanging quit -- rather than by resuming
+    // interaction with the dead renderer's Playwright handle.
+    const quit = forceStop(app);
+    const outcome = await Promise.race([
+      quit.then(() => 'quit' as const),
+      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 10_000)),
+    ]);
+    expect(outcome).toBe('quit');
+  } finally {
+    // Idempotent: if the race above already completed the quit, this is a
+    // harmless no-op (the process is already gone).
+    await forceStop(app);
+  }
+});
+
 test('a clean quit writes session-start and session-end without hanging the app', async () => {
   const { app, page, userData } = await launch();
   await page.getByRole('button', { name: 'Меню книги' }).click();

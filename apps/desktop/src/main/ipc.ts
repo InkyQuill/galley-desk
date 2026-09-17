@@ -211,20 +211,32 @@ export function validateRendererDiagnostic(value: unknown): DiagnosticInput {
 }
 
 /** Renderer events are rate-limited server-side to at most this many per
- * second per sender; the renderer's own throttling (if any) is never trusted. */
+ * *any* rolling one-second interval per sender; the renderer's own
+ * throttling (if any) is never trusted. */
 const DIAGNOSTIC_RATE_LIMIT_PER_SECOND = 20;
+const DIAGNOSTIC_RATE_LIMIT_WINDOW_MS = 1000;
 
+/**
+ * True sliding-window limiter: keeps each sender's recent call timestamps,
+ * evicts anything older than the window on every check, and rejects once
+ * the remaining count is already at the cap. This bounds the rate to
+ * <=20 calls in any rolling 1s span, not just within fixed-size buckets
+ * (a fixed window lets a sender burst ~20 calls at the end of one window
+ * and another ~20 right after the boundary).
+ */
 function createDiagnosticRateLimiter(): (sender: WebContents) => boolean {
-  const windows = new WeakMap<WebContents, { windowStart: number; count: number }>();
+  const recentCalls = new WeakMap<WebContents, number[]>();
   return (sender: WebContents): boolean => {
     const now = Date.now();
-    const state = windows.get(sender);
-    if (state === undefined || now - state.windowStart >= 1000) {
-      windows.set(sender, { windowStart: now, count: 1 });
-      return true;
+    const cutoff = now - DIAGNOSTIC_RATE_LIMIT_WINDOW_MS;
+    const timestamps = recentCalls.get(sender) ?? [];
+    const live = timestamps.filter((timestamp) => timestamp > cutoff);
+    if (live.length >= DIAGNOSTIC_RATE_LIMIT_PER_SECOND) {
+      recentCalls.set(sender, live);
+      return false;
     }
-    if (state.count >= DIAGNOSTIC_RATE_LIMIT_PER_SECOND) return false;
-    state.count += 1;
+    live.push(now);
+    recentCalls.set(sender, live);
     return true;
   };
 }
