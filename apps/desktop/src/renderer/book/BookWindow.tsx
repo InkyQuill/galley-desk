@@ -135,6 +135,11 @@ function isSelectableEntry(book: BookView, chapterId: string | null | undefined)
 type AnchorRect = { x: number; y: number; bottom: number };
 
 type ViewMode = 'text' | 'comparison' | 'source';
+type ViewportRestore = { bookId: string; chapterId: string; mode: ViewMode; anchor: ViewportAnchor; navigation: number };
+
+function matchingViewport(ticket: ViewportRestore | null, bookId: string, chapterId: string | null, mode: ViewMode, navigation: number): ViewportAnchor | null {
+  return ticket !== null && ticket.bookId === bookId && ticket.chapterId === chapterId && ticket.mode === mode && ticket.navigation === navigation ? ticket.anchor : null;
+}
 
 /** Открытая карточка: существующая запись у якоря или черновик сигнала. */
 type PopupState =
@@ -205,7 +210,7 @@ export function BookWindow({
   const initialViewportOffset = validRestore?.anchor ?? validCached?.anchor;
   const viewportRef = useRef<ViewportAnchor | null>(initialViewportOffset == null ? null :
     validCached?.chapterId === chapterId && validCached?.viewport?.derivedOffset === initialViewportOffset ? validCached.viewport : { derivedOffset: initialViewportOffset, topOffset: 0 });
-  const pendingViewport = useRef<{ bookId: string; chapterId: string; mode: ViewMode; anchor: ViewportAnchor; navigation: number } | null>(
+  const pendingViewport = useRef<ViewportRestore | null>(
     chapterId !== null && viewportRef.current !== null ? { bookId: book.bookId, chapterId, mode: 'text', anchor: viewportRef.current, navigation: 0 } : null,
   );
   // Эпоха редактора: явная команда «Перечитать» пересоздаёт редактор из
@@ -320,7 +325,7 @@ export function BookWindow({
     // снимка само по себе не прячет сбой и не принимает внешнюю версию.
     const previous = snapshotRef.current;
     if (modeRef.current === 'comparison' && previous !== null && previous !== next) {
-      const anchor = pendingViewport.current?.anchor ?? captureViewportRef.current() ?? viewportRef.current;
+      const anchor = matchingViewport(pendingViewport.current, next.bookId, next.chapterId, modeRef.current, navigationRef.current) ?? captureViewportRef.current() ?? viewportRef.current;
       if (anchor !== null) {
         const rebased = rebaseViewport(anchor, previous.text, next.text);
         viewportRef.current = rebased;
@@ -349,6 +354,11 @@ export function BookWindow({
       setError(errorText(cause));
       return;
     }
+    // A mode switch may have installed a ticket while dismissal/flush awaited.
+    // Committing chapter navigation invalidates that old chapter work too.
+    ++navigationRef.current;
+    pendingViewport.current = null;
+    pendingScroll.current = null;
     viewportRef.current = null;
     lastTextScrollRef.current = 0;
     anchorRef.current = 0;
@@ -621,7 +631,7 @@ export function BookWindow({
 
   const savePosition = useCallback(async (): Promise<void> => {
     if (chapterId === null || chapterId !== chapterIdRef.current) return;
-    const viewport = pendingViewport.current?.anchor ?? captureViewportRef.current() ?? viewportRef.current;
+    const viewport = matchingViewport(pendingViewport.current, book.bookId, chapterId, modeRef.current, navigationRef.current) ?? captureViewportRef.current() ?? viewportRef.current;
     viewportRef.current = viewport;
     const scroller = textRef.current?.querySelector<HTMLElement>('.cm-scroller');
     if (scroller !== undefined && scroller !== null) lastTextScrollRef.current = scroller.scrollTop;
@@ -787,6 +797,9 @@ export function BookWindow({
     const chapter = chapterIdRef.current;
     const current = modeRef.current;
     const anchor = captureViewportRef.current() ?? viewportRef.current;
+    // Snapshot text can lag optimistic typing. Rebase from the exact document
+    // whose geometry supplied the anchor, never from a stale acknowledged text.
+    const capturedText = current === 'text' ? editorApi?.getText() ?? null : snapshotRef.current?.text ?? null;
     pendingViewport.current = null;
     pendingScroll.current = null;
     if (current === 'text') lastTextScrollRef.current = textRef.current?.querySelector<HTMLElement>('.cm-scroller')?.scrollTop ?? lastTextScrollRef.current;
@@ -799,7 +812,9 @@ export function BookWindow({
     if (navigation !== navigationRef.current || chapter !== chapterIdRef.current) return;
     if (next === current) return;
     if (anchor !== null && chapter !== null && current !== 'source' && next !== 'source') {
-      const clamped = { ...anchor, derivedOffset: Math.min(anchor.derivedOffset, snapshotRef.current?.text.length ?? 0) };
+      const settledText = snapshotRef.current?.text ?? '';
+      const rebased = capturedText === null ? anchor : rebaseViewport(anchor, capturedText, settledText);
+      const clamped = { ...rebased, derivedOffset: Math.min(rebased.derivedOffset, settledText.length) };
       viewportRef.current = clamped;
       pendingViewport.current = { bookId: book.bookId, chapterId: chapter, mode: next, anchor: clamped, navigation };
     }

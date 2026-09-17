@@ -58,6 +58,8 @@ export type ReviewEditorApi = {
   /** Снимает поисковую подсветку (пустой запрос/нет совпадений/смена главы). */
   clearSearchHighlight: () => void;
   captureViewport: () => ViewportAnchor | null;
+  /** Actual local document, including optimistic input not yet acknowledged. */
+  getText: () => string | null;
   restoreViewport: (anchor: ViewportAnchor) => boolean;
   coordsAt: (pos: number) => { top: number; left: number; bottom: number } | null;
 };
@@ -534,6 +536,7 @@ export function ReviewEditor({
         const view = handleRef.current?.view ?? null;
         if (view !== null) view.dispatch({ effects: setSearchHighlight.of(null) });
       },
+      getText: () => handleRef.current?.view?.state.doc.toString() ?? null,
       captureViewport: () => {
         const view = handleRef.current?.view;
         if (!view || !view.inView) return null;
