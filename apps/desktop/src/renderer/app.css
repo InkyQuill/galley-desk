@@ -134,8 +134,23 @@ body { margin: 0; background: Canvas; }
 .book__appearance-row input, .book__appearance-row select { width: 100%; }
 .book__records { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 2px; }
 .book__records > li { min-width: 0; }
-.book__record { width: 100%; min-width: 0; justify-content: flex-start !important; text-align: left; }
-.book__record-summary { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.book__record { width: 100%; min-width: 0; align-items: flex-start !important; justify-content: flex-start !important; text-align: left; }
+.book__record > svg { flex: none; margin-top: 2px; }
+.book__record-summary { display: grid; gap: 5px; min-width: 0; white-space: normal; }
+.book__record-part { display: grid; grid-template-columns: minmax(3.25rem, auto) minmax(0, 1fr); align-items: start; gap: 7px; min-width: 0; }
+.book__record-label, .book__record-signal-type { color: var(--app-text-muted); font-size: .8em; font-weight: 600; line-height: 1.35; }
+.book__record-signal-type { display: block; }
+.book__record-excerpt {
+  display: -webkit-box;
+  min-width: 0;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+.book__record-excerpt--empty { color: var(--app-text-muted); font-style: italic; }
+.book__record-status { display: block; width: fit-content; max-width: 100%; color: var(--app-error-text); font-size: .8em; font-weight: 600; overflow-wrap: anywhere; }
 .book__record--unavailable { opacity: .65; }
 .book__review [role='dialog'] { min-width: 0; max-width: 100%; overflow-wrap: anywhere; background: var(--app-panel-muted) !important; }
 .chapter-note > button { background: var(--app-panel-muted); justify-content: flex-start; text-align: left; }

@@ -194,6 +194,42 @@ function conflictingReview(): Review {
   };
 }
 
+function denseReview(): { source: string; review: Review } {
+  const parts = Array.from({ length: 30 }, (_, index) => `фрагмент-${String(index).padStart(2, '0')}-${'длинныйтекст'.repeat(4)}`);
+  const sourceText = `${parts.join('\n')}\n`;
+  const source = new TextEncoder().encode(sourceText);
+  const ranges = parts.map((part, index) => {
+    const prefix = parts.slice(0, index).join('\n') + (index === 0 ? '' : '\n');
+    const from = new TextEncoder().encode(prefix).length;
+    return { from, to: from + new TextEncoder().encode(part).length };
+  });
+  const wrong = new TextEncoder().encode('чужой текст для недоступной записи');
+  const edits: Review['edits'] = Array.from({ length: 24 }, (_, index) => ({
+    id: randomUUID(),
+    before: parts[index]!,
+    after: index === 2 ? '' : `новая редакция ${index}: ${'ещёболееобстоятельныйтекст'.repeat(4)}`,
+    anchor: index === 23 ? makeAnchor(wrong, { from: 0, to: wrong.length }) : makeAnchor(source, ranges[index]!),
+  }));
+  // Два участника конфликта при том же диапазоне.
+  edits[1] = { ...edits[1]!, anchor: makeAnchor(source, ranges[0]!), before: parts[0]! };
+  const signals: Review['signals'] = Array.from({ length: 6 }, (_, index) => ({
+    id: randomUUID(),
+    type: index === 0 ? 'warning' : 'note',
+    selected_text: parts[index + 24]!,
+    comment: `Комментарий сигнала ${index}: ${'подробно'.repeat(12)}`,
+    anchor: makeAnchor(source, ranges[index + 24]!),
+  }));
+  return { source: sourceText, review: { schema_version: 1, chapter_id: CHAPTER_ID, source_path: CHAPTER_PATH, chapter_note: '', edits, signals } };
+}
+
+async function writeDenseBook(bookRoot: string): Promise<void> {
+  const fixture = denseReview();
+  const manifest = { schema_version: 1, book_id: randomUUID(), title: 'Плотная рецензия', chapters: [{ id: CHAPTER_ID, path: CHAPTER_PATH, title: 'Глава' }], ignored_files: [] };
+  await writeFile(path.join(bookRoot, '.pocket-editor.json'), JSON.stringify(manifest, null, 2));
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), fixture.source, 'utf8');
+  await writeFile(path.join(bookRoot, SIDECAR_PATH), encodeReview(fixture.review), 'utf8');
+}
+
 async function writeBook(bookRoot: string, review: Review): Promise<void> {
   const manifest = {
     schema_version: 1,
@@ -624,6 +660,64 @@ test('недоступные записи открывают карточку в
     const sidecar = await waitSidecar(page, sidecarPath, (review) => review.edits.length === 0);
     expect(sidecar.signals).toHaveLength(1);
     await expect(page.getByRole('dialog', { name: 'Недоступная запись' })).toHaveCount(0);
+  } finally {
+    await session.app.close();
+  }
+});
+
+test('плотная рецензия остаётся читаемой при ширине 240–560 px', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-dense-review-');
+  await writeDenseBook(bookRoot);
+  const session = await launch(bookRoot);
+  try {
+    const { page } = session;
+    await openOwnBook(session);
+    await page.setViewportSize({ width: 1920, height: 900 });
+    const records = page.locator('.book__record');
+    await expect(records).toHaveCount(30);
+    const initialNames = await records.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')));
+
+    const first = records.first();
+    await expect(first.getByText('Было', { exact: true })).toBeVisible();
+    await expect(first.getByText('Стало', { exact: true })).toBeVisible();
+    await expect(page.locator('.book__record-status', { hasText: 'конфликтует' })).toHaveCount(2);
+    await expect(page.locator('.book__record-status', { hasText: 'недоступна' })).toHaveCount(1);
+    await expect(page.getByText('удаление', { exact: true })).toBeVisible();
+    await expect(page.getByText('Предупреждение', { exact: true })).toBeVisible();
+
+    const reviewResizer = page.getByRole('separator', { name: 'Ширина рецензии' });
+    let currentWidth = 336;
+    for (const width of [336, 240, 560]) {
+      await reviewResizer.focus();
+      // Правая граница зеркальна: ArrowRight сужает правую колонку.
+      const key = width < currentWidth ? 'ArrowRight' : 'ArrowLeft';
+      for (let step = 0; step < Math.abs(width - currentWidth) / 16; step++) await page.keyboard.press(key);
+      currentWidth = width;
+      await expect(page.locator('.book__review')).toHaveCSS('width', `${width}px`);
+      await expect.poll(() => page.locator('.book__review').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await expect.poll(() => records.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')))).toEqual(initialNames);
+      await expect(first.locator('.book__record-excerpt').first()).toHaveCSS('-webkit-line-clamp', '3');
+    }
+
+    await first.focus();
+    const tooltip = page.locator('#gd-tooltip');
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText('длинныйтекст');
+    const tooltipBox = await tooltip.boundingBox();
+    expect(tooltipBox).not.toBeNull();
+    expect(tooltipBox!.x).toBeGreaterThanOrEqual(8);
+    expect(tooltipBox!.x + tooltipBox!.width).toBeLessThanOrEqual(1912);
+
+    const unavailable = page.locator('.book__record--unavailable').first();
+    await unavailable.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog', { name: 'Недоступная запись' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    const active = page.getByRole('button', { name: /^Правка:/ }).filter({ hasNot: page.locator('.book__record-status') }).first();
+    await active.click();
+    await expect(page.getByRole('dialog', { name: 'Правка' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Применить', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Отклонить', exact: true })).toBeVisible();
   } finally {
     await session.app.close();
   }
