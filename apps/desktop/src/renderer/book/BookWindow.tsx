@@ -847,7 +847,12 @@ export function BookWindow({
         {!zen && (
           <ChapterSidebar book={{ ...book, entries }} activeId={chapterId} disabled={metadataEditing || chapterAction !== null || renameOpen}
             onOpen={id => void switchChapter(id)}
-            onAction={action => { actionTriggerRef.current = document.activeElement as HTMLElement; setChapterAction(action); }} />
+            onAction={action => {
+              actionTriggerRef.current = 'chapterId' in action
+                ? Array.from(document.querySelectorAll<HTMLButtonElement>('[data-chapter-menu-id]')).find(button => button.dataset.chapterMenuId === action.chapterId) ?? null
+                : document.activeElement as HTMLElement;
+              setChapterAction(action);
+            }} />
         )}
         <section className="book__content">
           {activeChapter !== null && <h2 className="book__chapter-title">{activeChapter.title || activeChapter.path}</h2>}

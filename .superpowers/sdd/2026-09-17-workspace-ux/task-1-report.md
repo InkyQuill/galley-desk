@@ -94,3 +94,64 @@ The immediately preceding full run was 14/15 passing, with that one selector-onl
 
 - Native macOS execution was unavailable; Linux X11 and the packaged Linux executable were verified.
 - The final all-three-spec run recorded 14/15 before the last test-only selector correction; that corrected filter test then passed in isolation. The requested two management specs themselves passed completely after the final production build.
+
+## Review fix round 1
+
+The review found that a trash action closed its submenu before `BookWindow`
+captured `document.activeElement`. The stored element was therefore the removed
+submenu item, and cancelling trash on a non-active chapter fell back to the
+active row instead of returning to the initiating row.
+
+The chapter row menu button now carries its chapter ID. `BookWindow` resolves
+and stores that persistent button from the action's explicit `chapterId` before
+opening the dialog. Cancellation focuses the surviving initiating button;
+successful removal still uses the existing active/nearest/header fallback.
+
+### RED
+
+```sh
+env -u DISPLAY -u XAUTHORITY -u WAYLAND_DISPLAY -u NO_COLOR -u FORCE_COLOR \
+  XDG_RUNTIME_DIR=/run/user/1000 \
+  DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+  XDG_CURRENT_DESKTOP=KDE KDE_SESSION_VERSION=6 \
+  GTK_MODULES=colorreload-gtk-module:appmenu-gtk-module \
+  xvfb-run -a sh -c 'openbox >/tmp/galley-task1-fix1-red-openbox.log 2>&1 & obpid=$!; trap "kill $obpid 2>/dev/null || true" EXIT; npm run test:desktop -- tests/desktop/book-management.spec.ts --workers=1 --grep "book management: rename"'
+```
+
+Expected failure from the new focus assertion:
+
+```text
+expect(locator).toBeFocused() failed
+Locator: Действия главы: a
+Expected: focused
+Received: inactive
+1 failed
+```
+
+### GREEN
+
+The same focused command passed after the fix:
+
+```text
+1 passed (3.1s)
+```
+
+Final combined verification, also isolated under a fresh `xvfb-run` display
+with its own Openbox and the packaged executable supplied:
+
+```sh
+env -u DISPLAY -u XAUTHORITY -u WAYLAND_DISPLAY -u NO_COLOR -u FORCE_COLOR \
+  XDG_RUNTIME_DIR=/run/user/1000 \
+  DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+  XDG_CURRENT_DESKTOP=KDE KDE_SESSION_VERSION=6 \
+  GTK_MODULES=colorreload-gtk-module:appmenu-gtk-module \
+  GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/galley-desk-linux-x64/galley-desk" \
+  xvfb-run -a sh -c 'openbox >/tmp/galley-task1-fix1-combined-openbox.log 2>&1 & obpid=$!; trap "kill $obpid 2>/dev/null || true" EXIT; npm run test:desktop -- tests/desktop/book-management.spec.ts tests/desktop/packaged-management.spec.ts tests/desktop/search-and-appearance.spec.ts --workers=1'
+```
+
+```text
+15 passed (15.8s)
+```
+
+`npm run typecheck` and `npm run package` also passed before the native GREEN
+runs. This combined rerun supersedes the earlier 14/15 evidence limitation.

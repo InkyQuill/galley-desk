@@ -165,6 +165,9 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
       'связанный файл рецензии',
     );
     await trash.getByRole('button', { name: 'Отмена удаления' }).click();
+    await expect(
+      tocAfterReopen.getByRole('button', { name: 'Действия главы: a' }),
+    ).toBeFocused();
     expect(await readFile(path.join(root, 'a.review.json'), 'utf8')).toBe(
       review,
     );
