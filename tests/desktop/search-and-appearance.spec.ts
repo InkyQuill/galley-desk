@@ -130,13 +130,32 @@ test('поиск в «Тексте»: счётчик, переходы, выде
     await expect(search).toBeVisible();
 
     // 40 абзацев × 1 «кот» в тексте главы (заголовок «Глава первая» не содержит).
-    await page.getByRole('textbox', { name: 'Поиск по главе' }).fill('кот');
+    // Первая находка — далеко ниже исходного viewport (40 абзацев): запрос
+    // сразу показывает 1/40, подсвечивает находку и скроллит к ней, а фокус
+    // остаётся в поле поиска (история №8) -- без клика «Далее».
+    const searchField = page.getByRole('textbox', { name: 'Поиск по главе' });
+    await searchField.fill('кот');
     await expect(page.locator('.book__search-counter')).toHaveText('1/40');
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(1);
+    await expect(page.locator('.gd-search-highlight')).toBeInViewport();
+    await expect(searchField).toBeFocused();
+    // Печать ещё одного символа продолжает работать (счётчик и подсветка обновляются).
+    await searchField.fill('коты');
+    await expect(page.locator('.book__search-counter')).toHaveText('нет совпадений');
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(0);
+    await expect(searchField).toBeFocused();
+    await searchField.fill('кот');
+    await expect(page.locator('.book__search-counter')).toHaveText('1/40');
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(1);
 
-    // Переход «Далее» выделяет совпадение в редакторе и двигает счётчик.
+    // Переход «Далее» подсвечивает следующее совпадение (не EditorSelection —
+    // поиск не должен красть фокус или открывать flyout типа сигнала) и
+    // двигает счётчик, фокус остаётся в поле.
     await page.getByRole('button', { name: 'Следующее совпадение' }).click();
     await expect(page.locator('.book__search-counter')).toHaveText('2/40');
-    await expect(page.locator('.cm-selectionLayer .cm-selectionBackground')).toHaveCount(1);
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(1);
+    await expect(page.locator('.cm-selectionLayer .cm-selectionBackground')).toHaveCount(0);
+    await expect(page.getByRole('toolbar', { name: 'Тип сигнала' })).toHaveCount(0);
 
     // «Предыдущее» идёт назад и замыкает кольцо (1/40 → 40/40).
     await page.getByRole('button', { name: 'Предыдущее совпадение' }).click();
@@ -233,6 +252,8 @@ test('фильтр глав скрывает лишние записи и не �
     'Медведь.md': 'текст\n',
     'Кит.md': 'текст\n',
     'Ёж.md': 'текст\n',
+    '012-без-заголовка.md': 'текст без заголовка\n',
+    'medved-fish.md': '# Заголовок\n\nтекст\n',
   });
   const { page, bookRoot, openByDialog } = session;
   try {
@@ -247,8 +268,31 @@ test('фильтр глав скрывает лишние записи и не �
     await expect(page.getByRole('button', { name: 'Ёж' })).toHaveCount(0);
     await expect(page.getByText('Главы не найдены')).toHaveCount(0);
 
+    // Регистр не важен (история №9).
+    await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('КИТ');
+    await expect(page.getByRole('button', { name: 'Кит' })).toBeVisible();
+
+    // Без заголовка отображается по пути (`entry.title === ''` → title || path);
+    // фильтр находит её и по числовому фрагменту пути «012», не только по названию.
+    await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('012');
+    await expect(page.getByRole('button', { name: '012-без-заголовка.md' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Медведь' })).toHaveCount(0);
+
+    // Совпадение по пути, а не только по названию: файл «medved-fish.md»
+    // отображается под названием «Заголовок» (h1), но фильтр всё равно
+    // находит его по латинскому пути, которого нет в названии.
+    await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('medved');
+    await expect(page.getByRole('button', { name: 'Заголовок' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Кит' })).toHaveCount(0);
+
     await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('выдра');
     await expect(page.getByText('Главы не найдены')).toBeVisible();
+
+    // Пустой фильтр возвращает все главы.
+    await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('');
+    await expect(page.getByRole('button', { name: 'Медведь' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Кит' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Ёж' })).toBeVisible();
 
     // Манифест на диске не менялся: фильтр живёт только в отображении.
     expect(await readFile(manifestPath, 'utf8')).toBe(before);
@@ -416,9 +460,13 @@ test('поиск открывается с клавиатуры и Escape очи
     await page.keyboard.press('Control+f');
     await expect(field).toBeFocused();
     await field.fill('кот');
+    // Первая находка сразу подсвечена (история №8), фокус остаётся в поле.
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(1);
     await page.keyboard.press('Escape');
     await expect(field).toHaveValue('');
     await expect(field).toBeFocused();
+    // Пустой запрос снимает подсветку, не трогая ничего другого в редакторе.
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(0);
     await page.keyboard.press('Escape');
     await expect(field).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Поиск по главе', exact: true })).toBeFocused();

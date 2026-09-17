@@ -1,4 +1,5 @@
 import { BookManagement } from './BookManagement';
+import { matchesChapter } from './chapter-filter';
 import { Metadata } from './Metadata';
 import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconBook, IconX } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -152,6 +153,11 @@ export function BookWindow({
   const comparisonRef = useRef<HTMLDivElement | null>(null);
   const sourceRef = useRef<HTMLPreElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Поисковая подсветка в DOM-видах (Сравнение/Исходник) — window.getSelection,
+  // тот же примитив, что и обычное выделение мышью в read-only тексте. Флаг
+  // отличает «это выделение поставил поиск» от ручного выбора пользователя,
+  // чтобы снятие подсветки не стирало чужое выделение (mousedown сбрасывает).
+  const searchHighlightActiveRef = useRef(false);
   const anchorRef = useRef<number>(validRestore?.anchor ?? cached?.anchor ?? 0);
   const pendingScroll = useRef<number | null>(validRestore?.scrollTop ?? cached?.scrollTop ?? null);
   // Ревизии последнего подтверждения по главам: expectedRevision берётся из
@@ -357,26 +363,50 @@ export function BookWindow({
 
   // --- поиск -------------------------------------------------------------------
 
-  /** Переход к находке: механика зависит от вида (выделение + прокрутка). */
+  /**
+   * Переход к находке: механика зависит от вида (выделение + прокрутка).
+   * Поиск никогда не забирает фокус из своего поля -- в «Тексте» это
+   * отдельная от EditorSelection декорация (revealRange с `focus: false`,
+   * см. renderer/editor/search-highlight.ts), а в DOM-видах -- то же
+   * window.getSelection, но помеченное searchHighlightActiveRef, чтобы
+   * снятие подсветки не задело настоящее выделение пользователя.
+   */
   const revealSearchResult = useCallback(
     (range: SearchRange): void => {
       if (snapshot === null) return;
       if (mode === 'text') {
-        editorApi?.revealRange(range.from, range.to);
+        editorApi?.revealRange(range.from, range.to, { focus: false });
         return;
       }
       if (mode === 'source') {
-        if (sourceRef.current !== null) revealTextOffset(sourceRef.current, range.from, range.to);
+        if (sourceRef.current === null) return;
+        revealTextOffset(sourceRef.current, range.from, range.to);
+        searchHighlightActiveRef.current = true;
         return;
       }
       // Сравнение: производные координаты → display через явные координаты
       // сегментов (правки показаны парами before/after, введённая часть сдвинута).
       if (comparisonRef.current === null) return;
       const display = derivedRangeToDisplayRange(comparisonSegments(snapshot), range.from, range.to);
-      if (display !== null) revealTextOffset(comparisonRef.current, display.from, display.to);
+      if (display !== null) {
+        revealTextOffset(comparisonRef.current, display.from, display.to);
+        searchHighlightActiveRef.current = true;
+      }
     },
     [mode, snapshot, editorApi],
   );
+
+  /** Снимает поисковую подсветку: пустой запрос, нет совпадений, смена главы/панели. */
+  const clearSearchHighlight = useCallback((): void => {
+    if (mode === 'text') {
+      editorApi?.clearSearchHighlight();
+      return;
+    }
+    if (searchHighlightActiveRef.current) {
+      window.getSelection()?.removeAllRanges();
+      searchHighlightActiveRef.current = false;
+    }
+  }, [mode, editorApi]);
 
   useEffect(() => {
     chapterIdRef.current = chapterId;
@@ -680,14 +710,9 @@ export function BookWindow({
   const saveState = saveError !== null ? 'error' : snapshot?.saveState ?? null;
   const popupRecord =
     popup?.kind === 'record' ? snapshot?.records.find((record) => record.id === popup.id) ?? null : null;
-  // Фильтр оглавления: сравнение по названию без изменения manifest.
-  const normalizedFilter = chapterFilter.trim().toLowerCase();
-  const visibleEntries =
-    normalizedFilter === ''
-      ? entries
-      : entries.filter((entry) =>
-          (entry.title !== '' ? entry.title : entry.path).toLowerCase().includes(normalizedFilter),
-        );
+  // Фильтр оглавления: совпадение по названию ИЛИ пути (история №9), без
+  // изменения manifest -- см. renderer/book/chapter-filter.ts.
+  const visibleEntries = entries.filter((entry) => matchesChapter(entry, chapterFilter));
   // Переменные темы, шрифт и подложка живут на контейнере App (.app-root);
   // здесь остаётся только ширина колонки чтения из настройки.
   const widthStyle: CSSProperties = contentWidthStyle(appearance.lineWidth);
@@ -812,13 +837,20 @@ export function BookWindow({
             <ChapterSearch
               onClose={() => { setSearchOpen(false); searchButtonRef.current?.focus(); }}
               area={mode}
+              chapterId={snapshot.chapterId}
               searchText={mode === 'source' ? snapshot.sourceText : snapshot.text}
               onReveal={revealSearchResult}
+              onClearHighlight={clearSearchHighlight}
             />
           )}
           {mode === 'source' ? (
             // Read-only исходник: отдельное presentation view, ввод недоступен, без маркеров.
-            <pre className="book__source" ref={sourceRef} style={widthStyle}>
+            <pre
+              className="book__source"
+              ref={sourceRef}
+              style={widthStyle}
+              onMouseDown={() => { searchHighlightActiveRef.current = false; }}
+            >
               {snapshot?.sourceText ?? ''}
             </pre>
           ) : mode === 'comparison' ? (
@@ -840,7 +872,12 @@ export function BookWindow({
                   Повторить применение
                 </button>
               </div>
-              <div className="book__comparison" ref={comparisonRef} style={widthStyle}>
+              <div
+                className="book__comparison"
+                ref={comparisonRef}
+                style={widthStyle}
+                onMouseDown={() => { searchHighlightActiveRef.current = false; }}
+              >
                 {snapshot !== null && <ComparisonView snapshot={snapshot} onRecordClick={(record, rect) => openRecordAt(record.id, rect)} />}
               </div>
             </>

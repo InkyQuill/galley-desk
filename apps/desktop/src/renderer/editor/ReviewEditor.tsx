@@ -31,6 +31,7 @@ import { bookResourceUrl, isHttpHttpsUrl, isLocalImagePath } from '../book/bookr
 import { dispatchRecordMarkers, mappedVisualRecords, recordMarkers, subscribeScheme } from './markers';
 import { CommandQueue, TypingGroups, fromSnapshot, isHistoryCommand, toTextChanges } from './transaction-adapter';
 import { dismissRecordPreview, recordPreview, setRecordPreviewBlocked } from './record-preview';
+import { searchHighlight, setSearchHighlight } from './search-highlight';
 import { snapshotChange } from './snapshot-change';
 import '@inkyquill/galley-editor/style.css';
 
@@ -43,8 +44,17 @@ export type ReviewEditorApi = {
   dismissPreview: () => boolean;
   /** Скроллит к записи и выделяет её диапазон; false, если якоря нет. */
   reveal: (recordId: string) => boolean;
-  /** Выделяет произвольный диапазон (поиск) и скроллит к нему; false без view. */
-  revealRange: (from: number, to: number) => boolean;
+  /**
+   * Скроллит к диапазону (поиск); false без view. `focus: false` (по
+   * умолчанию для поиска) подсвечивает диапазон отдельной декорацией, не
+   * трогая EditorSelection — поиск не должен красть фокус из своего поля и
+   * не должен открывать flyout типа сигнала (он завязан на непустое
+   * выделение). `focus: true` (по умолчанию метода) сохраняет прежнюю
+   * семантику — реальное выделение, как раньше.
+   */
+  revealRange: (from: number, to: number, options?: { focus?: boolean }) => boolean;
+  /** Снимает поисковую подсветку (пустой запрос/нет совпадений/смена главы). */
+  clearSearchHighlight: () => void;
   coordsAt: (pos: number) => { top: number; left: number; bottom: number } | null;
 };
 
@@ -372,7 +382,7 @@ export function ReviewEditor({
   }
   const extensionsRef = useRef<Extension[] | null>(null);
   if (extensionsRef.current === null) {
-    extensionsRef.current = [protectedFrontmatter(), readOnlyCompartment.current.of(readOnlyExtensions(readOnly)), Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers(), recordPreview()];
+    extensionsRef.current = [protectedFrontmatter(), readOnlyCompartment.current.of(readOnlyExtensions(readOnly)), Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers(), recordPreview(), searchHighlight()];
   }
 
   // Выделение → окно flyout: непустой диапазон даёт координаты конца выделения,
@@ -447,14 +457,25 @@ export function ReviewEditor({
         view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
         return true;
       },
-      revealRange: (from, to) => {
+      revealRange: (from, to, options) => {
         const view = handleRef.current?.view ?? null;
         if (view === null) return false;
         const length = view.state.doc.length;
         const anchor = Math.max(0, Math.min(from, length));
         const head = Math.max(0, Math.min(to, length));
-        view.dispatch({ selection: { anchor, head }, effects: EditorView.scrollIntoView(head, { y: 'center' }) });
+        const focus = options?.focus ?? true;
+        view.dispatch(
+          focus
+            ? { selection: { anchor, head }, effects: EditorView.scrollIntoView(head, { y: 'center' }) }
+            : {
+                effects: [setSearchHighlight.of({ from: anchor, to: head }), EditorView.scrollIntoView(head, { y: 'center' })],
+              },
+        );
         return true;
+      },
+      clearSearchHighlight: () => {
+        const view = handleRef.current?.view ?? null;
+        if (view !== null) view.dispatch({ effects: setSearchHighlight.of(null) });
       },
       coordsAt: (pos) => {
         const view = handleRef.current?.view ?? null;
