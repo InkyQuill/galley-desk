@@ -49,4 +49,11 @@ function pocketSchemaFiles(): Plugin {
 // https://vitejs.dev/config
 export default defineConfig({
   plugins: [pocketSchemaFiles()],
+  // forge.config.ts resolves the git revision once, at build time, and
+  // stashes it on process.env before Forge invokes this config (same Node
+  // process); a source archive without .git falls back to 'unknown' there,
+  // never here and never at runtime.
+  define: {
+    BUILD_REVISION: JSON.stringify(process.env.GALLEY_BUILD_REVISION ?? 'unknown'),
+  },
 });

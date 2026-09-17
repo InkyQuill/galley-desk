@@ -4,7 +4,10 @@
 // line, column). The error's own `message`, any attached `arguments`, and
 // every other stack frame -- including anything under the user's book
 // folder -- are discarded, never merely redacted in place.
-import { IPC_ERROR_CODES } from '../ipc';
+// From shared/diagnostics.ts, not main/ipc.ts: ipc.ts itself needs safeError
+// (to log a cleaned exception before mapping it to a renderer-safe IpcError),
+// so importing the code list from ipc.ts here would create an import cycle.
+import { IPC_ERROR_CODES } from '../../shared/diagnostics';
 
 const MAX_FRAMES = 20;
 
@@ -29,7 +32,9 @@ const NODE_ERROR_CODES = [
   'ERR_IPC_DISCONNECTED',
 ] as const;
 
-const ALLOWED_CODES = new Set<string>([...NODE_ERROR_CODES, ...IPC_ERROR_CODES]);
+/** Exported so main/ipc.ts can revalidate a renderer-submitted `code` against
+ * the exact same allowlist used when scrubbing a raw main-process exception. */
+export const ALLOWED_CODES = new Set<string>([...NODE_ERROR_CODES, ...IPC_ERROR_CODES]);
 
 /**
  * Matches a stack frame that points into validated app build output: the

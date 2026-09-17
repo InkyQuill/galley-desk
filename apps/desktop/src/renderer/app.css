@@ -188,3 +188,8 @@ body { margin: 0; background: Canvas; }
 .book__management .book__management-file { display: flex; align-items: center; overflow-wrap: anywhere; }
 .book__management p { margin: 8px 0; font-size: .9em; }
 .book__management [role=alert] { color: var(--app-error-text); overflow-wrap: anywhere; }
+
+.error-boundary { display: grid; gap: 12px; place-content: center; height: 100vh; padding: 32px; box-sizing: border-box; text-align: center; background: var(--app-panel); color: var(--app-text); }
+.error-boundary__title { font-size: 1.1em; margin: 0; }
+.error-boundary__hint { margin: 0; opacity: .8; }
+.error-boundary__restart { justify-self: center; padding: 8px 20px; }

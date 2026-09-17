@@ -1,4 +1,5 @@
 // apps/desktop/src/shared/api.ts
+import type { DiagnosticInput } from './diagnostics';
 export type Entry = {id:string; path:string; title:string; missing:boolean};
 export type RecordView = {id:string; kind:'edit'|'signal'; status:'active'|'unavailable'|'conflicting';
   reason:string; from:number|null; to:number|null; before:string; after:string;
@@ -46,4 +47,8 @@ export interface DeskApi {
   windowState():Promise<WindowState>;
   windowAction(action:WindowAction):Promise<WindowState>;
   onWindowState(listener:(state:WindowState)=>void):()=>void;
+  /** Fire-and-forget diagnostics report; main revalidates every field and
+   * never trusts renderer-side sanitization. Rejections must be swallowed by
+   * the caller (see renderer/diagnostics/report-error.ts). */
+  reportDiagnostic(input:DiagnosticInput):Promise<void>;
 }

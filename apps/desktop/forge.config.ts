@@ -5,7 +5,28 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+
+// Diagnostics записывает короткую ревизию сборки как непрозрачный build-тег
+// (docs/superpowers/plans/2026-09-17-diagnostics.md, Task 2): читается один
+// раз здесь, на этапе сборки, а не через runtime shell-out из main-процесса
+// упакованного приложения. Source-архив без .git (например, экспорт из CI
+// артефакта) не должен ронять сборку -- отсутствие git или репозитория
+// вырождается в 'unknown'. vite.main.config.ts подхватывает значение через
+// process.env, так как Forge выполняет vite build в этом же процессе Node.
+function resolveBuildRevision(): string {
+  try {
+    const revision = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+      cwd: process.cwd(),
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString().trim();
+    return revision || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+process.env.GALLEY_BUILD_REVISION = resolveBuildRevision();
 
 // Изготовители дистрибутивов: ZIP для macOS (без подписи — только для CI
 // артефактов) и Linux (архив), deb/rpm как дистрибутивы Linux. Squirrel

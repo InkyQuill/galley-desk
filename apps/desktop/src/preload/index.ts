@@ -12,6 +12,7 @@ import type {
   Snapshot,
   WindowState,
 } from '../shared/api';
+import type { DiagnosticInput } from '../shared/diagnostics';
 
 /** Ответ основного процесса: ошибки приходят конвертом со стабильным кодом. */
 type IpcEnvelope<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
@@ -63,6 +64,7 @@ const desk: DeskApi = {
     ipcRenderer.on('desk:window-state-changed', handler);
     return () => { ipcRenderer.removeListener('desk:window-state-changed', handler); };
   },
+  reportDiagnostic: (input: DiagnosticInput) => call<void>('desk:report-diagnostic', input),
   onSnapshot: (listener) => {
     // Подписка удаляет ровно свой обработчик, не чужие.
     const handler = (_event: unknown, snapshot: Snapshot): void => listener(snapshot);

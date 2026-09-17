@@ -2,6 +2,9 @@
 import { app, BrowserWindow, dialog, Menu, protocol, shell } from 'electron';
 import path from 'node:path';
 import { createBookService } from './book-service';
+import { createLogger } from './diagnostics/logger';
+import type { Logger } from './diagnostics/logger';
+import { safeError } from './diagnostics/safe-error';
 import { flushRenderer, resumeRenderer, isOwnRendererUrl, registerDeskIpc } from './ipc';
 import { BOOK_RESOURCE_SCHEME, parseBookResourceUrl, resolveBookImage } from './resources';
 import { buildMainWindowOptions, readWindowState, runWindowAction } from './window';
@@ -11,6 +14,17 @@ import { buildMainWindowOptions, readWindowState, runWindowAction } from './wind
 // и загружается собранный renderer из .vite/renderer/main_window.
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
+// forge.config.ts injects the short git revision at build time (see
+// vite.main.config.ts's `define`); a source archive without .git falls back
+// to 'unknown' -- never resolved at runtime by shelling out to git.
+declare const BUILD_REVISION: string;
+
+// Versions of the vendored editor/themes packages, pinned exactly in
+// package.json (never a semver range): kept here as a plain constant rather
+// than resolved at runtime so the packaged asar never needs to read another
+// package's package.json. Bump alongside the dependency version.
+const EDITOR_VERSION = '0.15.0';
+const THEMES_VERSION = '0.15.0';
 
 // Схема локальных картинок открытых книг: стандартный, «безопасный»
 // протокол с доступом к fetch API; его ответы минуют CSP страницы,
@@ -96,6 +110,39 @@ const createWindow = (): void => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // Created right after the userData override and the single-instance lock,
+  // before any service or window: every later failure (IPC, book service,
+  // renderer crash, uncaught exception) has somewhere to go. A logger that
+  // fails to initialize degrades to `unavailable` internally (see
+  // diagnostics/logger.ts) -- it never throws and never blocks the app.
+  const logger: Logger = createLogger(path.join(app.getPath('userData'), 'logs'), {
+    appVersion: app.getVersion(),
+    build: typeof BUILD_REVISION === 'string' ? BUILD_REVISION : 'unknown',
+    electron: process.versions.electron,
+    chromium: process.versions.chrome,
+    editor: EDITOR_VERSION,
+    themes: THEMES_VERSION,
+    platform: process.platform,
+    arch: process.arch,
+  });
+  logger.write({ event: 'session-start', level: 'info', process: 'main' });
+
+  // Observes only -- never suppresses Node's normal fatal-crash behavior.
+  // A handler on 'uncaughtException' (not 'uncaughtExceptionMonitor') would
+  // prevent the default crash; this deliberately stays a monitor.
+  process.on('uncaughtExceptionMonitor', (error) => {
+    logger.fatal({ event: 'uncaught-main', level: 'error', process: 'main', ...safeError(error) });
+  });
+
+  // Only the closed enum reason/exit code is stored -- never a message, URL
+  // or any other detail carried on the event.
+  app.on('render-process-gone', (_event, _webContents, details) => {
+    logger.write({ event: 'renderer-gone', level: 'error', process: 'main', code: `${details.reason}(${details.exitCode})` });
+  });
+  app.on('child-process-gone', (_event, details) => {
+    logger.write({ event: 'child-gone', level: 'error', process: 'main', code: `${details.type}:${details.reason}(${details.exitCode})` });
+  });
+
   app.on('second-instance', () => {
     const [existingWindow] = BrowserWindow.getAllWindows();
     if (existingWindow) {
@@ -112,6 +159,7 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
     const service = createBookService({
       appData: app.getPath('userData'),
+      logger,
       trashItem: (target) => shell.trashItem(target),
       chooseDirectory: async () => {
         const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
@@ -153,6 +201,7 @@ if (!app.requestSingleInstanceLock()) {
 
     registerDeskIpc({
       service,
+      logger,
       // Обёртка (а не ссылка на метод): подмена shell.openExternal в тестах
       // перехватывается, так как свойство читается в момент вызова.
       openExternal: (url) => shell.openExternal(url),
@@ -187,6 +236,7 @@ if (!app.requestSingleInstanceLock()) {
         } catch (error) {
           for (const window of windows) resumeRenderer(window.webContents);
           console.error('[desk] close: code=SAVE_FAILED');
+          logger.write({ event: 'close-failed', level: 'error', process: 'main', code: 'SAVE_FAILED' });
           throw error;
         } finally {
           closing = null;
@@ -206,8 +256,13 @@ if (!app.requestSingleInstanceLock()) {
       event.preventDefault();
       if (quitting) return;
       quitting = true;
-      void prepareClose().then(() => {
+      void prepareClose().then(async () => {
         quitFlushed = true;
+        // The book is already safely flushed above; session-end and the
+        // diagnostics flush are best-effort and never delay quit past the
+        // 500ms cap -- the crash path makes no promise about the book at all.
+        logger.write({ event: 'session-end', level: 'info', process: 'main' });
+        await Promise.race([logger.flush(), new Promise<void>((resolve) => setTimeout(resolve, 500))]);
         app.quit();
       }, () => { quitting = false; });
     });

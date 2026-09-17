@@ -6,7 +6,13 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { encodeReview, makeAnchor } from '@galley-desk/pocket-format';
 import type { Edit, Review, Signal } from '@galley-desk/pocket-format';
 import { createBookService } from './book-service';
+import type { Logger } from './diagnostics/logger';
 import { IpcError } from './ipc';
+import type { DiagnosticInput } from '../shared/diagnostics';
+
+function fakeLogger(): Logger & { write: ReturnType<typeof vi.fn<(input: DiagnosticInput) => void>> } {
+  return { write: vi.fn(), fatal: vi.fn(), flush: vi.fn(async () => undefined), status: () => 'ready' };
+}
 
 import type { Snapshot } from '../shared/api';
 
@@ -32,7 +38,11 @@ type Harness = ReturnType<typeof createBookService> & {
   fireWatcher: () => void;
 };
 
-async function makeService(bookFiles: Record<string, string> = {}, trashItem?: (target: string) => Promise<void>): Promise<Harness> {
+async function makeService(
+  bookFiles: Record<string, string> = {},
+  trashItem?: (target: string) => Promise<void>,
+  logger?: Logger,
+): Promise<Harness> {
   const bookRoot = await tempDir('galley-book-');
   for (const [name, content] of Object.entries(bookFiles)) {
     const target = path.join(bookRoot, name);
@@ -49,6 +59,7 @@ async function makeService(bookFiles: Record<string, string> = {}, trashItem?: (
   const service = createBookService({
     appData,
     ...(trashItem ? { trashItem } : {}),
+    ...(logger ? { logger } : {}),
     chooseDirectory: () => pickerHandler(),
     chooseExportDestination: async () => exportPicked,
     watchRoot: (root, onEvent) => {
@@ -901,6 +912,37 @@ test.each(['open-external', 'export-local'] as const)('recovery %s preserves the
   const reopened = await h.openChapter(v.bookId, c);
   expect(reopened.recoveryConflict).toBe(false);
   await expect(h.command(v.bookId, c, reopened.revision, { type: 'note', text: 'new' })).resolves.toMatchObject({ chapterNote: 'new' });
+});
+
+test('opening a book with a pending journal logs a structured recovery-result event without changing stderr output', async () => {
+  const logger = fakeLogger();
+  const h = await makeService({ '01.md': 'cat' }, undefined, logger);
+  await seedRecovery(h);
+  // Source unchanged since the journal's `before` snapshot: an unattended recovery.
+  await h.chooseBook();
+  expect(logger.write).toHaveBeenCalledWith({ event: 'recovery-result', level: 'info', process: 'main', code: 'recovered' });
+});
+
+test('opening a book with a pending journal whose source changed externally logs recovery-result=external-change', async () => {
+  const logger = fakeLogger();
+  const h = await makeService({ '01.md': 'cat' }, undefined, logger);
+  await seedRecovery(h);
+  await writeFile(path.join(h.bookRoot, '01.md'), 'fox');
+  await h.chooseBook();
+  expect(logger.write).toHaveBeenCalledWith({ event: 'recovery-result', level: 'warn', process: 'main', code: 'external-change' });
+});
+
+test('a watcher recheck failure logs watcher-failed without surfacing to the caller', async () => {
+  const logger = fakeLogger();
+  const h = await makeService({ '01.md': 'cat' }, undefined, logger);
+  const v = (await h.chooseBook())!;
+  const c = v.entries[0]!.id;
+  await h.openChapter(v.bookId, c);
+  // The book root disappearing mid-check is exactly the class of failure the
+  // watcher path swallows locally (state resolves on the next check).
+  await rm(h.bookRoot, { recursive: true, force: true });
+  h.fireWatcher();
+  await vi.waitFor(() => expect(logger.write).toHaveBeenCalledWith({ event: 'watcher-failed', level: 'warn', process: 'main', code: 'SAVE_FAILED' }));
 });
 
 test.each(['cancel', 'export-failed', 'backup-failed'])('recovery %s keeps pending journal and blocks mutations', async failure => {

@@ -40,6 +40,7 @@ import type {
   Recent,
   Snapshot,
 } from '../shared/api';
+import type { Logger } from './diagnostics/logger';
 import { IpcError, toIpcError, validateCommand } from './ipc';
 import {
   findRecentByCanonicalPath,
@@ -67,6 +68,8 @@ export type BookServiceDeps = {
    * here, and checks also run on focus and before every write.
    */
   watchRoot?: (root: string, onEvent: () => void) => () => void;
+  /** Диагностический журнал; опционален (сбой создания логгера не блокирует книгу). */
+  logger?: Logger;
 };
 
 /** Debounce of root watcher events before a re-read check runs. */
@@ -358,6 +361,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
       } catch {
         // Черновик мог не сохраниться — состояние увидит следующая проверка.
         console.error('[desk] watcher: code=SAVE_FAILED');
+        deps.logger?.write({ event: 'watcher-failed', level: 'warn', process: 'main', code: 'SAVE_FAILED' });
         continue;
       }
       // Ревизия сервиса растёт вместе с принятым изменением: устаревшие
@@ -407,8 +411,10 @@ export function createBookService(deps: BookServiceDeps): BookService {
       const recovery = await recoverBook(handle, appData);
       if (recovery === 'recovered') {
         console.error('[desk] open-book: код результата восстановления=recovered');
+        deps.logger?.write({ event: 'recovery-result', level: 'info', process: 'main', code: 'recovered' });
       } else if (recovery === 'external-change') {
         console.error('[desk] open-book: восстановление отложено, код=SAVE_FAILED (внешнее изменение)');
+        deps.logger?.write({ event: 'recovery-result', level: 'warn', process: 'main', code: 'external-change' });
       }
       // Уже открытая книга (например, папка переехала) переоткрывается начисто.
       if (books.has(handle.id)) {
@@ -628,6 +634,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
           await saveRecentBooks(appData, upsertRecent(stored, { path: book.handle.root, bookId, title: book.handle.manifest.title }));
         } catch {
           console.error('[desk] manage-book: recent update failed');
+          deps.logger?.write({ event: 'recent-update-failed', level: 'warn', process: 'main' });
         }
         return view;
       } catch (error) { throw toIpcError(error); }

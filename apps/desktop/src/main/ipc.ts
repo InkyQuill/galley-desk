@@ -9,11 +9,23 @@ import { randomUUID } from 'node:crypto';
 import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import type { Command, WindowAction, WindowState } from '../shared/api';
+import {
+  IPC_ERROR_CODES,
+  isDiagnosticFrame,
+  MAX_DIAGNOSTIC_FRAMES,
+  RENDERER_DIAGNOSTIC_EVENTS,
+  type DiagnosticEvent,
+  type DiagnosticInput,
+  type IpcErrorCode,
+} from '../shared/diagnostics';
+import { ALLOWED_CODES, safeError } from './diagnostics/safe-error';
+import type { Logger } from './diagnostics/logger';
 import { isHttpHttpsUrl } from './resources';
 
-/** Stable IPC error codes of the contract (never renamed). */
-export const IPC_ERROR_CODES = ['STALE_REVISION', 'SAVE_FAILED', 'EMPTY_SOURCE', 'UNAVAILABLE_RECORD', 'BOOK_MISSING'] as const;
-export type IpcErrorCode = (typeof IPC_ERROR_CODES)[number];
+/** Stable IPC error codes of the contract (never renamed); defined in
+ * shared/diagnostics.ts -- see the import above for why. */
+export { IPC_ERROR_CODES };
+export type { IpcErrorCode };
 
 /** An IPC failure with a stable machine-readable code and a safe message. */
 export class IpcError extends Error {
@@ -150,6 +162,73 @@ export function validateCommand(value: unknown): Command {
   throw new CommandError(`Unknown command type: ${JSON.stringify(type)}`);
 }
 
+// --- renderer diagnostic reports ---------------------------------------------
+//
+// The renderer's report-error.ts sanitizes before sending, but that
+// sanitization is never trusted here: every field is revalidated against the
+// exact same closed vocabulary/allowlist/size limits main would apply to its
+// own exceptions. `process` is always forced to 'renderer' regardless of what
+// was sent, and `requestId` is dropped -- it is not part of the renderer
+// contract and free-form values from an untrusted sender are never retained.
+
+const DIAGNOSTIC_FIELDS = new Set(['event', 'level', 'process', 'code', 'frames']);
+const DIAGNOSTIC_LEVELS = new Set(['info', 'warn', 'error']);
+const RENDERER_DIAGNOSTIC_EVENT_SET = new Set<string>(RENDERER_DIAGNOSTIC_EVENTS);
+
+/**
+ * Validates an untrusted `desk:report-diagnostic` payload into a
+ * {@linkcode DiagnosticInput} safe to hand to {@linkcode Logger.write}.
+ * Rejects unknown fields, main-only event types, unknown levels/codes and
+ * frames outside the sanitized `file:line:column` shape -- the payload's own
+ * free text (if any was smuggled onto the object) never reaches this shape.
+ */
+export function validateRendererDiagnostic(value: unknown): DiagnosticInput {
+  const record = asRecord(value, 'DiagnosticInput');
+  for (const key of Object.keys(record)) {
+    if (!DIAGNOSTIC_FIELDS.has(key)) throw new CommandError(`Unknown diagnostic field: ${key}`);
+  }
+  const event = asString(record.event, 'DiagnosticInput.event');
+  if (!RENDERER_DIAGNOSTIC_EVENT_SET.has(event)) {
+    throw new CommandError('Unknown or main-only diagnostic event');
+  }
+  const level = asString(record.level, 'DiagnosticInput.level');
+  if (!DIAGNOSTIC_LEVELS.has(level)) throw new CommandError('Unknown diagnostic level');
+  const input: DiagnosticInput = { event: event as DiagnosticEvent, level: level as DiagnosticInput['level'], process: 'renderer' };
+  if (record.code !== undefined) {
+    const code = asString(record.code, 'DiagnosticInput.code');
+    if (!ALLOWED_CODES.has(code)) throw new CommandError('Unknown diagnostic code');
+    input.code = code;
+  }
+  if (record.frames !== undefined) {
+    if (!Array.isArray(record.frames)) throw new CommandError('DiagnosticInput.frames must be an array');
+    if (record.frames.length > MAX_DIAGNOSTIC_FRAMES) throw new CommandError('Too many diagnostic frames');
+    input.frames = record.frames.map((frame) => {
+      if (!isDiagnosticFrame(frame)) throw new CommandError('Unsafe diagnostic frame');
+      return frame;
+    });
+  }
+  return input;
+}
+
+/** Renderer events are rate-limited server-side to at most this many per
+ * second per sender; the renderer's own throttling (if any) is never trusted. */
+const DIAGNOSTIC_RATE_LIMIT_PER_SECOND = 20;
+
+function createDiagnosticRateLimiter(): (sender: WebContents) => boolean {
+  const windows = new WeakMap<WebContents, { windowStart: number; count: number }>();
+  return (sender: WebContents): boolean => {
+    const now = Date.now();
+    const state = windows.get(sender);
+    if (state === undefined || now - state.windowStart >= 1000) {
+      windows.set(sender, { windowStart: now, count: 1 });
+      return true;
+    }
+    if (state.count >= DIAGNOSTIC_RATE_LIMIT_PER_SECOND) return false;
+    state.count += 1;
+    return true;
+  };
+}
+
 // --- sender validation -------------------------------------------------------
 
 /**
@@ -207,6 +286,8 @@ export type DeskIpcDeps = {
   openExternal: (url: string) => Promise<void>;
   windowState?: (contents: WebContents) => WindowState;
   windowAction?: (contents: WebContents, action: WindowAction) => WindowState;
+  /** Диагностический журнал; опционален (сбой создания логгера не блокирует IPC). */
+  logger?: Logger;
 };
 
 /** Only a matching one-shot acknowledgement from the requested top frame counts. */
@@ -244,6 +325,7 @@ export function resumeRenderer(contents: WebContents): void {
  */
 export function registerDeskIpc(deps: DeskIpcDeps): void {
   const { service } = deps;
+  const allowedByDiagnosticRateLimit = createDiagnosticRateLimiter();
   const handle = (channel: string, handler: (event: IpcMainInvokeEvent, args: unknown[]) => unknown | Promise<unknown>): void => {
     ipcMain.handle(channel, async (event, ...args) => {
       if (!senderIsTrusted(event)) {
@@ -253,8 +335,13 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
       try {
         return { ok: true, value: await handler(event, args) } satisfies IpcResult<unknown>;
       } catch (error) {
+        // Очищенный исходный exception (код + безопасные кадры, никогда
+        // сообщение) уходит в журнал до перевода на стабильный IpcError —
+        // ошибка деградации самого журнала никогда не блокирует ответ IPC.
+        const requestId = randomUUID();
+        deps.logger?.write({ event: 'ipc-failed', level: 'error', process: 'main', requestId, ...safeError(error) });
         const mapped = toIpcError(error);
-        // В журнал попадают только код и операция — никогда рукопись.
+        // В журнал stderr попадают только код и операция — никогда рукопись.
         console.error(`[desk] ${channel}: code=${mapped.code}`);
         return { ok: false, code: mapped.code, message: mapped.message } satisfies IpcResult<never>;
       }
@@ -319,6 +406,17 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
     return pending;
   });
   handle('desk:open-external', (_event, args) => openExternalVia(deps.openExternal, args[0]));
+  // Successful per-keystroke typing is never logged: only a report the
+  // renderer explicitly sends (unhandled error/rejection, boundary catch)
+  // reaches this channel, and a flood of such reports beyond the rate limit
+  // is silently dropped -- the caller still receives an ok response
+  // (report-error.ts already treats failures as `.catch(() => undefined)`).
+  handle('desk:report-diagnostic', (event, args) => {
+    if (!allowedByDiagnosticRateLimit(event.sender)) return undefined;
+    if (deps.logger === undefined) return undefined;
+    deps.logger.write(validateRendererDiagnostic(args[0]));
+    return undefined;
+  });
   handle('desk:resolve-external', (_event, args) => {
     const choice = args[2];
     if (choice !== 'open-external' && choice !== 'export-local') {
