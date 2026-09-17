@@ -12,6 +12,7 @@ import { BookWindow } from './book/BookWindow';
 import type { ReadingRestore } from './book/BookWindow';
 import { RecentBooks } from './book/RecentBooks';
 import { TitleBar } from './TitleBar';
+import { TooltipHost } from './ui/Tooltip';
 
 declare global {
   interface Window {
@@ -131,6 +132,9 @@ export function App() {
           />
         )}
       </div>
+      {/* Единственный themed host всех подсказок (Task 10) -- внутри .app-root,
+          чтобы наследовать переменные темы и UI-шрифта, а не отдельный портал. */}
+      <TooltipHost />
     </div>
   );
 }

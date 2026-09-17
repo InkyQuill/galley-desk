@@ -20,7 +20,8 @@ import { RecordPopup } from '../review/RecordPopup';
 import type { PopupPosition } from '../review/RecordPopup';
 import { ReviewList } from '../review/ReviewList';
 import { SignalFlyout } from '../review/SignalFlyout';
-import { isZenShortcut } from './shortcuts';
+import { isZenShortcut, zenShortcutLabel } from './shortcuts';
+import { Tooltip } from '../ui/Tooltip';
 
 type Props = {
   book: BookView;
@@ -741,6 +742,9 @@ export function BookWindow({
   // Переменные темы, шрифт и подложка живут на контейнере App (.app-root);
   // здесь остаётся только ширина колонки чтения из настройки.
   const widthStyle: CSSProperties = contentWidthStyle(appearance.lineWidth);
+  // Подсказка кнопок Zen показывает shortcut отдельной строкой (Task 10);
+  // до прихода platform (см. эффект windowState выше) -- вариант Linux/Windows.
+  const zenShortcut = zenShortcutLabel(platform);
 
   return (
     <div className={zen ? 'book book--zen' : 'book'}>
@@ -748,7 +752,9 @@ export function BookWindow({
         <header className="book__header">
           <h1 className="book__title">{book.title}</h1>
           {saveState !== null && (
-            <span role="status" title={snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]} className={`book__save-state book__save-state--${snapshot?.readOnlyReason ? 'readonly' : saveState}`}>{snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}</span>
+            <Tooltip content={snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}>
+              <span role="status" className={`book__save-state book__save-state--${snapshot?.readOnlyReason ? 'readonly' : saveState}`}>{snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}</span>
+            </Tooltip>
           )}
           {saveError !== null && (
             <button type="button" className="book__reread" onClick={rereadChapter}>
@@ -767,15 +773,21 @@ export function BookWindow({
               </button>
             </span>
           )}
-          <button type="button" ref={searchButtonRef} title="Поиск по главе (Ctrl+F)" aria-label="Поиск по главе" aria-expanded={searchOpen} onClick={() => setSearchOpen((open) => !open)}><IconSearch /></button>
+          <Tooltip content="Поиск по главе" shortcut="Ctrl+F">
+            <button type="button" ref={searchButtonRef} aria-label="Поиск по главе" aria-expanded={searchOpen} onClick={() => setSearchOpen((open) => !open)}><IconSearch /></button>
+          </Tooltip>
           <div className="book__view-toggle" aria-label="Режим просмотра">
-            <button type="button" title="Текст" aria-label="Текст" aria-pressed={mode === 'text'} onClick={() => switchMode('text')}><IconFileText /></button>
-            <button type="button" title="Сравнение" aria-label="Сравнение" aria-pressed={mode === 'comparison'} onClick={() => switchMode('comparison')}><IconColumns2 /></button>
-            <button type="button" title="Исходник" aria-label="Исходник" aria-pressed={mode === 'source'} onClick={() => switchMode('source')}><IconCode /></button>
+            <Tooltip content="Текст"><button type="button" aria-label="Текст" aria-pressed={mode === 'text'} onClick={() => switchMode('text')}><IconFileText /></button></Tooltip>
+            <Tooltip content="Сравнение"><button type="button" aria-label="Сравнение" aria-pressed={mode === 'comparison'} onClick={() => switchMode('comparison')}><IconColumns2 /></button></Tooltip>
+            <Tooltip content="Исходник"><button type="button" aria-label="Исходник" aria-pressed={mode === 'source'} onClick={() => switchMode('source')}><IconCode /></button></Tooltip>
           </div>
-          <button type="button" title="Режим Zen" aria-label="Режим Zen" onClick={toggleZen}><IconTarget /></button>
+          <Tooltip content="Режим Zen" shortcut={zenShortcut}>
+            <button type="button" aria-label="Режим Zen" onClick={toggleZen}><IconTarget /></button>
+          </Tooltip>
           <div className="book__menu" ref={menuRef}>
-            <button type="button" ref={menuButtonRef} title="Меню книги" aria-label="Меню книги" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><IconDots /></button>
+            <Tooltip content="Меню книги">
+              <button type="button" ref={menuButtonRef} aria-label="Меню книги" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><IconDots /></button>
+            </Tooltip>
             {menuOpen && <div className="book__menu-items" aria-label="Действия книги" onBlur={(event) => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) setMenuOpen(false); }}>
               <button type="button" disabled={metadataEditing} onClick={() => { setManagementOpen(true); setMenuOpen(false); }}><IconBook />Управление книгой</button>
               <button type="button" onClick={() => { setAppearanceOpen((open) => !open); setMenuOpen(false); }}><IconAdjustments />Оформление</button>
@@ -804,14 +816,15 @@ export function BookWindow({
         // остаётся на экране всегда. Escape её не заменяет (Zen не входит в
         // цепочку Escape) -- выход только этой кнопкой, пунктом меню (после
         // выхода топбар/меню снова видны) или Ctrl/Cmd+Alt+Z.
-        <button
-          type="button"
-          className="book__zen-exit"
-          onClick={toggleZen}
-          title="Выйти из Zen"
-        >
-          <IconTargetOff /><span>Выйти из Zen</span>
-        </button>
+        <Tooltip content="Выйти из Zen" shortcut={zenShortcut}>
+          <button
+            type="button"
+            className="book__zen-exit"
+            onClick={toggleZen}
+          >
+            <IconTargetOff /><span>Выйти из Zen</span>
+          </button>
+        </Tooltip>
       )}
       {openWarning !== null && !openWarningDismissed && (
         <p className="app__error" role="alert">
@@ -840,17 +853,17 @@ export function BookWindow({
             />
             {/* Фильтр меняет только отображение списка; манифест не перезаписывается. */}
             {visibleEntries.map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                className={entry.id === chapterId ? 'book__chapter book__chapter--active' : 'book__chapter'}
-                disabled={entry.missing}
-                title={entry.missing ? 'Файл главы отсутствует' : entry.path}
-                onClick={() => switchChapter(entry.id)}
-              >
-                <span className="book__chapter-name">{entry.title !== '' ? entry.title : entry.path}</span>
-                <small>{entry.path.split('/').pop()}{entry.missing ? ' (файл отсутствует)' : ''}</small>
-              </button>
+              <Tooltip key={entry.id} content={entry.missing ? 'Файл главы отсутствует' : entry.path}>
+                <button
+                  type="button"
+                  className={entry.id === chapterId ? 'book__chapter book__chapter--active' : 'book__chapter'}
+                  disabled={entry.missing}
+                  onClick={() => switchChapter(entry.id)}
+                >
+                  <span className="book__chapter-name">{entry.title !== '' ? entry.title : entry.path}</span>
+                  <small>{entry.path.split('/').pop()}{entry.missing ? ' (файл отсутствует)' : ''}</small>
+                </button>
+              </Tooltip>
             ))}
             {visibleEntries.length === 0 && <p className="book__chapters-empty">Главы не найдены</p>}
           </nav>

@@ -33,6 +33,7 @@ import { CommandQueue, TypingGroups, fromSnapshot, isHistoryCommand, toTextChang
 import { dismissRecordPreview, recordPreview, setRecordPreviewBlocked } from './record-preview';
 import { searchHighlight, setSearchHighlight } from './search-highlight';
 import { snapshotChange } from './snapshot-change';
+import { attachTooltip } from '../ui/tooltip-controller';
 import '@inkyquill/galley-editor/style.css';
 
 /** Императивный доступ панели/попапов к FIFO-очереди и геометрии редактора. */
@@ -338,7 +339,11 @@ export function ReviewEditor({
     element.className = 'book__image';
     element.src = bookResourceUrl(snapshot.bookId, image.url);
     element.alt = image.alt;
-    element.title = image.url;
+    // Императивный DOM-виджет (Galley отдаёт голый HTMLElement, не React-дерево)
+    // -- общая подсказка через attachTooltip вместо нативного title (Task 10).
+    // Galley не даёт хук уничтожения виджета, поэтому cleanup не сохраняется:
+    // при удалении узла из DOM браузер сам снимает его слушатели.
+    attachTooltip(element, image.url);
     return element;
   };
   const imageRenderer = useCallback(

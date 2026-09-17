@@ -171,13 +171,17 @@ test('открывает главу: правка из sidecar, локальна
       // Курсор уводится с картинки: в live-режиме Galley прячет виджет под
       // курсором. Локальная картинка отображается через защищённую схему.
       await reopened.page.locator('.cm-content').click();
-      const image = reopened.page.locator('img.book__image[title="img.png"]');
+      // Подсказка изображения — общий Tooltip (Task 10), не нативный title;
+      // элемент ищем по alt (устойчивый идентификатор картинки в тексте).
+      const image = reopened.page.locator('img.book__image[alt="рисунок"]');
       await expect(image).toHaveCount(1);
       await expect(image).toHaveAttribute('src', new RegExp(`^bookres://${manifest.book_id}/img\\.png$`));
       expect(await image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBeGreaterThan(0);
+      await image.hover();
+      await expect(reopened.page.getByRole('tooltip')).toHaveText('img.png');
 
       // Исполнимые и внешние URL не превращаются в bookres-ссылки.
-      await expect(reopened.page.locator('img.book__image[title="file:///etc/passwd"]')).toHaveCount(0);
+      await expect(reopened.page.locator('img.book__image[alt="чужая"]')).toHaveCount(0);
       const traversal = await reopened.page.evaluate(async (bookId) => {
         const response = await fetch(`bookres://${bookId}/..%2F..%2Fetc%2Fpasswd`);
         return response.status;

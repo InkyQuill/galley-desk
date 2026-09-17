@@ -6,6 +6,7 @@ import { EDIT_MARKER_COLOR, useMarkerTheme, signalColor } from '../editor/marker
 // попап (в BookWindow); у записи без якоря карточка раскрывается прямо здесь.
 import type { Command, RecordView } from '../../shared/api';
 import { RecordPopup } from './RecordPopup';
+import { Tooltip } from '../ui/Tooltip';
 
 /** Единая подпись записи для списка и тестов. */
 const signalLabels = { note: 'Заметка', change_required: 'Требуется правка', warning: 'Предупреждение', review: 'На проверку' };
@@ -36,17 +37,18 @@ export function ReviewList({ records, cardRecordId, onSelect, onCommand, onCardC
       <ul className="book__records">
         {recordsInReadingOrder(records).map((record) => (
           <li key={record.id} style={{ display: 'grid', gap: '0.35rem' }}>
-            <button
-              type="button"
-              className={`book__record book__record--${record.status}`}
-              aria-expanded={cardRecordId === record.id}
-              onClick={() => onSelect(record)}
-              aria-label={recordLabel(record)}
-              title={recordLabel(record)}
-            >
-              {record.kind === 'edit' ? <IconPencil style={{ color: EDIT_MARKER_COLOR }} /> : <IconBolt style={{ color: signalColor(record.signalType ?? 'note', theme) }} />}
-              <span className="book__record-summary">{record.kind === 'edit' ? `${record.before} → ${record.after}` : record.comment || signalLabels[record.signalType ?? 'note']}</span>
-            </button>
+            <Tooltip content={recordLabel(record)}>
+              <button
+                type="button"
+                className={`book__record book__record--${record.status}`}
+                aria-expanded={cardRecordId === record.id}
+                onClick={() => onSelect(record)}
+                aria-label={recordLabel(record)}
+              >
+                {record.kind === 'edit' ? <IconPencil style={{ color: EDIT_MARKER_COLOR }} /> : <IconBolt style={{ color: signalColor(record.signalType ?? 'note', theme) }} />}
+                <span className="book__record-summary">{record.kind === 'edit' ? `${record.before} → ${record.after}` : record.comment || signalLabels[record.signalType ?? 'note']}</span>
+              </button>
+            </Tooltip>
             {cardRecordId === record.id && (
               <RecordPopup readOnly={readOnly} record={record} at={null} onCommand={onCommand} onClose={onCardClose} />
             )}

@@ -9,6 +9,7 @@ import type { RecordView, Snapshot } from '../../shared/api';
 import { comparisonTint, useMarkerTheme, deletionColor, signalColor } from './markers';
 import type { SignalTypeName } from './markers';
 import type { ComparisonSegment } from '../search/search';
+import { Tooltip } from '../ui/Tooltip';
 
 type SigMark = { id: string; type: SignalTypeName };
 
@@ -189,30 +190,30 @@ function RecordMarkerButton({
   const isEdit = record.kind === 'edit';
   const deletion = isEdit && record.after === '';
   const color = isEdit ? (deletion ? deletionColor(theme) : undefined) : signalColor(record.signalType ?? 'note', theme);
+  const label = isEdit
+    ? deletion
+      ? `Удаление: ${record.before}`
+      : `Правка: ${record.before} → ${record.after}`
+    : `Сигнал [${record.signalType ?? 'note'}]${record.comment !== '' ? `: ${record.comment}` : ''}`;
   return (
-    <button
-      type="button"
-      data-record-id={record.id}
-      aria-label={isEdit ? (deletion ? `Удаление: ${record.before}` : 'Правка') : 'Сигнал'}
-      title={
-        isEdit
-          ? deletion
-            ? `Удаление: ${record.before}`
-            : `Правка: ${record.before} → ${record.after}`
-          : `Сигнал [${record.signalType ?? 'note'}]${record.comment !== '' ? `: ${record.comment}` : ''}`
-      }
-      style={{
-        border: 'none',
-        background: 'transparent',
-        color: color ?? 'inherit',
-        cursor: 'pointer',
-        padding: '0 2px',
-        font: 'inherit',
-      }}
-      onClick={(event) => onRecordClick(record, event.currentTarget.getBoundingClientRect())}
-    >
-      {isEdit ? '✎' : '⚡'}
-    </button>
+    <Tooltip content={label}>
+      <button
+        type="button"
+        data-record-id={record.id}
+        aria-label={isEdit ? (deletion ? `Удаление: ${record.before}` : 'Правка') : 'Сигнал'}
+        style={{
+          border: 'none',
+          background: 'transparent',
+          color: color ?? 'inherit',
+          cursor: 'pointer',
+          padding: '0 2px',
+          font: 'inherit',
+        }}
+        onClick={(event) => onRecordClick(record, event.currentTarget.getBoundingClientRect())}
+      >
+        {isEdit ? '✎' : '⚡'}
+      </button>
+    </Tooltip>
   );
 }
 

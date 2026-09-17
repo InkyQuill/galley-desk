@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react
 import { IconCopy, IconInfoCircle, IconMinus, IconSquare, IconX } from '@tabler/icons-react';
 import type { WindowAction, WindowState } from '../shared/api';
 import { Diagnostics } from './diagnostics/Diagnostics';
+import { Tooltip } from './ui/Tooltip';
 
 const iconUrl = new URL('../../assets/branding/galley-desk-icon.svg', import.meta.url).href;
 
@@ -43,18 +44,19 @@ export function TitleBar({ title }: { title: string }) {
     <header className={`titlebar${state?.platform === 'darwin' ? ' titlebar--mac' : ''}`} onDoubleClick={toggleOnDoubleClick}>
       <img className="titlebar__icon" src={iconUrl} alt="Galley Desk" />
       <span className="titlebar__title">{title}</span>
-      <button
-        type="button"
-        ref={diagnosticsButtonRef}
-        className="titlebar__diagnostics"
-        aria-label="Диагностика"
-        title="Диагностика"
-        aria-haspopup="dialog"
-        aria-expanded={diagnosticsOpen}
-        onClick={() => setDiagnosticsOpen(true)}
-      >
-        <IconInfoCircle />
-      </button>
+      <Tooltip content="Диагностика">
+        <button
+          type="button"
+          ref={diagnosticsButtonRef}
+          className="titlebar__diagnostics"
+          aria-label="Диагностика"
+          aria-haspopup="dialog"
+          aria-expanded={diagnosticsOpen}
+          onClick={() => setDiagnosticsOpen(true)}
+        >
+          <IconInfoCircle />
+        </button>
+      </Tooltip>
       {state !== null && state.platform !== 'darwin' && (
         <div className="titlebar__controls">
           <button type="button" aria-label="Свернуть окно" onClick={() => act('minimize')}><IconMinus /></button>

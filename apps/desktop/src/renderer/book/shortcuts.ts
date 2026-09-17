@@ -14,3 +14,9 @@ export function isZenShortcut(
     && event.altKey && !event.shiftKey
     && (platform === 'darwin' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
 }
+
+/** Человекочитаемая подпись shortcut'а Zen для подсказки кнопки (Task 10);
+ * платформа ещё не пришла (см. BookWindow) -- показываем вариант для Linux/Windows. */
+export function zenShortcutLabel(platform: NodeJS.Platform | null): string {
+  return platform === 'darwin' ? 'Cmd+Alt+Z' : 'Ctrl+Alt+Z';
+}

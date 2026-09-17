@@ -7,6 +7,14 @@ body { margin: 0; background: Canvas; }
 .app-root { height: 100vh; display: flex; flex-direction: column; overflow: hidden; --desk-accent: var(--app-focus); }
 .app-root__content { flex: 1; min-height: 0; }
 .app-root__content--welcome { overflow: auto; }
+/* Общая тем-подсказка приложения (Task 10, история №7): один host на всё --
+   и React Tooltip, и attachTooltip DOM-виджетов редактора. -webkit-app-region:
+   no-drag страхует от того, что подсказка окажется в drag-области титлбара
+   независимо от места триггера; pointer-events: none не даёт ей перехватывать
+   курсор/скрывать себя же наведением. */
+.gd-tooltip { z-index: 100; max-width: min(320px, calc(100vw - 16px)); padding: 6px 10px; border-radius: 8px; background: var(--app-panel); color: var(--app-text); box-shadow: var(--app-dialog-shadow); font: var(--desk-ui-size)/1.4 var(--desk-ui-font); pointer-events: none; -webkit-app-region: no-drag; }
+.gd-tooltip__text { display: block; }
+.gd-tooltip__shortcut { display: block; margin-top: 2px; color: var(--app-text-muted); font-size: .85em; }
 .titlebar { -webkit-app-region: drag; flex: none; height: 38px; display: flex; align-items: center; gap: 9px; padding-left: 12px; background: var(--app-panel); color: var(--app-text); user-select: none; }
 .titlebar--mac { padding-left: 82px; }
 .titlebar__icon { width: 23px; height: 23px; object-fit: contain; }

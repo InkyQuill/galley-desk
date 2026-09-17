@@ -1,4 +1,5 @@
 import { IconArrowUp, IconArrowDown, IconX } from '@tabler/icons-react';
+import { Tooltip } from '../ui/Tooltip';
 // Панель поиска по главе. Запрос — точная подстрока (findLiteral: UTF-16
 // indexOf, без регулярок и замен). Область зависит от вида: «Текст» и
 // «Сравнение» ищут по snapshot.text, «Исходник» — по snapshot.sourceText;
@@ -111,7 +112,9 @@ export function ChapterSearch({ area, chapterId, searchText, onReveal, onClearHi
       >
         <IconArrowDown />
       </button>
-      <button type="button" aria-label="Закрыть поиск" title="Закрыть поиск" onClick={onClose}><IconX /></button>
+      <Tooltip content="Закрыть поиск">
+        <button type="button" aria-label="Закрыть поиск" onClick={onClose}><IconX /></button>
+      </Tooltip>
     </div>
   );
 }
