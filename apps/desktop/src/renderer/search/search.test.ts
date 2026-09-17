@@ -35,3 +35,8 @@ test('maps derived range through explicit comparison segment coordinates', () =>
   expect(derivedRangeToDisplayRange(segments, 0, 13)).toEqual(null);
   expect(derivedRangeToDisplayRange([], 0, 1)).toEqual(null);
 });
+
+test('empty document and deletion at EOF have defined point coordinates', () => {
+  expect(derivedRangeToDisplayRange([], 0, 0)).toEqual({ from: 0, to: 0 });
+  expect(derivedRangeToDisplayRange([{ kind: 'edit', derivedFrom: 0, derivedTo: 0, displayStart: 0, beforeLength: 7 }], 0, 0)).toEqual({ from: 7, to: 7 });
+});

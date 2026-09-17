@@ -9,6 +9,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { AppearanceSettings, BookView, Command, RecordView, Snapshot } from '../../shared/api';
 import type { ThemeDefinition } from '@inkyquill/galley-themes';
+import { captureComparisonViewport, restoreComparisonViewport, comparisonTextRange, rebaseViewport } from '../editor/reading-position';
+import type { ViewportAnchor } from '../editor/reading-position';
 import { comparisonSegments, ComparisonView } from '../editor/ComparisonView';
 import type { ReviewEditorApi } from '../editor/ReviewEditor';
 import { ReviewEditor } from '../editor/ReviewEditor';
@@ -59,7 +61,7 @@ export type ReadingRestore = { chapterId: string; scrollTop: number; anchor?: nu
 
 // Восстановление главы и прокрутки при повторном открытии книги в этом окне;
 // между запусками позицию сохраняет основной процесс (desk.savePosition).
-const positionCache = new Map<string, { chapterId: string; scrollTop: number; anchor: number }>();
+const positionCache = new Map<string, { chapterId: string; scrollTop: number; anchor: number; viewport?: ViewportAnchor }>();
 
 const SAVE_DEBOUNCE_MS = 200;
 
@@ -79,6 +81,8 @@ function errorText(error: unknown): string {
  * и прокручивает к нему (виды «Сравнение» и «Исходник» — обычный DOM).
  */
 function revealTextOffset(container: HTMLElement, from: number, to: number): void {
+  const comparisonRange = container.matches('.book__comparison') ? comparisonTextRange(container, from, to) : null;
+  if (container.matches('.book__comparison') && comparisonRange === null) return;
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   let consumed = 0;
   let start: { text: Text; offset: number } | null = null;
@@ -91,10 +95,12 @@ function revealTextOffset(container: HTMLElement, from: number, to: number): voi
     consumed = next;
     if (start !== null && end !== null) break;
   }
-  if (start === null || end === null) return;
-  const range = document.createRange();
-  range.setStart(start.text, Math.max(0, Math.min(start.offset, start.text.data.length)));
-  range.setEnd(end.text, Math.max(0, Math.min(end.offset, end.text.data.length)));
+  if (comparisonRange === null && (start === null || end === null)) return;
+  const range = comparisonRange ?? document.createRange();
+  if (comparisonRange === null && start !== null && end !== null) {
+    range.setStart(start.text, Math.max(0, Math.min(start.offset, start.text.data.length)));
+    range.setEnd(end.text, Math.max(0, Math.min(end.offset, end.text.data.length)));
+  }
   const selection = window.getSelection();
   selection?.removeAllRanges();
   selection?.addRange(range);
@@ -191,6 +197,17 @@ export function BookWindow({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<ViewMode>('text');
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  const navigationRef = useRef(0);
+  const captureViewportRef = useRef<() => ViewportAnchor | null>(() => null);
+  const lastTextScrollRef = useRef(validRestore?.scrollTop ?? validCached?.scrollTop ?? 0);
+  const initialViewportOffset = validRestore?.anchor ?? validCached?.anchor;
+  const viewportRef = useRef<ViewportAnchor | null>(initialViewportOffset == null ? null :
+    validCached?.chapterId === chapterId && validCached?.viewport?.derivedOffset === initialViewportOffset ? validCached.viewport : { derivedOffset: initialViewportOffset, topOffset: 0 });
+  const pendingViewport = useRef<{ bookId: string; chapterId: string; mode: ViewMode; anchor: ViewportAnchor; navigation: number } | null>(
+    chapterId !== null && viewportRef.current !== null ? { bookId: book.bookId, chapterId, mode: 'text', anchor: viewportRef.current, navigation: 0 } : null,
+  );
   // Эпоха редактора: явная команда «Перечитать» пересоздаёт редактор из
   // сняка сессии (принудительная ресинхронизация после сбоя сохранения).
   const [editorEpoch, setEditorEpoch] = useState(0);
@@ -204,7 +221,7 @@ export function BookWindow({
   // чтобы снятие подсветки не стирало чужое выделение (mousedown сбрасывает).
   const searchHighlightActiveRef = useRef(false);
   const anchorRef = useRef<number>(validRestore?.anchor ?? validCached?.anchor ?? 0);
-  const pendingScroll = useRef<number | null>(validRestore?.scrollTop ?? validCached?.scrollTop ?? null);
+  const pendingScroll = useRef<number | null>(viewportRef.current === null ? validRestore?.scrollTop ?? validCached?.scrollTop ?? null : null);
   // Ревизии последнего подтверждения по главам: expectedRevision берётся из
   // последнего ack, а не из устаревшего замыкания React.
   const revisionsRef = useRef(new Map<string, number>());
@@ -301,6 +318,15 @@ export function BookWindow({
     // Локальный флаг ошибки сохранения снимается только явным действием
     // (успешная команда, «Перечитать главу», resolveExternal) — приход
     // снимка само по себе не прячет сбой и не принимает внешнюю версию.
+    const previous = snapshotRef.current;
+    if (modeRef.current === 'comparison' && previous !== null && previous !== next) {
+      const anchor = pendingViewport.current?.anchor ?? captureViewportRef.current() ?? viewportRef.current;
+      if (anchor !== null) {
+        const rebased = rebaseViewport(anchor, previous.text, next.text);
+        viewportRef.current = rebased;
+        pendingViewport.current = { bookId: next.bookId, chapterId: next.chapterId, mode: 'comparison', anchor: rebased, navigation: navigationRef.current };
+      }
+    }
     snapshotRef.current = next;
     setSnapshot(next);
   }, []);
@@ -313,6 +339,9 @@ export function BookWindow({
    */
   const switchChapter = useCallback(async (next: string): Promise<void> => {
     if (next === chapterIdRef.current) return;
+    ++navigationRef.current;
+    pendingViewport.current = null;
+    pendingScroll.current = null;
     if ((await metadataRef.current?.requestDismiss()) === false) return;
     try {
       await editorApi?.flushPending();
@@ -320,6 +349,9 @@ export function BookWindow({
       setError(errorText(cause));
       return;
     }
+    viewportRef.current = null;
+    lastTextScrollRef.current = 0;
+    anchorRef.current = 0;
     chapterIdRef.current = next;
     snapshotRef.current = null;
     setSnapshot(null);
@@ -331,6 +363,11 @@ export function BookWindow({
     setBook(next);
     onBookChange?.(next);
     if (!next.entries.some(entry => entry.id === chapterIdRef.current)) {
+      ++navigationRef.current;
+      pendingViewport.current = null;
+      pendingScroll.current = null;
+      viewportRef.current = null;
+      lastTextScrollRef.current = 0;
       const nextId = firstOpenEntryId(next);
       chapterIdRef.current = nextId;
       snapshotRef.current = null;
@@ -519,7 +556,7 @@ export function BookWindow({
 
   useEffect(() => {
     if (chapterId !== null) {
-      positionCache.set(book.bookId, { chapterId, scrollTop: cached?.scrollTop ?? 0, anchor: anchorRef.current });
+      positionCache.set(book.bookId, { chapterId, scrollTop: lastTextScrollRef.current, anchor: viewportRef.current?.derivedOffset ?? anchorRef.current, viewport: viewportRef.current ?? undefined });
     }
     // Подписка заменяется при смене главы и снимает только свой обработчик.
     return window.desk.onSnapshot((incoming) => {
@@ -540,71 +577,79 @@ export function BookWindow({
     }
   }, [popup, cardId, snapshot]);
 
-  // Восстановление прокрутки после появления текста: скроллер находится
-  // внутри редактора (CM виртуализирует строки и сам ведёт прокрутку).
-  // CM дорисовывает и измеряет контент асинхронно, поэтому попытка
-  // повторяется кадр за кадром, пока прокрутка не будет принята.
-  const restoreScrollRef = useRef<(target: number) => void>(() => undefined);
-  restoreScrollRef.current = (target: number): void => {
+  // The ticket belongs to one navigation. Cleanup cancels late layout work,
+  // including the legacy pixel-only restore for profiles without an anchor.
+  useEffect(() => {
+    if (snapshot === null) return;
+    let frame = 0;
+    let cancelled = false;
     let attempts = 0;
+    const navigation = navigationRef.current;
     const tick = (): void => {
-      const scroller = textRef.current?.querySelector<HTMLElement>('.cm-scroller') ?? null;
-      if (scroller === null) {
-        if (++attempts < 120) requestAnimationFrame(tick);
-        return;
-      }
-      scroller.scrollTop = target;
-      if (Math.abs(scroller.scrollTop - target) < 1) {
-        pendingScroll.current = null;
-        return;
-      }
-      if (++attempts < 120) requestAnimationFrame(tick);
+      if (cancelled || navigation !== navigationRef.current || chapterId !== chapterIdRef.current) return;
+      const pending = pendingViewport.current;
+      if (pending !== null) {
+        if (pending.bookId !== book.bookId || pending.chapterId !== chapterId || pending.mode !== mode || pending.navigation !== navigation) return;
+        const restored = mode === 'text' ? editorApi?.restoreViewport(pending.anchor) === true
+          : mode === 'comparison' && comparisonRef.current !== null && restoreComparisonViewport(comparisonRef.current, comparisonSegments(snapshot), pending.anchor);
+        if (restored) {
+          viewportRef.current = pending.anchor;
+          pendingViewport.current = null;
+          pendingScroll.current = null;
+          return;
+        }
+      } else if (mode === 'text' && pendingScroll.current !== null) {
+        const scroller = textRef.current?.querySelector<HTMLElement>('.cm-scroller');
+        if (scroller) {
+          scroller.scrollTop = pendingScroll.current;
+          if (Math.abs(scroller.scrollTop - pendingScroll.current) < 1) { pendingScroll.current = null; return; }
+        }
+      } else return;
+      if (++attempts < 120) frame = requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    frame = requestAnimationFrame(tick);
+    return () => { cancelled = true; cancelAnimationFrame(frame); };
+  }, [snapshot, mode, editorApi, chapterId, book.bookId]);
+
+  captureViewportRef.current = () => {
+    if (mode === 'text') return editorApi?.captureViewport() ?? null;
+    if (mode === 'comparison' && comparisonRef.current !== null && snapshotRef.current !== null) {
+      return captureComparisonViewport(comparisonRef.current, comparisonSegments(snapshotRef.current));
+    }
+    return null;
   };
 
-  useEffect(() => {
-    if (snapshot !== null && pendingScroll.current !== null) {
-      restoreScrollRef.current(pendingScroll.current);
-    }
-  }, [snapshot]);
+  const savePosition = useCallback(async (): Promise<void> => {
+    if (chapterId === null || chapterId !== chapterIdRef.current) return;
+    const viewport = pendingViewport.current?.anchor ?? captureViewportRef.current() ?? viewportRef.current;
+    viewportRef.current = viewport;
+    const scroller = textRef.current?.querySelector<HTMLElement>('.cm-scroller');
+    if (scroller !== undefined && scroller !== null) lastTextScrollRef.current = scroller.scrollTop;
+    const anchor = viewport?.derivedOffset ?? anchorRef.current;
+    positionCache.set(book.bookId, { chapterId, scrollTop: lastTextScrollRef.current, anchor, viewport: viewport ?? undefined });
+    // IPC persists integer CSS pixels; zoomed Chromium scrollers may be fractional.
+    await window.desk.savePosition(book.bookId, chapterId, anchor, Math.round(lastTextScrollRef.current));
+  }, [book.bookId, chapterId]);
 
-  const scrollerOf = useCallback((): HTMLElement | null => {
-    return textRef.current?.querySelector<HTMLElement>('.cm-scroller') ?? null;
+  const schedulePositionSave = useCallback(() => {
+    if (saveTimer.current !== null) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { saveTimer.current = null; void savePosition().catch(() => undefined); }, SAVE_DEBOUNCE_MS);
+  }, [savePosition]);
+
+  useEffect(() => () => {
+    ++navigationRef.current;
+    if (saveTimer.current !== null) clearTimeout(saveTimer.current);
   }, []);
 
-  /** Дебаiced сохранение позиции: прокрутка и/или якорь выделения. */
-  const schedulePositionSave = useCallback(() => {
-    if (chapterId === null) return;
-    positionCache.set(book.bookId, {
-      chapterId,
-      scrollTop: scrollerOf()?.scrollTop ?? 0,
-      anchor: anchorRef.current,
-    });
-    if (saveTimer.current !== null) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      saveTimer.current = null;
-      void window.desk
-        .savePosition(book.bookId, chapterId, anchorRef.current, scrollerOf()?.scrollTop ?? 0)
-        .catch(() => undefined);
-    }, SAVE_DEBOUNCE_MS);
-  }, [book.bookId, chapterId, scrollerOf]);
+  const rememberScroll = useCallback((scrollTop: number) => {
+    lastTextScrollRef.current = scrollTop;
+    schedulePositionSave();
+  }, [schedulePositionSave]);
 
-  const rememberScroll = useCallback(
-    (scrollTop: number) => {
-      void scrollTop;
-      schedulePositionSave();
-    },
-    [schedulePositionSave],
-  );
-
-  const rememberAnchor = useCallback(
-    (anchor: number) => {
-      anchorRef.current = anchor;
-      schedulePositionSave();
-    },
-    [schedulePositionSave],
-  );
+  const rememberAnchor = useCallback((anchor: number) => {
+    anchorRef.current = anchor;
+    schedulePositionSave();
+  }, [schedulePositionSave]);
 
   // Транспорт команд: expectedRevision — из последнего подтверждения этой
   // главы, ошибка сохранения показывается без оптимистичного «Сохранено».
@@ -714,17 +759,20 @@ export function BookWindow({
         if (element) element.inert = true;
         await editorApi?.flushPending();
         if (saveError !== null) throw new Error(saveError);
+        await savePosition().catch(() => undefined);
+        ++navigationRef.current;
       } catch (cause) {
         if (element) element.inert = false;
         setError(errorText(cause));
         throw cause;
       }
     }
-  }), [editorApi, saveError]);
+  }), [editorApi, saveError, savePosition]);
 
   const closeBook = async (): Promise<void> => {
     if ((await metadataRef.current?.requestDismiss()) === false) return;
     try {
+      await savePosition().catch(() => undefined);
       await window.desk.closeBook(book.bookId);
     } catch (cause) {
       setError(errorText(cause));
@@ -735,17 +783,31 @@ export function BookWindow({
 
   /** Смена вида закрывает всплывающие слои: flyout не бывает вне «Текста». */
   const switchMode = useCallback(async (next: ViewMode): Promise<void> => {
+    const navigation = ++navigationRef.current;
+    const chapter = chapterIdRef.current;
+    const current = modeRef.current;
+    const anchor = captureViewportRef.current() ?? viewportRef.current;
+    pendingViewport.current = null;
+    pendingScroll.current = null;
+    if (current === 'text') lastTextScrollRef.current = textRef.current?.querySelector<HTMLElement>('.cm-scroller')?.scrollTop ?? lastTextScrollRef.current;
     try {
       await editorApi?.flushPending();
     } catch (cause) {
       setError(errorText(cause));
       return;
     }
+    if (navigation !== navigationRef.current || chapter !== chapterIdRef.current) return;
+    if (next === current) return;
+    if (anchor !== null && chapter !== null && current !== 'source' && next !== 'source') {
+      const clamped = { ...anchor, derivedOffset: Math.min(anchor.derivedOffset, snapshotRef.current?.text.length ?? 0) };
+      viewportRef.current = clamped;
+      pendingViewport.current = { bookId: book.bookId, chapterId: chapter, mode: next, anchor: clamped, navigation };
+    }
     setMode(next);
     setFlyout(null);
     setPopup(null);
     setCardId(null);
-  }, [editorApi]);
+  }, [editorApi, book.bookId]);
 
   const handleSelectionWindow = useCallback(
     (range: { from: number; to: number; x: number; y: number; bottom: number } | null) => {
@@ -1017,6 +1079,7 @@ export function BookWindow({
               <div
                 className="book__comparison"
                 ref={comparisonRef}
+                onScroll={schedulePositionSave}
                 style={widthStyle}
                 onMouseDown={() => { searchHighlightActiveRef.current = false; }}
               >
@@ -1034,7 +1097,7 @@ export function BookWindow({
                   onCommand={handleCommand}
                   onSelectionChange={rememberAnchor}
                   onScrollChange={rememberScroll}
-                  initialAnchor={validRestore?.anchor ?? validCached?.anchor ?? null}
+                  initialAnchor={anchorRef.current}
                   onSelectionWindow={handleSelectionWindow}
                   onRecordClick={openRecordAt}
                   flyoutFocusRef={flyoutFocusRef as MutableRefObject<(() => void) | null>}

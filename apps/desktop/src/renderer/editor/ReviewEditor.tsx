@@ -1,3 +1,4 @@
+import type { ViewportAnchor } from './reading-position';
 import { protectedFrontmatter } from './frontmatter';
 import { frontmatter } from '../../shared/metadata';
 // ReviewEditor: один экземпляр Galley на главу, связывающий транзакции
@@ -56,6 +57,8 @@ export type ReviewEditorApi = {
   revealRange: (from: number, to: number, options?: { focus?: boolean }) => boolean;
   /** Снимает поисковую подсветку (пустой запрос/нет совпадений/смена главы). */
   clearSearchHighlight: () => void;
+  captureViewport: () => ViewportAnchor | null;
+  restoreViewport: (anchor: ViewportAnchor) => boolean;
   coordsAt: (pos: number) => { top: number; left: number; bottom: number } | null;
 };
 
@@ -64,7 +67,7 @@ type Props = {
   theme: 'light' | 'dark';
   previewBlocked?: boolean;
   onCommand: (c: Command) => Promise<Snapshot>;
-  /** Реальный якорь выделения — уходит в savePosition (контракт Recent). */
+  /** Якорь выделения для повторного монтирования редактора; viewport хранится отдельно. */
   onSelectionChange?: (anchor: number) => void;
   /** Реальный scrollTop скроллера редактора — уходит в savePosition. */
   onScrollChange?: (scrollTop: number) => void;
@@ -530,6 +533,29 @@ export function ReviewEditor({
       clearSearchHighlight: () => {
         const view = handleRef.current?.view ?? null;
         if (view !== null) view.dispatch({ effects: setSearchHighlight.of(null) });
+      },
+      captureViewport: () => {
+        const view = handleRef.current?.view;
+        if (!view || !view.inView) return null;
+        const top = view.scrollDOM.getBoundingClientRect().top;
+        const block = view.lineBlockAtHeight(top - view.documentTop);
+        let pos = view.posAtCoords({ x: view.contentDOM.getBoundingClientRect().left + 1, y: top + 1 }) ?? block.from;
+        // Blank lines have no reliable collapsed DOM range in comparison.
+        while (pos < view.state.doc.length && view.state.doc.lineAt(pos).length === 0) pos++;
+        const coords = view.coordsAtPos(pos);
+        return coords === null ? null : { derivedOffset: pos, topOffset: coords.top - top };
+      },
+      restoreViewport: (anchor) => {
+        const view = handleRef.current?.view;
+        if (!view || !view.inView) return false;
+        const pos = Math.max(frontmatter(view.state.doc.toString())?.end ?? 0, Math.min(anchor.derivedOffset, view.state.doc.length));
+        const coords = view.coordsAtPos(pos);
+        if (coords === null) {
+          view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'start', yMargin: Math.max(0, anchor.topOffset) }) });
+          return false;
+        }
+        view.scrollDOM.scrollTop += coords.top - view.scrollDOM.getBoundingClientRect().top - anchor.topOffset;
+        return true;
       },
       coordsAt: (pos) => {
         const view = handleRef.current?.view ?? null;

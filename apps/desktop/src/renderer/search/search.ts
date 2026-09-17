@@ -29,6 +29,7 @@ export type ComparisonSegment =
 
 /** display-смещение точки производного текста; конец документа → конец display. */
 function displayOffsetOf(segments: readonly ComparisonSegment[], derived: number): number | null {
+  if (segments.length === 0) return derived === 0 ? 0 : null;
   for (const segment of segments) {
     if (derived >= segment.derivedFrom && derived < segment.derivedTo) {
       const offset = derived - segment.derivedFrom;
@@ -45,8 +46,8 @@ function displayOffsetOf(segments: readonly ComparisonSegment[], derived: number
 
 /**
  * Переводит диапазон находки из производных координат (snapshot.text) в
- * display-координаты «Сравнения». Диапазон вне документа (или пустой список
- * сегментов) даёт null — переход к находке невозможен.
+ * display-координаты «Сравнения». Диапазон вне документа даёт null.
+ * Пустой документ имеет единственную точку 0.
  */
 export function derivedRangeToDisplayRange(
   segments: readonly ComparisonSegment[],
