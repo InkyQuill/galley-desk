@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { IconFilePlus, IconFolderSearch, IconDots, IconSortAscending } from '@tabler/icons-react';
 import type { BookView } from '../../shared/api';
 import { Tooltip } from '../ui/Tooltip';
@@ -21,18 +21,10 @@ export type ChapterSidebarProps = {
 export function ChapterSidebar({ book, activeId, disabled, onOpen, onAction }: ChapterSidebarProps) {
   const [filter, setFilter] = useState('');
   const [menuId, setMenuId] = useState<string | null>(null);
+  const dismissMenu = useCallback(() => setMenuId(null), []);
   const menuRef = useRef<HTMLDivElement>(null);
   const visible = book.entries.filter(entry => matchesChapter(entry, filter));
 
-  useEffect(() => {
-    if (menuId === null) return;
-    menuRef.current?.querySelector<HTMLButtonElement>('.book__chapter-menu-items button')?.focus();
-    const dismiss = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setMenuId(null);
-    };
-    document.addEventListener('pointerdown', dismiss);
-    return () => document.removeEventListener('pointerdown', dismiss);
-  }, [menuId]);
 
   return (
     <nav className="book__chapters" aria-label="Оглавление">
@@ -60,7 +52,7 @@ export function ChapterSidebar({ book, activeId, disabled, onOpen, onAction }: C
               <Tooltip content={`Действия главы: ${label}`}>
                 <button type="button" className="book__chapter-menu-button" data-chapter-menu-id={entry.id} aria-label={`Действия главы: ${label}`} aria-expanded={menuId === entry.id} disabled={disabled} onClick={() => setMenuId(current => current === entry.id ? null : entry.id)}><IconDots /></button>
               </Tooltip>
-              {menuId === entry.id && <ChapterMenu onAction={kind => { setMenuId(null); onAction({ kind, chapterId: entry.id }); }} />}
+              {menuId === entry.id && <ChapterMenu anchor={menuRef} onDismiss={dismissMenu} onAction={kind => { setMenuId(null); onAction({ kind, chapterId: entry.id }); }} />}
             </div>
           </div>
         );

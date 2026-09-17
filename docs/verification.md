@@ -172,3 +172,17 @@ full-suite попытка обнаружила загрязнение тесто
 Forge ZIP maker ранее не прошёл из-за `spawn zip ENOENT`; новый portable ZIP
 создан тем же Python builder с UNIX permissions/symlinks и CRC check. Проверялся
 исходный packaged executable; отдельный запуск распакованного ZIP не выполнен.
+
+### Workspace final review correction (2026-09-17)
+
+The final review's five Important findings and two small Minor findings are
+covered by `tests/desktop/workspace-layers.spec.ts` and the existing metadata,
+management, layout and tooltip suites. Tests use isolated Xvfb/Openbox only.
+The real-copy walkthrough now checks painted chapter-menu targets, last-row and
+narrow-overlay menus, plus long-YAML metadata/discard geometry at 1100/900 px and
+125% zoom. See the final-review correction section in
+[Workspace UX acceptance](reviews/2026-09-17-workspace-ux.md) for refreshed images.
+
+Final correction gates: **104 native passed / 1 expected performance skip** (one
+full isolated run), **461 unit tests passed**, typecheck/package/diff check passed.
+No contract-related files changed in this correction.

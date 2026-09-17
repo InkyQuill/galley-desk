@@ -87,3 +87,39 @@ traffic lights и Cmd-сочетания — **not-run**, а не PASS. Стар
 macOS selection failure остаётся открытым. Linux system IME также not-run.
 Схемы Pocket, manifest и sidecar не изменялись; cross-platform совместимость
 формата подтверждена контрактами, но это не заменяет runtime на второй ОС.
+
+## Final whole-branch review fixes
+
+The final review correctly identified clipped chapter menus and metadata, note-draft
+loss across responsive branches, competing Escape owners, and unbounded large
+passive previews. The follow-up uses an App-themed fixed portal for chapter menus
+and metadata, retains note draft/open/error/busy state per chapter in BookWindow,
+defers workspace Escape to native dialogs and nested forms, blocks Zen beneath
+Diagnostics, and wraps/clips oversized shared tooltips. Full record content remains
+available in the existing click-open card. Collapsed-sidebar dialog cancellation
+returns focus to the chapter toggle; system and search-step controls now use Tooltip.
+
+`workspace-layers.spec.ts` asserts actual painted menu hit targets (including the
+last row), unsaved-note and failed-save state across hide/show, collapse/overlay,
+expand and Zen, single-layer Escape, Diagnostics shortcut isolation, and long-token
+multiline previews at 125%. The existing metadata native suite still verifies
+focus, validation, guarded saves and discard behavior.
+
+The real-copy capture was refreshed after these changes. It asserts menu hit
+geometry without sidebar horizontal scrolling and metadata viewport bounds with
+long YAML and discard confirmation at 1100/900 px and 125%. The original book hash
+is unchanged: `55253e0c7ff59af1ccac74ef4cefa6d0df90fd9e5089de58e912f334d5920046`.
+The contact sheet was regenerated from current captures. Individually inspected:
+
+- [Visible first-row menu](evidence/workspace-ux/task-13/real-book-sidebar-menu.png)
+- [Visible last-row menu](evidence/workspace-ux/task-13/real-book-last-row-menu.png)
+- [Narrow overlay menu](evidence/workspace-ux/task-13/real-book-overlay-menu.png)
+- [Metadata form](evidence/workspace-ux/task-13/real-book-metadata.png)
+- [1100 px / 125% discard](evidence/workspace-ux/task-13/real-book-metadata-1100-125-discard.png)
+- [900 px / 125% discard](evidence/workspace-ux/task-13/real-book-metadata-900-125-discard.png)
+
+macOS and system IME remain not run; this correction does not change that limitation.
+
+Final correction gates: **104 native passed / 1 expected performance skip** (one
+full isolated run), **461 unit tests passed**, typecheck/package/diff check passed.
+No contract-related files changed in this correction.

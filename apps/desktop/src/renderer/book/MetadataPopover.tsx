@@ -1,3 +1,4 @@
+import { AnchoredLayer } from '../ui/AnchoredLayer';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { IconBraces, IconX } from '@tabler/icons-react';
 import { frontmatter, metadataReplacement } from '../../shared/metadata';
@@ -41,7 +42,7 @@ export const MetadataPopover = forwardRef<MetadataPopoverHandle, {
   useEffect(() => {
     if (!open) return;
     const dismiss = (event: PointerEvent): void => {
-      if (dialogRef.current?.contains(event.target as Node) || triggerRef.current?.contains(event.target as Node)) return;
+      if ((event.target as Element).closest('.book__metadata-popover') || triggerRef.current?.contains(event.target as Node)) return;
       void requestDismiss();
     };
     document.addEventListener('pointerdown', dismiss);
@@ -54,7 +55,7 @@ export const MetadataPopover = forwardRef<MetadataPopoverHandle, {
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || document.querySelector('dialog[open]')) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       if (!confirming) void requestDismiss();
@@ -75,7 +76,7 @@ export const MetadataPopover = forwardRef<MetadataPopoverHandle, {
         setDraft({ yaml: originalYaml, originalYaml, source }); setError(null); setOpen(true); onEditing(!readOnly);
       }}><IconBraces size={18} /></button>
     </Tooltip>
-    {open && draft !== null && <div ref={dialogRef} className="book__metadata-popover" role="dialog" aria-label="Метаданные главы" tabIndex={-1}>
+    {open && draft !== null && <AnchoredLayer anchor={triggerRef} align="right" className="book__metadata-popover"><div ref={dialogRef} role="dialog" aria-label="Метаданные главы" tabIndex={-1}>
       <div className="book__metadata-heading"><h3>Метаданные</h3><button type="button" aria-label="Закрыть метаданные" disabled={saving} onClick={() => void requestDismiss()}><IconX size={18} /></button></div>
       <Metadata yaml={draft.yaml} readOnly={readOnly} saving={saving} error={error} parseError={invalid}
         onChange={yaml => { setDraft(current => current === null ? null : { ...current, yaml }); setError(null); }}
@@ -88,7 +89,7 @@ export const MetadataPopover = forwardRef<MetadataPopoverHandle, {
       {confirming && <div className="book__metadata-discard" role="alertdialog" aria-label="Отбросить изменения?">
         <p>Отбросить изменения?</p><button type="button" autoFocus onClick={() => answerDiscard(false)}>Продолжить редактирование</button><button type="button" onClick={() => answerDiscard(true)}>Отбросить</button>
       </div>}
-    </div>}
+    </div></AnchoredLayer>}
   </div>;
 });
 MetadataPopover.displayName = 'MetadataPopover';

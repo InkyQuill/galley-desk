@@ -12,7 +12,7 @@ body { margin: 0; background: Canvas; }
    no-drag страхует от того, что подсказка окажется в drag-области титлбара
    независимо от места триггера; pointer-events: none не даёт ей перехватывать
    курсор/скрывать себя же наведением. */
-.gd-tooltip { z-index: 100; max-width: min(320px, calc(100vw - 16px)); padding: 6px 10px; border-radius: 8px; background: var(--app-panel); color: var(--app-text); box-shadow: var(--app-dialog-shadow); font: var(--desk-ui-size)/1.4 var(--desk-ui-font); pointer-events: none; -webkit-app-region: no-drag; }
+.gd-tooltip { max-height: calc(100vh - 16px); overflow: hidden; overflow-wrap: anywhere; z-index: 100; max-width: min(320px, calc(100vw - 16px)); padding: 6px 10px; border-radius: 8px; background: var(--app-panel); color: var(--app-text); box-shadow: var(--app-dialog-shadow); font: var(--desk-ui-size)/1.4 var(--desk-ui-font); pointer-events: none; -webkit-app-region: no-drag; }
 .gd-tooltip__text { display: block; }
 .gd-tooltip__shortcut { display: block; margin-top: 2px; color: var(--app-text-muted); font-size: .85em; }
 .titlebar { -webkit-app-region: drag; flex: none; height: 44px; min-width: 0; display: flex; flex-wrap: nowrap; align-items: center; gap: 9px; padding-left: 12px; background: var(--app-panel); color: var(--app-text); user-select: none; }
@@ -84,7 +84,7 @@ body { margin: 0; background: Canvas; }
 .book__chapter-menu { display: flex; align-items: center; position: relative; }
 .book__chapter-menu-button { opacity: 0; }
 .book__chapter-row:hover .book__chapter-menu-button, .book__chapter-menu-button:focus-visible, .book__chapter-row--active .book__chapter-menu-button, .book__chapter-row--menu .book__chapter-menu-button { opacity: 1; }
-.book__chapter-menu-items { position: absolute; left: calc(100% + 4px); top: 4px; z-index: 50; width: 220px; padding: 5px; border-radius: 9px; background: var(--app-panel); box-shadow: var(--app-dialog-shadow); }
+.book__chapter-menu-items { position: fixed; z-index: 50; overflow: auto; max-width: calc(100vw - 16px); width: 220px; padding: 5px; border-radius: 9px; background: var(--app-panel); box-shadow: var(--app-dialog-shadow); }
 .book__chapter-menu-items button { width: 100%; justify-content: flex-start; padding: 9px; }
 .book__chapter-menu-items .book__chapter-trash { color: var(--app-error-text); }
 .book__chapter-filter { width: 100%; margin-bottom: 10px; }
@@ -97,7 +97,7 @@ body { margin: 0; background: Canvas; }
 .book__metadata-anchor { position: absolute; right: 0; top: 50%; transform: translateY(-50%); z-index: 43; -webkit-app-region: no-drag; }
 .book__metadata-trigger { padding: 6px !important; color: var(--app-text-muted) !important; }
 .book__metadata-trigger--invalid { color: var(--app-error-text) !important; }
-.book__metadata-popover { position: absolute; right: 0; top: calc(100% + 8px); width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 80px); overflow: auto; padding: 18px; border-radius: 10px; background: var(--app-panel); box-shadow: var(--app-dialog-shadow); color: var(--app-text); text-align: left; font: var(--desk-ui-size)/1.5 var(--desk-ui-font); }
+.book__metadata-popover { position: fixed; z-index: 50; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 80px); overflow: auto; padding: 18px; border-radius: 10px; background: var(--app-panel); box-shadow: var(--app-dialog-shadow); color: var(--app-text); text-align: left; font: var(--desk-ui-size)/1.5 var(--desk-ui-font); }
 .book__metadata-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .book__metadata-heading h3 { margin: 0; font-size: 1em; }
 .book__metadata-popover form { display: grid; gap: 10px; }

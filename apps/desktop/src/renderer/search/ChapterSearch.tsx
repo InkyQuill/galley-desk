@@ -96,22 +96,22 @@ export function ChapterSearch({ area, chapterId, searchText, onReveal, onClearHi
       <span className="book__search-counter" aria-live="polite">
         {query === '' ? '' : results.length === 0 ? 'нет совпадений' : `${active + 1}/${results.length}`}
       </span>
-      <button
+      <Tooltip content="Предыдущее совпадение"><button
         type="button"
         aria-label="Предыдущее совпадение"
         disabled={results.length === 0}
         onClick={() => goTo(active - 1)}
       >
         <IconArrowUp />
-      </button>
-      <button
+      </button></Tooltip>
+      <Tooltip content="Следующее совпадение"><button
         type="button"
         aria-label="Следующее совпадение"
         disabled={results.length === 0}
         onClick={() => goTo(active + 1)}
       >
         <IconArrowDown />
-      </button>
+      </button></Tooltip>
       <Tooltip content="Закрыть поиск">
         <button type="button" aria-label="Закрыть поиск" onClick={onClose}><IconX /></button>
       </Tooltip>

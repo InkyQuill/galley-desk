@@ -20,7 +20,7 @@ import { Appearance, contentWidthStyle } from '../appearance/Appearance';
 import { derivedRangeToDisplayRange } from '../search/search';
 import type { SearchRange } from '../search/search';
 import { ChapterSearch } from '../search/ChapterSearch';
-import { ChapterNote } from '../review/ChapterNote';
+import { ChapterNote, emptyNoteState, type NoteState } from '../review/ChapterNote';
 import { RecordPopup } from '../review/RecordPopup';
 import type { PopupPosition } from '../review/RecordPopup';
 import { ReviewList } from '../review/ReviewList';
@@ -177,6 +177,7 @@ export function BookWindow({
 }: Props) {
   const [book, setBook] = useState(initialBook);
   const [chapterAction, setChapterAction] = useState<ChapterAction | null>(null);
+  const [noteStates, setNoteStates] = useState<Record<string, NoteState>>({});
   const [renameOpen, setRenameOpen] = useState(false);
   const actionTriggerRef = useRef<HTMLElement | null>(null);
   const [openWarningDismissed, setOpenWarningDismissed] = useState(false);
@@ -271,7 +272,7 @@ export function BookWindow({
     if (sidebarOverlay === null) return;
     requestAnimationFrame(() => overlayPanelRef.current?.querySelector<HTMLElement>('button, input, [tabindex]')?.focus());
     const dismiss = (event: PointerEvent): void => {
-      if (overlayPanelRef.current?.contains(event.target as Node)) return;
+      if (overlayPanelRef.current?.contains(event.target as Node) || (event.target as Element).closest('.book__chapter-menu-items')) return;
       const side = sidebarOverlay;
       setSidebarOverlay(null);
       requestAnimationFrame(() => (side === 'chapters' ? chaptersButtonRef : reviewButtonRef).current?.focus());
@@ -441,10 +442,14 @@ export function BookWindow({
       // модальным фокусом, скрытый переход в Zen за ним не нужен.
       if (overlay.platform !== null && isZenShortcut(event, overlay.platform)) {
         event.preventDefault();
-        if (!overlay.modalOpen) toggleZen();
+        event.stopPropagation();
+        if (!overlay.modalOpen && !document.querySelector('dialog[open]')) toggleZen();
         return;
       }
       if (event.key !== 'Escape') return;
+      // Native dialogs and nested forms own this press before the workspace.
+      if (document.querySelector('dialog[open], .book__metadata-popover')) return;
+      if ((event.target as Element)?.closest('.book__chapter-menu, .book__chapter-menu-items, .chapter-note [role=dialog]')) return;
       // Активный разделитель владеет Escape: его capture-listener отменяет
       // preview и не даёт этому же нажатию закрыть другой слой.
       if (document.documentElement.classList.contains('is-resizing-sidebar')) return;
@@ -452,34 +457,41 @@ export function BookWindow({
       // onKeyDown — двойное закрытие идемпотентно). Zen сюда не входит:
       // Escape никогда не переключает Zen, только верхние слои.
       if (overlay.sidebarOverlay !== null) {
+        event.preventDefault(); event.stopPropagation();
         setSidebarOverlay(null);
         (overlay.sidebarOverlay === 'chapters' ? chaptersButtonRef : reviewButtonRef).current?.focus();
         return;
       }
       if (overlay.popup !== null) {
+        event.preventDefault(); event.stopPropagation();
         setPopup(null);
         return;
       }
       if (overlay.flyout !== null) {
+        event.preventDefault(); event.stopPropagation();
         setFlyout(null);
         return;
       }
       if (overlay.cardId !== null) {
+        event.preventDefault(); event.stopPropagation();
         setCardId(null);
         return;
       }
       if (overlay.menuOpen) {
+        event.preventDefault(); event.stopPropagation();
         setMenuOpen(false);
         menuButtonRef.current?.focus();
         return;
       }
       if (overlay.appearanceOpen) {
+        event.preventDefault(); event.stopPropagation();
         setAppearanceOpen(false);
         return;
       }
       if (overlay.searchOpen) {
         // The focused search field clears its query before collapsing.
         if ((event.target as HTMLElement)?.closest('.book__search')) return;
+        event.preventDefault(); event.stopPropagation();
         setSearchOpen(false);
         return;
       }
@@ -875,6 +887,11 @@ export function BookWindow({
   );
 
   const entries = book.entries.map(entry => ({ ...entry, title: titles[entry.id] ?? entry.title }));
+  const noteState = noteStates[chapterId ?? 'none'] ?? emptyNoteState;
+  const updateNoteState = (change: Partial<NoteState>): void => {
+    const id = chapterId ?? 'none';
+    setNoteStates(states => ({ ...states, [id]: { ...(states[id] ?? emptyNoteState), ...change } }));
+  };
   const activeChapter = entries.find((entry) => entry.id === chapterId) ?? null;
   // Локальный флаг ошибки сильнее снимка: main не уведомляет о сбое записи.
   const readOnly = snapshot === null || snapshot.readOnlyReason !== null;
@@ -1009,7 +1026,7 @@ export function BookWindow({
       {chapterAction && <ChapterDialogs action={chapterAction} book={book}
         onChange={async change => { await editorApi?.flushPending(); await refreshBook(await window.desk.manageBook(book.bookId, change)); }}
         onRefresh={refreshBook}
-        onClose={() => { setChapterAction(null); requestAnimationFrame(() => actionTriggerRef.current?.isConnected ? actionTriggerRef.current.focus() : document.querySelector<HTMLButtonElement>('.book__chapter-row--active .book__chapter-menu-button, .book__chapter-menu-button, .book__chapter-tools button')?.focus()); }} />}
+        onClose={() => { setChapterAction(null); requestAnimationFrame(() => actionTriggerRef.current?.isConnected ? actionTriggerRef.current.focus() : (document.querySelector<HTMLButtonElement>('.book__chapter-row--active .book__chapter-menu-button, .book__chapter-menu-button, .book__chapter-tools button') ?? chaptersButtonRef.current)?.focus()); }} />}
       {openWarning !== null && !openWarningDismissed && (
         <p className="app__error" role="alert">
           {openWarning}
@@ -1129,9 +1146,8 @@ export function BookWindow({
             aria-label="Рецензия"
           >
             <h2 className="book__panel-title">Рецензия</h2>
-            {/* Ключ по главе: заметка, черновик и попап принадлежат главе —
-                смена главы не переносит черновик в другую главу. */}
-            <ChapterNote readOnly={readOnly} key={chapterId ?? 'none'} value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />
+            {/* Draft/open/error state belongs to the chapter above layout branches. */}
+            <ChapterNote state={noteState} onState={updateNoteState} readOnly={readOnly} key={chapterId ?? 'none'} value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />
             <ReviewList
               readOnly={readOnly}
               records={snapshot?.records ?? []}
@@ -1156,7 +1172,7 @@ export function BookWindow({
             ) : (
               <aside className="book__review" aria-label="Рецензия">
                 <h2 className="book__panel-title">Рецензия</h2>
-                <ChapterNote readOnly={readOnly} key={chapterId ?? 'none'} value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />
+                <ChapterNote state={noteState} onState={updateNoteState} readOnly={readOnly} key={chapterId ?? 'none'} value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />
                 <ReviewList readOnly={readOnly} records={snapshot?.records ?? []} cardRecordId={cardId} onSelect={selectRecord} onCommand={dispatchCommand} onCardClose={() => setCardId(null)} />
               </aside>
             )}

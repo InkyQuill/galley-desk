@@ -82,11 +82,11 @@ export function TitleBar({ title, children }: TitleBarProps) {
       </Tooltip>
       {state !== null && state.platform !== 'darwin' && (
         <div className="titlebar__controls">
-          <button type="button" aria-label="Свернуть окно" onClick={() => act('minimize')}><IconMinus /></button>
-          <button type="button" aria-label={state?.maximized ? 'Восстановить окно' : 'Развернуть окно'} onClick={() => act('toggle-maximize')}>
+          <Tooltip content="Свернуть окно"><button type="button" aria-label="Свернуть окно" onClick={() => act('minimize')}><IconMinus /></button></Tooltip>
+          <Tooltip content={state.maximized ? 'Восстановить окно' : 'Развернуть окно'}><button type="button" aria-label={state?.maximized ? 'Восстановить окно' : 'Развернуть окно'} onClick={() => act('toggle-maximize')}>
             {state?.maximized ? <IconCopy /> : <IconSquare />}
-          </button>
-          <button type="button" className="titlebar__close" aria-label="Закрыть окно" onClick={() => act('close')}><IconX /></button>
+          </button></Tooltip>
+          <Tooltip content="Закрыть окно"><button type="button" className="titlebar__close" aria-label="Закрыть окно" onClick={() => act('close')}><IconX /></button></Tooltip>
         </div>
       )}
       {diagnosticsOpen && <Diagnostics onClose={closeDiagnostics} />}

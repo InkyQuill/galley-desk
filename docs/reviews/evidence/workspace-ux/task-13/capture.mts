@@ -118,7 +118,29 @@ try {
   await expect(page.locator('.cm-content')).toBeVisible();
 
   await page.getByRole('button', { name: /Действия главы:/ }).first().click();
+  const assertMenuPainted = async () => {
+    expect(await page.locator('.book__chapter-menu-items').evaluate(el => [...el.querySelectorAll('button')].every(button => {
+      const r = button.getBoundingClientRect();
+      return r.left >= 8 && r.right <= innerWidth - 8 && r.top >= 8 && r.bottom <= innerHeight - 8 && button.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+    }))).toBe(true);
+    expect(await page.locator('.book__chapters').evaluate(el => el.scrollLeft)).toBe(0);
+  };
+  await assertMenuPainted();
   await page.screenshot({ path: path.join(evidence, 'real-book-sidebar-menu.png') });
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /Действия главы:/ }).last().click();
+  await assertMenuPainted();
+  await page.screenshot({ path: path.join(evidence, 'real-book-last-row-menu.png') });
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 700, height: 600 });
+  await page.getByRole('button', { name: 'Оглавление', exact: true }).click();
+  await page.getByRole('button', { name: /Действия главы:/ }).last().click();
+  await assertMenuPainted();
+  await page.screenshot({ path: path.join(evidence, 'real-book-overlay-menu.png') });
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.book__sidebar-overlay')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.keyboard.press('Escape');
 
   await page.getByRole('button', { name: 'Найти главы в папке' }).click();
@@ -134,6 +156,23 @@ try {
   await page.getByRole('button', { name: 'Метаданные главы' }).click();
   await expect(page.getByRole('dialog', { name: 'Метаданные главы' })).toBeVisible();
   await page.screenshot({ path: path.join(evidence, 'real-book-metadata.png') });
+  await page.keyboard.press('Escape');
+  for (const width of [1100, 900]) {
+    await page.setViewportSize({ width, height: 600 });
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.setZoomFactor(1.25));
+    await page.getByRole('button', { name: 'Метаданные главы', exact: true }).click();
+    await page.getByLabel('YAML метаданных').fill(`title: Layout draft\n${'description: long yaml preview\n'.repeat(60)}`);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('alertdialog')).toBeVisible();
+    expect(await page.locator('.book__metadata-popover').evaluate(el => {
+      const r = el.getBoundingClientRect();
+      return r.left >= 8 && r.right <= innerWidth - 8 && r.top >= 8 && r.bottom <= innerHeight - 8 && el.scrollWidth <= el.clientWidth;
+    })).toBe(true);
+    await page.screenshot({ path: path.join(evidence, `real-book-metadata-${width}-125-discard.png`) });
+    await page.getByRole('button', { name: 'Отбросить', exact: true }).click();
+  }
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.setZoomFactor(1));
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.keyboard.press('Escape');
 
   const zenButton = page.getByRole('button', { name: 'Режим Zen', exact: true });
