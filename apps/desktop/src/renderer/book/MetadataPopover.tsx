@@ -12,7 +12,7 @@ export const MetadataPopover = forwardRef<MetadataPopoverHandle, {
   const parsed = frontmatter(source);
   const originalYaml = parsed?.yaml ?? '';
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<{ yaml: string; source: string } | null>(null);
+  const [draft, setDraft] = useState<{ yaml: string; originalYaml: string; source: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -20,8 +20,8 @@ export const MetadataPopover = forwardRef<MetadataPopoverHandle, {
   const dialogRef = useRef<HTMLDivElement>(null);
   const pendingResolve = useRef<((discarded: boolean) => void) | null>(null);
   const pendingPromise = useRef<Promise<boolean> | null>(null);
-  const stateRef = useRef({ open, saving, dirty: draft !== null && draft.yaml !== originalYaml });
-  stateRef.current = { open, saving, dirty: draft !== null && draft.yaml !== originalYaml };
+  const stateRef = useRef({ open, saving, dirty: draft !== null && draft.yaml !== draft.originalYaml });
+  stateRef.current = { open, saving, dirty: draft !== null && draft.yaml !== draft.originalYaml };
 
   const finishClose = (): void => {
     setOpen(false); setDraft(null); setError(null); setConfirming(false); onEditing(false);
@@ -48,6 +48,10 @@ export const MetadataPopover = forwardRef<MetadataPopoverHandle, {
     return () => document.removeEventListener('pointerdown', dismiss);
   });
   useEffect(() => {
+    if (!open || !readOnly) return;
+    requestAnimationFrame(() => dialogRef.current?.focus());
+  }, [open, readOnly]);
+  useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
@@ -68,11 +72,11 @@ export const MetadataPopover = forwardRef<MetadataPopoverHandle, {
     <Tooltip content={invalid ? `Метаданные главы: ${invalid}` : 'Метаданные главы'}>
       <button ref={triggerRef} type="button" className={`book__metadata-trigger${invalid ? ' book__metadata-trigger--invalid' : ''}`} aria-label="Метаданные главы" aria-expanded={open} onClick={() => {
         if (open) { void requestDismiss(); return; }
-        setDraft({ yaml: originalYaml, source }); setError(null); setOpen(true); onEditing(!readOnly);
+        setDraft({ yaml: originalYaml, originalYaml, source }); setError(null); setOpen(true); onEditing(!readOnly);
       }}><IconBraces size={18} /></button>
     </Tooltip>
-    {open && draft !== null && <div ref={dialogRef} className="book__metadata-popover" role="dialog" aria-label="Метаданные главы">
-      <div className="book__metadata-heading"><h3>Метаданны</h3><button type="button" aria-label="Закрыть метаданны" disabled={saving} onClick={() => void requestDismiss()}><IconX size={18} /></button></div>
+    {open && draft !== null && <div ref={dialogRef} className="book__metadata-popover" role="dialog" aria-label="Метаданные главы" tabIndex={-1}>
+      <div className="book__metadata-heading"><h3>Метаданные</h3><button type="button" aria-label="Закрыть метаданные" disabled={saving} onClick={() => void requestDismiss()}><IconX size={18} /></button></div>
       <Metadata yaml={draft.yaml} readOnly={readOnly} saving={saving} error={error} parseError={invalid}
         onChange={yaml => { setDraft(current => current === null ? null : { ...current, yaml }); setError(null); }}
         onSave={() => {
