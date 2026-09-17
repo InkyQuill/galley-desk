@@ -276,3 +276,53 @@ test('chapter-then-mode navigation cannot persist the previous chapter viewport'
     await rm(root, { recursive: true, force: true }); await rm(profile, { recursive: true, force: true });
   }
 });
+
+test('mode-switch flush preserves interior reading through two delayed undos', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'galley-flush-position-'));
+  const profile = await mkdtemp(path.join(tmpdir(), 'galley-flush-profile-'));
+  await writeFile(path.join(root, 'Reading.md'), Array.from({ length: 240 }, (_, i) => `Строка ${String(i).padStart(3, '0')} — длинный текст для проверки позиции чтения.\n\n`).join(''));
+  const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, GALLEY_DESK_USER_DATA: profile } });
+  const page = await app.firstWindow();
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await app.evaluate(({ dialog }, root) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] }); }, root);
+    await page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(page.locator('.cm-content')).toBeVisible();
+    await page.locator('.cm-content').evaluate(content => {
+      const view = (content as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+      view.dispatch({ changes: { from: 0, insert: 'Вставленный абзац до чтения.\n'.repeat(35) } });
+      view.dispatch({ changes: { from: view.state.doc.length, insert: 'Вставленный абзац после чтения.\n'.repeat(35) } });
+    });
+    await expect(page.getByRole('button', { name: 'Правка', exact: true })).toHaveCount(1);
+    await page.locator('.cm-content').focus();
+    await page.locator('.cm-scroller').evaluate(element => { element.scrollTop = 6200; });
+    await expect.poll(() => firstLine(page, '.cm-scroller').catch(() => null)).not.toBeNull();
+    const before = await alignReadingLine(page, '.cm-scroller');
+    await app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>> })._invokeHandlers;
+      const original = handlers.get('desk:command')!;
+      const state = globalThis as unknown as { rejectionHeld: boolean; releaseRejection: () => void };
+      state.rejectionHeld = false;
+      const gate = new Promise<void>(resolve => { state.releaseRejection = resolve; });
+      ipcMain.removeHandler('desk:command');
+      ipcMain.handle('desk:command', async (event, ...args) => {
+        if ((args[3] as { type: string }).type === 'undo-input') { state.rejectionHeld = true; await gate; }
+        return original(event, ...args);
+      });
+    });
+    await page.keyboard.press('Control+z');
+    await page.keyboard.press('Control+z');
+    await page.getByRole('button', { name: 'Сравнение', exact: true }).click();
+    await expect.poll(() => app.evaluate(() => (globalThis as unknown as { rejectionHeld: boolean }).rejectionHeld)).toBe(true);
+    await expect(page.locator('.cm-content')).toBeVisible();
+    await expect(page.locator('.book__comparison')).toHaveCount(0);
+    await app.evaluate(() => (globalThis as unknown as { releaseRejection: () => void }).releaseRejection());
+    await expect(page.locator('.book__comparison')).toBeVisible();
+    await expect(page.locator('.book__comparison')).not.toContainText('Вставленный абзац');
+    await expect.poll(async () => Math.abs(await lineTop(page, '.book__comparison', before.text) - before.top)).toBeLessThanOrEqual(before.height + 4);
+  } finally {
+    await app.evaluate(() => (globalThis as unknown as { releaseRejection?: () => void }).releaseRejection?.()).catch(() => undefined);
+    await app.close();
+    await rm(root, { recursive: true, force: true }); await rm(profile, { recursive: true, force: true });
+  }
+});
