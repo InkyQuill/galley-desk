@@ -1,5 +1,6 @@
 /// <reference types="@electron-forge/plugin-vite/forge-vite-env" />
 import { app, BrowserWindow, dialog, Menu, protocol, shell } from 'electron';
+import type { WebContents } from 'electron';
 import path from 'node:path';
 import { createBookService } from './book-service';
 import { createLogger } from './diagnostics/logger';
@@ -134,9 +135,16 @@ if (!app.requestSingleInstanceLock()) {
     logger.fatal({ event: 'uncaught-main', level: 'error', process: 'main', ...safeError(error) });
   });
 
+  // Tracks renderers whose OS process has already died (crashed/killed).
+  // Their `WebContents` object survives the crash -- it is not
+  // `destroyed()`, so quit's flush handshake below has no other way to
+  // know, up front, that no ack will ever arrive.
+  const crashedContents = new WeakSet<WebContents>();
+
   // Only the closed enum reason/exit code is stored -- never a message, URL
   // or any other detail carried on the event.
-  app.on('render-process-gone', (_event, _webContents, details) => {
+  app.on('render-process-gone', (_event, webContents, details) => {
+    crashedContents.add(webContents);
     logger.write({ event: 'renderer-gone', level: 'error', process: 'main', code: `${details.reason}(${details.exitCode})` });
   });
   app.on('child-process-gone', (_event, details) => {
@@ -231,7 +239,16 @@ if (!app.requestSingleInstanceLock()) {
       closing = (async () => {
         const windows = BrowserWindow.getAllWindows();
         try {
-          await Promise.all(windows.map(window => flushRenderer(window.webContents)));
+          // A window whose renderer has already crashed can never answer
+          // the flush handshake -- there is nothing left to save, and the
+          // crash path makes no promise about the book anyway (see the
+          // brief), so quit must not wait on (or be blocked by) a doomed
+          // round-trip to a dead renderer.
+          await Promise.all(
+            windows.map(window =>
+              crashedContents.has(window.webContents) ? Promise.resolve() : flushRenderer(window.webContents),
+            ),
+          );
           await service.closeAll();
         } catch (error) {
           for (const window of windows) resumeRenderer(window.webContents);

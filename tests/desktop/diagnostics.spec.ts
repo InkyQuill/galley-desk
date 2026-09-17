@@ -126,22 +126,27 @@ test('a forced renderer-only crash is logged as renderer-gone with the enum reas
     // reaches the log.
     expect(record?.code).toMatch(/^[a-z-]+\(-?\d+\)$/);
 
-    // The main process is unaffected by the renderer's death: quitting the
-    // app right after the crash must still complete promptly, not hang.
-    // Playwright's `page` handle for the now-dead renderer target is itself
-    // "crashed" and cannot be reused (e.g. `page.reload()` rejects with
-    // "Page crashed"), so app-level recovery is proven the way the brief
-    // allows -- via a bounded, non-hanging quit -- rather than by resuming
-    // interaction with the dead renderer's Playwright handle.
-    const quit = forceStop(app);
+    // The main process is unaffected by the renderer's death, but "no hang"
+    // must be proven against the app's REAL quit path (`before-quit` in
+    // main.ts), not `app.exit()`. Electron's `app.exit()` terminates
+    // immediately and explicitly skips `before-quit`/`will-quit`, so it
+    // never exercises this task's new bounded flush logic
+    // (`prepareClose()` -> `flushRenderer()` per window -> `session-end` ->
+    // `Promise.race([logger.flush(), 500ms])` -> `app.quit()`). `app.close()`
+    // is the same real-quit trigger the "a clean quit ..." test below uses.
+    // Racing it against a bounded timeout (comfortably above the app's own
+    // 500ms flush cap, but small enough that a genuine hang fails promptly)
+    // proves the real quit flow survives a dead renderer's `WebContents`
+    // rather than hanging on its now-unanswerable flush handshake.
+    const closed = app.close();
     const outcome = await Promise.race([
-      quit.then(() => 'quit' as const),
-      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 10_000)),
+      closed.then(() => 'quit' as const),
+      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 5_000)),
     ]);
     expect(outcome).toBe('quit');
   } finally {
-    // Idempotent: if the race above already completed the quit, this is a
-    // harmless no-op (the process is already gone).
+    // Idempotent: if `app.close()` above already completed the quit, this
+    // is a harmless no-op (the process is already gone).
     await forceStop(app);
   }
 });

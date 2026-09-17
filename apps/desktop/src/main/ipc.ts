@@ -302,7 +302,14 @@ export type DeskIpcDeps = {
   logger?: Logger;
 };
 
-/** Only a matching one-shot acknowledgement from the requested top frame counts. */
+/**
+ * Only a matching one-shot acknowledgement from the requested top frame
+ * counts. A renderer whose process has already gone (crashed/killed) can
+ * never answer `desk:flush-request` -- its `WebContents` object survives
+ * the crash (it is not `destroyed`, only its OS process is gone), so
+ * without an explicit `render-process-gone` check this would otherwise
+ * silently wait out the full 30s timeout below instead of failing fast.
+ */
 export function flushRenderer(contents: WebContents): Promise<void> {
   return new Promise((resolve, reject) => {
     const id = randomUUID();
@@ -310,6 +317,7 @@ export function flushRenderer(contents: WebContents): Promise<void> {
       clearTimeout(timeout);
       ipcMain.removeListener('desk:flush-ack', ack);
       contents.removeListener('destroyed', destroyed);
+      contents.removeListener('render-process-gone', gone);
       if (ok) resolve();
       else reject(new IpcError('SAVE_FAILED', 'Не удалось сохранить изменения; окно остаётся открытым'));
     };
@@ -318,9 +326,11 @@ export function flushRenderer(contents: WebContents): Promise<void> {
       finish(ok === true);
     };
     const destroyed = (): void => finish(false);
+    const gone = (): void => finish(false);
     const timeout = setTimeout(() => finish(false), 30_000);
     ipcMain.on('desk:flush-ack', ack);
     contents.once('destroyed', destroyed);
+    contents.once('render-process-gone', gone);
     contents.send('desk:flush-request', id);
   });
 }
