@@ -325,7 +325,7 @@ test('заметка главы сохраняется в sidecar; при оши
     await note.fill('Глава требует вычитки и правки');
     await chmod(bookRoot, 0o555);
     await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
-    await expect(page.getByRole('alert')).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Заметка главы' }).getByRole('alert')).toBeVisible();
     await expect(note).toHaveValue('Глава требует вычитки и правки');
   } finally {
     await chmod(bookRoot, 0o755);
@@ -351,7 +351,7 @@ test('черновик заметки главы не переезжает в д
     await noteA.fill('Черновик главы A');
 
     // Смена главы закрывает попап: у главы B своя (пустая) заметка.
-    await page.getByRole('button', { name: 'Вторая Вторая.md', exact: true }).click();
+    await page.getByRole('button', { name: 'Вторая', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Заметка главы' })).toHaveCount(0);
     await page.getByRole('button', { name: 'Заметка главы' }).click();
     const noteB = page.getByRole('textbox', { name: 'Текст заметки' });
@@ -843,6 +843,10 @@ test('gutter: before preview preserves typing focus, selection flyout wins, butt
     await expect(preview).toHaveCount(0);
     await expect(page.locator('.book--zen')).toBeVisible();
     await page.keyboard.press('Escape');
+    await expect(page.locator('.book--zen')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.book--zen')).toBeVisible();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Alt+z' : 'Control+Alt+z');
     await expect(page.locator('.book--zen')).toHaveCount(0);
     await page.locator('.gd-edit-range').hover();
     await expect(preview).toContainText('о');

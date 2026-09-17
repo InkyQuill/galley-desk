@@ -67,10 +67,10 @@ Additional verification:
 
 ## Screenshot evidence
 
-- `task-5-evidence/titlebar-900-light.png`
-- `task-5-evidence/titlebar-900-dark.png`
-- `task-5-evidence/titlebar-1920-light.png`
-- `task-5-evidence/titlebar-1920-dark.png`
+- `titlebar-900-light.png`
+- `titlebar-900-dark.png`
+- `titlebar-1920-light.png`
+- `titlebar-1920-dark.png`
 
 All paths are relative to this report directory. Screenshots were captured by
 the native appearance test inside the same isolated 1920x1080 Xvfb display.
@@ -83,7 +83,7 @@ the native appearance test inside the same isolated 1920x1080 Xvfb display.
 - `apps/desktop/src/renderer/app.css`
 - `tests/desktop/window-frame.spec.ts`
 - `tests/desktop/search-and-appearance.spec.ts`
-- `.superpowers/sdd/2026-09-17-workspace-ux/task-5-evidence/*.png`
+- `docs/reviews/evidence/workspace-ux/task-5/*.png`
 
 ## Self-review
 

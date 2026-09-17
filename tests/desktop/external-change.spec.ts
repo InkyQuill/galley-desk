@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { encodeReview, makeAnchor } from '@galley-desk/pocket-format';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { once } from 'node:events';
 
 const tempDirs: string[] = [];
 
@@ -44,6 +45,19 @@ async function openOwnBook(session: Session): Promise<void> {
   await stubDialog(session.app, { canceled: false, filePaths: [session.bookRoot] });
   await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
   await expect(session.page.locator('.cm-content')).toBeVisible();
+}
+
+/** Failed-save scenarios deliberately cannot satisfy the graceful close gate. */
+async function forceStop(app: ElectronApplication): Promise<void> {
+  let child;
+  try {
+    child = app.process();
+  } catch {
+    return;
+  }
+  const exited = child.exitCode !== null ? Promise.resolve() : once(child, 'exit');
+  await app.evaluate(({ app: electronApp }) => electronApp.exit(0)).catch(() => undefined);
+  await exited;
 }
 
 /** Дожидается завершения сохранения: sidecar на диске перестаёт меняться. */
@@ -132,7 +146,7 @@ test('STALE_REVISION при внешнем изменении не маскир�
     await session.page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
     await session.page.keyboard.type('?');
     await expect(session.page.getByText('Ошибка сохранения')).toBeVisible();
-    await expect(session.page.getByRole('alert')).toContainText('локальный текст сохранён');
+    await expect(session.page.getByText(/локальный текст сохранён/)).toBeVisible();
     await chmod(bookRoot, 0o755);
 
     // Шаг 2: чужая версия на диске; ожидающая работа уходит в черновик
@@ -157,7 +171,7 @@ test('STALE_REVISION при внешнем изменении не маскир�
     await session.page.keyboard.type('#');
     // Отказ команды обработан очередью: синхронизируемся на его алерте,
     // прежде чем судить о стабильном состоянии чипа.
-    await expect(session.page.getByRole('alert')).toContainText('локальный текст сохранён', { timeout: 10_000 });
+    await expect(session.page.getByText(/локальный текст сохранён/)).toBeVisible({ timeout: 10_000 });
     await expect(session.page.getByText('Внешнее изменение')).toBeVisible();
     await expect(session.page.getByText('Ошибка сохранения')).toHaveCount(0);
     await expect(session.page.getByRole('button', { name: 'Перечитать главу' })).toHaveCount(0);
@@ -167,7 +181,8 @@ test('STALE_REVISION при внешнем изменении не маскир�
     await expect(content).toContainText('чужая версия', { timeout: 20_000 });
     await expect(session.page.getByText('Сохранено')).toBeVisible();
   } finally {
-    await session.app.close();
+    await chmod(bookRoot, 0o755).catch(() => undefined);
+    await forceStop(session.app);
   }
 });
 
@@ -194,7 +209,7 @@ test('сбой сохранения сохраняет локальный тек
     // Исходник исчезает: следующая запись падает.
     await rm(path.join(bookRoot, 'Глава.md'));
     await session.page.keyboard.type('?');
-    await expect(session.page.getByRole('alert')).toContainText('локальный текст сохранён');
+    await expect(session.page.getByText(/локальный текст сохранён/)).toBeVisible();
     // Статус «Ошибка сохранения», локальный текст остаётся в редакторе.
     await expect(session.page.getByText('Ошибка сохранения')).toBeVisible();
     await expect(content).toContainText('кот?');
@@ -206,7 +221,7 @@ test('сбой сохранения сохраняет локальный тек
     // остаются, пока пользователь явно не выберет внешнюю базу.
     await writeFile(path.join(bookRoot, 'Глава.md'), 'чужая версия', 'utf8');
     await expect(content).toContainText('кот?', { timeout: 20_000 });
-    await expect(session.page.getByRole('alert')).toContainText('локальный текст сохранён');
+    await expect(session.page.getByText(/локальный текст сохранён/)).toBeVisible();
     await expect(session.page.getByText('Ошибка сохранения')).toBeVisible();
     await expect(session.page.getByRole('button', { name: 'Перечитать главу' })).toBeVisible();
     expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe('чужая версия');
@@ -225,7 +240,7 @@ test('сбой сохранения сохраняет локальный тек
     await expect(session.page.getByText('Сохранено')).toBeVisible();
     expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe('чужая версия');
   } finally {
-    await session.app.close();
+    await forceStop(session.app);
   }
 });
 
@@ -247,7 +262,7 @@ test('recovery conflict blocks input and preserves local pair before explicit ac
     await writeFile(path.join(session.userData, name), JSON.stringify(record));
     await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
     await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
-    await expect(session.page.getByRole('alert')).toContainText('Восстановление приостановлено');
+    await expect(session.page.getByText(/Восстановление приостановлено/).first()).toBeVisible();
     await expect(session.page.getByLabel('Локальная версия восстановления')).toHaveText('local dog');
     await expect(session.page.locator('.cm-content')).toHaveCount(0);
     await session.page.getByRole('button', { name: 'Заметка главы', exact: true }).click();

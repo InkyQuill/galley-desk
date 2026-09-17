@@ -1,0 +1,32 @@
+{
+  "source": "/home/inky/Документы/test-book",
+  "sourceHashBefore": "55253e0c7ff59af1ccac74ef4cefa6d0df90fd9e5089de58e912f334d5920046",
+  "sourceHashAfter": "55253e0c7ff59af1ccac74ef4cefa6d0df90fd9e5089de58e912f334d5920046",
+  "copiedBook": "galley-task13-real-book-d9gfBr",
+  "markdownFiles": 27,
+  "reviewFiles": 8,
+  "records": 144,
+  "screenshots": [
+    "matrix-dark-1280-100.png",
+    "matrix-dark-1280-125.png",
+    "matrix-dark-1920-100.png",
+    "matrix-dark-1920-125.png",
+    "matrix-dark-900-100.png",
+    "matrix-dark-900-125.png",
+    "matrix-light-1280-100.png",
+    "matrix-light-1280-125.png",
+    "matrix-light-1920-100.png",
+    "matrix-light-1920-125.png",
+    "matrix-light-900-100.png",
+    "matrix-light-900-125.png",
+    "real-book-comparison-middle.png",
+    "real-book-dense-review.png",
+    "real-book-discovery.png",
+    "real-book-metadata.png",
+    "real-book-search-first-match.png",
+    "real-book-sidebar-menu.png",
+    "real-book-sort-preview.png",
+    "real-book-themed-tooltip.png",
+    "real-book-zen.png"
+  ]
+}

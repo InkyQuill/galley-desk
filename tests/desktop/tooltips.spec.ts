@@ -141,7 +141,7 @@ test('Zen: фокус показывает подсказку сразу с от
     await expect(tooltip).toHaveCount(0);
     // Верхний Escape-обработчик BookWindow не задет и не сработал по Zen.
     await expect(page.locator('.book--zen')).toHaveCount(0);
-    await expect(page.locator('.book__header')).toBeVisible();
+    await expect(page.locator('.titlebar')).toBeVisible();
   } finally {
     await app.close();
   }
