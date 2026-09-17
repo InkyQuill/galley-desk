@@ -816,8 +816,12 @@ export function BookWindow({
     '--review-width': `${fittedLayout.reviewWidth}px`,
   } as CSSProperties;
   const constrainWidth = (side: 'chapters' | 'review', value: number): number => {
-    const otherWidth = side === 'chapters' ? fittedLayout.reviewWidth : fittedLayout.chaptersWidth;
-    const available = availableWidth - CENTER_MIN_WIDTH - RESIZER_WIDTH * 2 - otherWidth;
+    const otherVisible = side === 'chapters' ? !reviewCollapsed : !chaptersCollapsed;
+    const otherWidth = otherVisible
+      ? side === 'chapters' ? fittedLayout.reviewWidth : fittedLayout.chaptersWidth
+      : 0;
+    const visibleDividers = Number(!chaptersCollapsed) + Number(!reviewCollapsed);
+    const available = availableWidth - CENTER_MIN_WIDTH - RESIZER_WIDTH * visibleDividers - otherWidth;
     return Math.max(SIDEBAR_BOUNDS.min, Math.min(SIDEBAR_BOUNDS.max, value, available));
   };
   const previewWidth = (side: 'chapters' | 'review', value: number): void => {

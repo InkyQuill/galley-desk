@@ -116,6 +116,9 @@ test('responsive layout has no horizontal overflow and collapsed panels open as 
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     }
     await expect(page.locator('.book__review')).toHaveCount(0);
+    expect(await panelWidth(page, '.book__chapters')).toBe(315);
+    await dragBy(page, 'Ширина оглавления', 32);
+    await expect(page.locator('.book__chapters')).toHaveCSS('width', '347px');
     await page.getByRole('button', { name: 'Рецензия', exact: true }).click();
     const overlay = page.getByRole('dialog', { name: 'Рецензия' });
     await expect(overlay).toBeVisible();
