@@ -1,7 +1,9 @@
-import { BookManagement } from './BookManagement';
-import { matchesChapter } from './chapter-filter';
+import { ChapterSidebar } from './ChapterSidebar';
+import type { ChapterAction } from './ChapterSidebar';
+import { ChapterDialogs } from './ChapterDialogs';
+import { RenameBookDialog } from './RenameBookDialog';
 import { Metadata } from './Metadata';
-import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconBook, IconX } from '@tabler/icons-react';
+import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconPencil, IconInfoCircle, IconX } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { AppearanceSettings, BookView, Command, RecordView, Snapshot } from '../../shared/api';
@@ -149,7 +151,9 @@ export function BookWindow({
   onAppearanceChange,
 }: Props) {
   const [book, setBook] = useState(initialBook);
-  const [managementOpen, setManagementOpen] = useState(false);
+  const [chapterAction, setChapterAction] = useState<ChapterAction | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const actionTriggerRef = useRef<HTMLElement | null>(null);
   const [openWarningDismissed, setOpenWarningDismissed] = useState(false);
   const cached = positionCache.get(book.bookId);
   // Сохранённая позиция из записи недавних сильнее внутрисессионного кэша;
@@ -231,8 +235,6 @@ export function BookWindow({
     const unsubscribe = window.desk.onWindowState(state => { if (active) setPlatform(state.platform); });
     return () => { active = false; unsubscribe(); };
   }, []);
-  // Фильтр оглавления по названиям глав: только отображение, манифест не меняется.
-  const [chapterFilter, setChapterFilter] = useState('');
   // Функция фокуса flyout для Tab-пути из редактора (регистрирует SignalFlyout).
   const flyoutFocusRef = useRef<(() => void) | null>(null);
   const registerFlyoutFocus = useCallback((focus: (() => void) | null) => {
@@ -301,8 +303,8 @@ export function BookWindow({
 
   // --- Zen и порядок Escape ---------------------------------------------------
 
-  const overlayRef = useRef({ popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi, managementOpen, platform });
-  overlayRef.current = { popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi, managementOpen, platform };
+  const overlayRef = useRef({ popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi, modalOpen: chapterAction !== null || renameOpen, platform });
+  overlayRef.current = { popup, flyout, cardId, appearanceOpen, menuOpen, searchOpen, zen, editorApi, modalOpen: chapterAction !== null || renameOpen, platform };
 
   /**
    * Единственный toggle Zen -- вызывается кнопкой, пунктом меню и
@@ -341,7 +343,7 @@ export function BookWindow({
       // модальным фокусом, скрытый переход в Zen за ним не нужен.
       if (overlay.platform !== null && isZenShortcut(event, overlay.platform)) {
         event.preventDefault();
-        if (!overlay.managementOpen) toggleZen();
+        if (!overlay.modalOpen) toggleZen();
         return;
       }
       if (event.key !== 'Escape') return;
@@ -736,9 +738,6 @@ export function BookWindow({
   const saveState = saveError !== null ? 'error' : snapshot?.saveState ?? null;
   const popupRecord =
     popup?.kind === 'record' ? snapshot?.records.find((record) => record.id === popup.id) ?? null : null;
-  // Фильтр оглавления: совпадение по названию ИЛИ пути (история №9), без
-  // изменения manifest -- см. renderer/book/chapter-filter.ts.
-  const visibleEntries = entries.filter((entry) => matchesChapter(entry, chapterFilter));
   // Переменные темы, шрифт и подложка живут на контейнере App (.app-root);
   // здесь остаётся только ширина колонки чтения из настройки.
   const widthStyle: CSSProperties = contentWidthStyle(appearance.lineWidth);
@@ -789,17 +788,22 @@ export function BookWindow({
               <button type="button" ref={menuButtonRef} aria-label="Меню книги" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><IconDots /></button>
             </Tooltip>
             {menuOpen && <div className="book__menu-items" aria-label="Действия книги" onBlur={(event) => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) setMenuOpen(false); }}>
-              <button type="button" disabled={metadataEditing} onClick={() => { setManagementOpen(true); setMenuOpen(false); }}><IconBook />Управление книгой</button>
+              <button type="button" disabled={metadataEditing} onClick={() => { actionTriggerRef.current = document.activeElement as HTMLElement; setRenameOpen(true); setMenuOpen(false); }}><IconPencil />Переименовать книгу</button>
               <button type="button" onClick={() => { setAppearanceOpen((open) => !open); setMenuOpen(false); }}><IconAdjustments />Оформление</button>
+              <button type="button" onClick={() => { document.querySelector<HTMLButtonElement>('.titlebar__diagnostics')?.click(); setMenuOpen(false); }}><IconInfoCircle />Диагностика</button>
               <button type="button" onClick={() => { toggleZen(); setMenuOpen(false); }}><IconTarget />Режим Zen</button>
               <button type="button" className="book__close" onClick={() => void closeBook()}><IconBookOff />Закрыть книгу</button>
             </div>}
           </div>
         </header>
       )}
-      {managementOpen && <BookManagement book={book} chapterId={chapterId}
+      {renameOpen && <RenameBookDialog title={book.title}
         onChange={async change => { await editorApi?.flushPending(); await refreshBook(await window.desk.manageBook(book.bookId, change)); }}
-        onRefresh={refreshBook} onClose={() => { setManagementOpen(false); menuButtonRef.current?.focus(); }} />}
+        onClose={() => { setRenameOpen(false); menuButtonRef.current?.focus(); }} />}
+      {chapterAction && <ChapterDialogs action={chapterAction} book={book}
+        onChange={async change => { await editorApi?.flushPending(); await refreshBook(await window.desk.manageBook(book.bookId, change)); }}
+        onRefresh={refreshBook}
+        onClose={() => { setChapterAction(null); requestAnimationFrame(() => actionTriggerRef.current?.isConnected ? actionTriggerRef.current.focus() : document.querySelector<HTMLButtonElement>('.book__chapter-row--active .book__chapter-menu-button, .book__chapter-menu-button, .book__chapter-tools button')?.focus()); }} />}
       {appearanceOpen && (
         <div className="book__appearance-panel">
           <button className="book__appearance-close" type="button" aria-label="Закрыть оформление" onClick={() => setAppearanceOpen(false)}><IconX /></button>
@@ -841,32 +845,9 @@ export function BookWindow({
         className="book__body"
       >
         {!zen && (
-          <nav className="book__chapters" aria-label="Оглавление">
-            <h2 className="book__panel-title">Оглавление</h2>
-            <input
-              type="text"
-              className="book__chapter-filter"
-              aria-label="Фильтр глав"
-              placeholder="Фильтр глав…"
-              value={chapterFilter}
-              onChange={(event) => setChapterFilter(event.target.value)}
-            />
-            {/* Фильтр меняет только отображение списка; манифест не перезаписывается. */}
-            {visibleEntries.map((entry) => (
-              <Tooltip key={entry.id} content={entry.missing ? 'Файл главы отсутствует' : entry.path}>
-                <button
-                  type="button"
-                  className={entry.id === chapterId ? 'book__chapter book__chapter--active' : 'book__chapter'}
-                  disabled={entry.missing}
-                  onClick={() => switchChapter(entry.id)}
-                >
-                  <span className="book__chapter-name">{entry.title !== '' ? entry.title : entry.path}</span>
-                  <small>{entry.path.split('/').pop()}{entry.missing ? ' (файл отсутствует)' : ''}</small>
-                </button>
-              </Tooltip>
-            ))}
-            {visibleEntries.length === 0 && <p className="book__chapters-empty">Главы не найдены</p>}
-          </nav>
+          <ChapterSidebar book={{ ...book, entries }} activeId={chapterId} disabled={metadataEditing || chapterAction !== null || renameOpen}
+            onOpen={id => void switchChapter(id)}
+            onAction={action => { actionTriggerRef.current = document.activeElement as HTMLElement; setChapterAction(action); }} />
         )}
         <section className="book__content">
           {activeChapter !== null && <h2 className="book__chapter-title">{activeChapter.title || activeChapter.path}</h2>}

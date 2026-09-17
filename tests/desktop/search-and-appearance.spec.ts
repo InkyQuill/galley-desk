@@ -120,8 +120,8 @@ test('поиск в «Тексте»: счётчик, переходы, выде
   try {
     await openByDialog();
     // Название главы берётся из первого заголовка Markdown.
-    await expect(page.getByRole('button', { name: 'Глава первая' })).toBeVisible();
-    await page.getByRole('button', { name: 'Глава первая' }).click();
+    await expect(page.getByRole('button', { name: 'Глава первая', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Глава первая', exact: true }).click();
     await expect(page.locator('.cm-content')).toBeVisible();
 
     // Область поиска подписана видом.
@@ -179,7 +179,7 @@ test('область поиска зависит от вида: «Текст» �
   const session = await launchWithBook({ 'Глава 1.md': chapterText });
   const { page, bookRoot, userData, openByDialog } = session;
   await openByDialog();
-  await expect(page.getByRole('button', { name: 'Заголовок' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Заголовок', exact: true })).toBeVisible();
   await closeApp(session);
   // Активная правка кот → кит-кот: производный текст содержит «кит», исходник нет.
   await writeEditSidecar(bookRoot, 'Глава 1.md', chapterText, 'кот', 'кит-кот');
@@ -187,7 +187,7 @@ test('область поиска зависит от вида: «Текст» �
   const { app, page: page2 } = await relaunch(userData);
   try {
     await page2.getByRole('button', { name: 'Открыть', exact: true }).click();
-    await page2.getByRole('button', { name: 'Заголовок' }).click();
+    await page2.getByRole('button', { name: 'Заголовок', exact: true }).click();
     await expect(page2.locator('.cm-content')).toBeVisible();
 
     // В «Тексте» (snapshot.text) применённая правка видна: «кит» найден.
@@ -218,7 +218,7 @@ test('в «Сравнении» находка во введённой част�
   const session = await launchWithBook({ 'Глава 1.md': chapterText });
   const { page, bookRoot, userData, openByDialog } = session;
   await openByDialog();
-  await expect(page.getByRole('button', { name: 'Заголовок' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Заголовок', exact: true })).toBeVisible();
   await closeApp(session);
   // Sidecar появляется после первого открытия (манифест уже создан).
   await writeEditSidecar(bookRoot, 'Глава 1.md', chapterText, 'кот спит', 'кот-кит спит');
@@ -227,7 +227,7 @@ test('в «Сравнении» находка во введённой част�
   const { app, page: page2 } = await relaunch(userData);
   try {
     await page2.getByRole('button', { name: 'Открыть', exact: true }).click();
-    await page2.getByRole('button', { name: 'Заголовок' }).click();
+    await page2.getByRole('button', { name: 'Заголовок', exact: true }).click();
     await expect(page2.locator('.cm-content')).toBeVisible();
 
     await page2.getByRole('button', { name: 'Сравнение' }).click();
@@ -256,8 +256,8 @@ test('смена главы во время поиска сбрасывает п
   const { page, openByDialog } = session;
   try {
     await openByDialog();
-    await expect(page.getByRole('button', { name: 'Глава первая' })).toBeVisible();
-    await page.getByRole('button', { name: 'Глава первая' }).click();
+    await expect(page.getByRole('button', { name: 'Глава первая', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Глава первая', exact: true }).click();
     await expect(page.locator('.cm-content')).toContainText('Глава первая');
 
     await page.keyboard.press('Control+f');
@@ -280,7 +280,7 @@ test('смена главы во время поиска сбрасывает п
     // листа -- ровно то поведение, которое проп chapterId на ChapterSearch
     // обязан гарантировать и для случая, когда экземпляр не размонтируется
     // (см. эффект по [chapterId, area, query] в ChapterSearch.tsx).
-    await page.getByRole('button', { name: 'Глава вторая' }).click();
+    await page.getByRole('button', { name: 'Глава вторая', exact: true }).click();
     await expect(page.locator('.cm-content')).toContainText('Глава вторая');
     await expect(searchField).toHaveValue('');
     await expect(page.locator('.gd-search-highlight')).toHaveCount(0);
@@ -317,8 +317,8 @@ test('поиск в «Сравнении»/«Исходнике»: первая 
   const { page, openByDialog } = session;
   try {
     await openByDialog();
-    await expect(page.getByRole('button', { name: 'Заголовок' })).toBeVisible();
-    await page.getByRole('button', { name: 'Заголовок' }).click();
+    await expect(page.getByRole('button', { name: 'Заголовок', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Заголовок', exact: true }).click();
     await expect(page.locator('.cm-content')).toBeVisible();
 
     for (const [buttonName, containerClass] of [
@@ -391,41 +391,41 @@ test('фильтр глав скрывает лишние записи и не �
   const { page, bookRoot, openByDialog } = session;
   try {
     await openByDialog();
-    await expect(page.getByRole('button', { name: 'Медведь' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Медведь', exact: true })).toBeVisible();
     const manifestPath = path.join(bookRoot, '.pocket-editor.json');
     const before = await readFile(manifestPath, 'utf8');
 
     await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('кит');
-    await expect(page.getByRole('button', { name: 'Кит' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Медведь' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Ёж' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Кит', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Медведь', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Ёж', exact: true })).toHaveCount(0);
     await expect(page.getByText('Главы не найдены')).toHaveCount(0);
 
     // Регистр не важен (история №9).
     await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('КИТ');
-    await expect(page.getByRole('button', { name: 'Кит' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Кит', exact: true })).toBeVisible();
 
-    // Без заголовка отображается по пути (`entry.title === ''` → title || path);
-    // фильтр находит её и по числовому фрагменту пути «012», не только по названию.
+    // Без Markdown-заголовка отображается выведенное из имени файла название;
+    // фильтр находит её и по числовому фрагменту пути «012».
     await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('012');
-    await expect(page.getByRole('button', { name: '012-без-заголовка.md' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Медведь' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '012-без-заголовка', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Медведь', exact: true })).toHaveCount(0);
 
     // Совпадение по пути, а не только по названию: файл «medved-fish.md»
     // отображается под названием «Заголовок» (h1), но фильтр всё равно
     // находит его по латинскому пути, которого нет в названии.
     await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('medved');
-    await expect(page.getByRole('button', { name: 'Заголовок' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Кит' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Заголовок', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Кит', exact: true })).toHaveCount(0);
 
     await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('выдра');
     await expect(page.getByText('Главы не найдены')).toBeVisible();
 
     // Пустой фильтр возвращает все главы.
     await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('');
-    await expect(page.getByRole('button', { name: 'Медведь' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Кит' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Ёж' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Медведь', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Кит', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Ёж', exact: true })).toBeVisible();
 
     // Манифест на диске не менялся: фильтр живёт только в отображении.
     expect(await readFile(manifestPath, 'utf8')).toBe(before);
@@ -439,7 +439,7 @@ test('оформление: тема красит контейнер, настр
   const { page, userData, openByDialog } = session;
   try {
     await openByDialog();
-    await expect(page.getByRole('button', { name: 'Глава 1' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Глава 1', exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Оформление' }).click();
@@ -521,7 +521,7 @@ test('Zen: панели и topbar скрыты; Escape закрывает popup,
   const session = await launchWithBook({ 'Глава 1.md': chapterText });
   const { page, bookRoot, userData, openByDialog } = session;
   await openByDialog();
-  await expect(page.getByRole('button', { name: 'Заголовок' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Заголовок', exact: true })).toBeVisible();
   await closeApp(session);
   await writeEditSidecar(bookRoot, 'Глава 1.md', chapterText, 'кот спит', 'кит спит');
 
@@ -531,7 +531,7 @@ test('Zen: панели и topbar скрыты; Escape закрывает popup,
   const { app, page: zenPage } = await relaunch(userData);
   try {
     await zenPage.getByRole('button', { name: 'Открыть', exact: true }).click();
-    await zenPage.getByRole('button', { name: 'Заголовок' }).click();
+    await zenPage.getByRole('button', { name: 'Заголовок', exact: true }).click();
     await expect(zenPage.locator('.cm-content')).toBeVisible();
 
     // Вход в Zen: topbar/панели скрыты, выход виден всегда.
@@ -604,7 +604,7 @@ test('поиск открывается с клавиатуры и Escape очи
     await expect(field).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Поиск по главе', exact: true })).toBeFocused();
     await page.getByRole('button', { name: 'Меню книги' }).click();
-    await expect(page.getByRole('button', { name: 'Управление книгой', exact: true })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Переименовать книгу', exact: true })).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'Оформление', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Меню книги' })).toBeFocused();
