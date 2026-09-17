@@ -186,3 +186,10 @@ narrow-overlay menus, plus long-YAML metadata/discard geometry at 1100/900 px an
 Final correction gates: **104 native passed / 1 expected performance skip** (one
 full isolated run), **461 unit tests passed**, typecheck/package/diff check passed.
 No contract-related files changed in this correction.
+
+
+### Остаток заключительного ревью (2026-09-17)
+
+P2: после Escape, закрывающего меню главы, фокус возвращается на его кнопку. Следующий Escape поглощается и не закрывает панель/поиск. Явные кнопки закрытия работают; потери данных нет. Остаток отложен после одного финального цикла исправлений по SDD. Это известный дефект, а не подтверждённый PASS сценария двух последовательных Escape.
+
+Linux gates на `ec589b0`: 461 unit; 104 native PASS, 1 ожидаемый performance-skip; typecheck/package PASS. [Заключительное ревью](./reviews/evidence/workspace-ux/final-review/final-rereview.md). macOS/системный IME не проверены.

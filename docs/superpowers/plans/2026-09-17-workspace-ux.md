@@ -337,3 +337,5 @@ export function displayOffsetToDerived(segments: readonly ComparisonSegment[], o
 - [x] Записать фактические PASS/FAIL и отдельно старый отложенный macOS selection failure. Не повышать таймауты/не добавлять retries ради зелёного результата. Commit `docs: record workspace UX acceptance`.
 
 Приёмка выполнена на Linux/Xvfb; macOS и системный IME не проверены. Полные результаты и ограничения: `docs/reviews/2026-09-17-workspace-ux.md`.
+
+Заключительное ревью: один P2 отложен — второй Escape после закрытия меню главы не закрывает панель/поиск при фокусе на кнопке меню. См. приёмочный отчёт; этот частный сценарий не считается PASS.
