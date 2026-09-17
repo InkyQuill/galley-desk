@@ -327,6 +327,20 @@ export function ReviewEditor({
 
   // Локальные картинки — через защищённую схему bookres; чужие схемы и
   // обход каталогов рендерятся как недоступные, не как bookres-ссылки.
+  //
+  // attachTooltip cleanup для картинок (Task 10, fix после ревью): Galley
+  // сам решает, когда пересоздать/выбросить DOM виджета (например, картинка
+  // уходит из visibleRanges при скролле или документ целиком заменяется при
+  // смене главы) и не даёт нам хука уничтожения — ImageRenderer возвращает
+  // голый HTMLElement и всё. Скролл и так глобально гасит подсказку (см.
+  // tooltip-controller.ts), но смена главы/внешняя синхронизация документа
+  // может убрать картинку из DOM без mouseleave/blur, если курсор в этот
+  // момент неподвижен над ней — тогда controller остался бы с activeTarget
+  // на отсоединённом узле. Поэтому cleanup не отбрасывается: он копится в
+  // imageTooltipCleanupsRef и снимается MutationObserver'ом ниже, как только
+  // соответствующий <img> реально покидает DOM хоста редактора, плюс
+  // финальным flush при размонтировании — какой бы путь его ни убрал.
+  const imageTooltipCleanupsRef = useRef<Map<Element, () => void>>(new Map());
   const imageRendererRef = useRef<(image: GalleyImageInfo) => HTMLElement | null>(() => null);
   imageRendererRef.current = (image) => {
     if (!isLocalImagePath(image.url)) {
@@ -341,15 +355,50 @@ export function ReviewEditor({
     element.alt = image.alt;
     // Императивный DOM-виджет (Galley отдаёт голый HTMLElement, не React-дерево)
     // -- общая подсказка через attachTooltip вместо нативного title (Task 10).
-    // Galley не даёт хук уничтожения виджета, поэтому cleanup не сохраняется:
-    // при удалении узла из DOM браузер сам снимает его слушатели.
-    attachTooltip(element, image.url);
+    imageTooltipCleanupsRef.current.set(element, attachTooltip(element, image.url));
     return element;
   };
   const imageRenderer = useCallback(
     (image: GalleyImageInfo) => imageRendererRef.current(image),
     [],
   );
+
+  // Снимает cleanup картиночных подсказок, как только их <img> реально
+  // покидает DOM хоста (childList/subtree покрывает и точечное удаление
+  // одного узла Galley, и целиком заменённое поддерево при смене главы).
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const cleanups = imageTooltipCleanupsRef.current;
+    const releaseRemoved = (node: Node): void => {
+      if (!(node instanceof Element)) return;
+      const own = cleanups.get(node);
+      if (own) {
+        own();
+        cleanups.delete(node);
+      }
+      for (const image of node.querySelectorAll('img.book__image')) {
+        const cleanup = cleanups.get(image);
+        if (cleanup) {
+          cleanup();
+          cleanups.delete(image);
+        }
+      }
+    };
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) mutation.removedNodes.forEach(releaseRemoved);
+    });
+    observer.observe(host, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      // Размонтирование ReviewEditor: что бы ни осталось непойманным
+      // наблюдателем (гонка с его собственным disconnect), листенеры и
+      // возможную видимую/отложенную подсказку снимаем явно, а не полагаемся
+      // на сборщик мусора DOM-узла.
+      for (const cleanup of cleanups.values()) cleanup();
+      cleanups.clear();
+    };
+  }, []);
 
   // Undo/redo в «Тексте» — команды сессии. Prec.highest обязателен: ключ
   // биндинга Galley (historyKeymap CodeMirror) перебивал бы наш по порядку
