@@ -1,5 +1,5 @@
 {
-  "source": "/home/inky/Документы/test-book",
+  "source": "configured-real-book-fixture",
   "sourceHashBefore": "55253e0c7ff59af1ccac74ef4cefa6d0df90fd9e5089de58e912f334d5920046",
   "sourceHashAfter": "55253e0c7ff59af1ccac74ef4cefa6d0df90fd9e5089de58e912f334d5920046",
   "copiedBook": "galley-task13-real-book-kZU8Io",

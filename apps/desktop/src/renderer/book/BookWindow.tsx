@@ -449,7 +449,7 @@ export function BookWindow({
       if (event.key !== 'Escape') return;
       // Native dialogs and nested forms own this press before the workspace.
       if (document.querySelector('dialog[open], .book__metadata-popover')) return;
-      if ((event.target as Element)?.closest('.book__chapter-menu, .book__chapter-menu-items, .chapter-note [role=dialog]')) return;
+      if ((event.target as Element)?.closest('.book__chapter-menu-items, .chapter-note [role=dialog]')) return;
       // Активный разделитель владеет Escape: его capture-listener отменяет
       // preview и не даёт этому же нажатию закрыть другой слой.
       if (document.documentElement.classList.contains('is-resizing-sidebar')) return;
@@ -916,6 +916,7 @@ export function BookWindow({
   }, [fittedLayout, sidebarOverlay]);
   const chaptersCollapsed = zen || chaptersHidden || fittedLayout.chaptersCollapsed;
   const reviewCollapsed = zen || reviewHidden || fittedLayout.reviewCollapsed;
+  const sidebarOverlayCollapsed = sidebarOverlay === 'chapters' ? chaptersCollapsed : reviewCollapsed;
   const bodyStyle = {
     '--chapters-width': `${fittedLayout.chaptersWidth}px`,
     '--review-width': `${fittedLayout.reviewWidth}px`,
@@ -1158,7 +1159,7 @@ export function BookWindow({
             />
           </aside>
         )}
-        {!zen && sidebarOverlay !== null && (
+        {!zen && sidebarOverlay !== null && sidebarOverlayCollapsed && (
           <div ref={overlayPanelRef} className={`book__sidebar-overlay book__sidebar-overlay--${sidebarOverlay}`} role="dialog" aria-label={sidebarOverlay === 'chapters' ? 'Оглавление' : 'Рецензия'}>
             <button type="button" className="book__sidebar-overlay-close" aria-label="Закрыть панель" onClick={() => {
               const side = sidebarOverlay;

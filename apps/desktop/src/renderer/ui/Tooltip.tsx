@@ -14,6 +14,8 @@ export type TooltipProps = {
   content: ReactNode;
   /** Отдельная строка сочетания клавиш (например, Zen: Ctrl+Alt+Z / Cmd+Alt+Z). */
   shortcut?: string;
+  /** Оставить визуальную подсказку, но не повторять совпадающее accessible name. */
+  describe?: boolean;
   children: ReactElement;
 };
 
@@ -32,7 +34,7 @@ function assignRef(ref: RefLike, node: RefValue): void {
  * (addEventListener), а не React onMouseEnter/onFocus, поэтому ничего не
  * перезаписывается и лишней кнопки/span-обёртки (лишнего tab stop) не появляется.
  */
-export function Tooltip({ content, shortcut, children }: TooltipProps) {
+export function Tooltip({ content, shortcut, describe = true, children }: TooltipProps) {
   const contentRef = useRef(content);
   contentRef.current = content;
   const shortcutRef = useRef(shortcut);
@@ -48,9 +50,9 @@ export function Tooltip({ content, shortcut, children }: TooltipProps) {
   // подсказка гасла бы при любом несвязанном обновлении родителя.
   const mergedRef = useCallback((node: RefValue) => {
     cleanupRef.current?.();
-    cleanupRef.current = node ? bindTooltip(node, () => contentRef.current, () => shortcutRef.current) : null;
+    cleanupRef.current = node ? bindTooltip(node, () => contentRef.current, () => shortcutRef.current, describe) : null;
     assignRef(originalRefRef.current, node);
-  }, []);
+  }, [describe]);
 
   return cloneElement(children, { ref: mergedRef } as { ref: typeof mergedRef });
 }

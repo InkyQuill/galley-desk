@@ -71,27 +71,28 @@ function removeDescribedBy(target: HTMLElement): void {
   else target.removeAttribute('aria-describedby');
 }
 
-function setVisible(target: HTMLElement, content: ReactNode, shortcut: string | undefined): void {
+function setVisible(target: HTMLElement, content: ReactNode, shortcut: string | undefined, describe: boolean): void {
   clearPending();
   activeTarget = target;
-  addDescribedBy(target);
+  if (describe) addDescribedBy(target);
+  else removeDescribedBy(target);
   snapshot = { visible: true, rect: target.getBoundingClientRect(), content, shortcut };
   notify();
 }
 
 /** Фокус показывает подсказку сразу, без задержки наведения. */
-export function showTooltipNow(target: HTMLElement, content: ReactNode, shortcut?: string): void {
-  setVisible(target, content, shortcut);
+export function showTooltipNow(target: HTMLElement, content: ReactNode, shortcut?: string, describe = true): void {
+  setVisible(target, content, shortcut, describe);
 }
 
 /** Наведение мышью показывает подсказку через HOVER_DELAY_MS. */
-export function scheduleTooltip(target: HTMLElement, content: ReactNode, shortcut?: string): void {
+export function scheduleTooltip(target: HTMLElement, content: ReactNode, shortcut?: string, describe = true): void {
   clearPending();
   pendingTarget = target;
   showTimer = setTimeout(() => {
     showTimer = null;
     pendingTarget = null;
-    setVisible(target, content, shortcut);
+    setVisible(target, content, shortcut, describe);
   }, HOVER_DELAY_MS);
 }
 
@@ -142,11 +143,12 @@ export function bindTooltip(
   target: HTMLElement,
   getContent: () => ReactNode,
   getShortcut: () => string | undefined,
+  describe = true,
 ): () => void {
   ensureGlobalListeners();
-  const onMouseEnter = (): void => scheduleTooltip(target, getContent(), getShortcut());
+  const onMouseEnter = (): void => scheduleTooltip(target, getContent(), getShortcut(), describe);
   const onMouseLeave = (): void => hideTooltip(target);
-  const onFocus = (): void => showTooltipNow(target, getContent(), getShortcut());
+  const onFocus = (): void => showTooltipNow(target, getContent(), getShortcut(), describe);
   const onBlur = (): void => hideTooltip(target);
   target.addEventListener('mouseenter', onMouseEnter);
   target.addEventListener('mouseleave', onMouseLeave);

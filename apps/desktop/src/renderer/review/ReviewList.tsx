@@ -50,7 +50,7 @@ export function ReviewList({ records, cardRecordId, onSelect, onCommand, onCardC
           const presentation = visualRecord(record);
           return (
             <li key={record.id} style={{ display: 'grid', gap: '0.35rem' }}>
-              <Tooltip content={recordLabel(record)}>
+              <Tooltip content={recordLabel(record)} describe={false}>
                 <button
                   type="button"
                   className={`book__record book__record--${record.status}`}

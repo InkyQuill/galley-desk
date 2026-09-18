@@ -140,6 +140,7 @@ try {
   await page.keyboard.press('Escape');
   await expect(page.locator('.book__sidebar-overlay')).toBeVisible();
   await page.keyboard.press('Escape');
+  await expect(page.locator('.book__sidebar-overlay')).toHaveCount(0);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.keyboard.press('Escape');
 
@@ -277,7 +278,7 @@ try {
     records += (review.edits?.length ?? 0) + (review.signals?.length ?? 0);
   }
   const result = {
-    source,
+    source: 'configured-real-book-fixture',
     sourceHashBefore: originalBefore,
     sourceHashAfter: await hashTree(source),
     copiedBook: path.basename(scratch),

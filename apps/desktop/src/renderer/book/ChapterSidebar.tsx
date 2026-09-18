@@ -48,7 +48,7 @@ export function ChapterSidebar({ book, activeId, disabled, onOpen, onAction }: C
                 <small>{entry.path.split('/').pop()}{entry.missing ? ' (файл отсутствует)' : ''}</small>
               </button>
             </Tooltip>
-            <div className="book__chapter-menu" ref={menuId === entry.id ? menuRef : undefined} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setMenuId(null); event.currentTarget.querySelector<HTMLButtonElement>('.book__chapter-menu-button')?.focus(); } }}>
+            <div className="book__chapter-menu" ref={menuId === entry.id ? menuRef : undefined} onKeyDown={event => { if (event.key === 'Escape' && menuId === entry.id) { event.stopPropagation(); setMenuId(null); event.currentTarget.querySelector<HTMLButtonElement>('.book__chapter-menu-button')?.focus(); } }}>
               <Tooltip content={`Действия главы: ${label}`}>
                 <button type="button" className="book__chapter-menu-button" data-chapter-menu-id={entry.id} aria-label={`Действия главы: ${label}`} aria-expanded={menuId === entry.id} disabled={disabled} onClick={() => setMenuId(current => current === entry.id ? null : entry.id)}><IconDots /></button>
               </Tooltip>

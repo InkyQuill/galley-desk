@@ -310,8 +310,8 @@ test('mode-switch flush preserves interior reading through two delayed undos', a
         return original(event, ...args);
       });
     });
-    await page.keyboard.press('Control+z');
-    await page.keyboard.press('Control+z');
+    await page.keyboard.press('ControlOrMeta+z');
+    await page.keyboard.press('ControlOrMeta+z');
     await page.getByRole('button', { name: 'Сравнение', exact: true }).click();
     await expect.poll(() => app.evaluate(() => (globalThis as unknown as { rejectionHeld: boolean }).rejectionHeld)).toBe(true);
     await expect(page.locator('.cm-content')).toBeVisible();

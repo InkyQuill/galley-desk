@@ -137,3 +137,28 @@ test('responsive layout has no horizontal overflow and collapsed panels open as 
     await session.app.close();
   }
 });
+
+test('keyboard width commit survives responsive resizer unmount', async () => {
+  const bookRoot = await temp('galley-sidebar-unmount-book-');
+  const userData = await temp('galley-sidebar-unmount-user-');
+  await writeFile(path.join(bookRoot, 'Глава.md'), '# Глава\n\nТекст.\n', 'utf8');
+  const session = await launch(userData, bookRoot);
+  try {
+    const { page } = session;
+    await expect(page.locator('.cm-content')).toBeVisible();
+    const reviewSeparator = page.getByRole('separator', { name: 'Ширина рецензии' });
+    await reviewSeparator.focus();
+    await reviewSeparator.press('ArrowLeft');
+    await expect(page.locator('.book__review')).toHaveCSS('width', '352px');
+    await page.setViewportSize({ width: 900, height: 700 });
+    await expect(reviewSeparator).toHaveCount(0);
+    await expect.poll(async () => {
+      const raw = await readFile(path.join(userData, 'settings.json'), 'utf8').catch(() => null);
+      if (raw === null) return undefined;
+      const settings = JSON.parse(raw) as { layout?: { reviewWidth?: number } };
+      return settings.layout?.reviewWidth;
+    }).toBe(352);
+  } finally {
+    await session.app.close();
+  }
+});

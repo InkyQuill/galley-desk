@@ -1,7 +1,9 @@
 # Final Workspace UX fix wave
 
-Base: `e6cfabe`. Addresses all five Important and both Minor findings in
-`final-review.md`. No additional fix wave or subagents were used.
+Base: `e6cfabe`. Addresses four Important and both Minor findings in
+`final-review.md`. Important 3 remained partially open at this commit: a second
+Escape was still consumed after the chapter menu closed and restored trigger
+focus. No additional fix wave or subagents were used.
 
 ## Changes by finding
 
@@ -110,9 +112,9 @@ Logs: `/tmp/final-fix-red.log`, `/tmp/final-fix-targeted-final.log`,
 
 ## Real-copy acceptance and visual inspection
 
-`capture.mts` was rerun under the same isolated GUI environment with
-`GALLEY_TASK13_REAL_BOOK=/home/inky/Документы/test-book`. Only its mkdtemp copy was
-opened. Source tree hash before and after is identical:
+`capture.mts` was rerun under the same isolated GUI environment with a configured
+real-book fixture. Only its mkdtemp copy was opened. Source tree hash before and
+after is identical:
 `55253e0c7ff59af1ccac74ef4cefa6d0df90fd9e5089de58e912f334d5920046`.
 It includes 27 Markdown chapters, 8 sidecars and 144 records. Existing stories
 1 and 6–12 assertions continue to pass.

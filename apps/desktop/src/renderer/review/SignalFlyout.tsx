@@ -47,7 +47,7 @@ export function SignalFlyout({ x, bottom, onPick, registerFocus }: Props) {
       }}
     >
       {SIGNAL_TYPES.map((type) => (
-        <Tooltip key={type} content={signalLabels[type]}>
+        <Tooltip key={type} content={signalLabels[type]} describe={false}>
           <button
             aria-label={signalLabels[type]}
             type="button"

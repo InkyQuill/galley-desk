@@ -358,6 +358,7 @@ test('отмена диалога после уже сохранённой по�
 
 test('папка, переехавшая на новое место, восстанавливает позицию через диалог по bookId', async () => {
   const bookRoot = await makeTempDir('galley-e2e-dialog-moved-');
+  const movedRoot = `${bookRoot}-переехала`;
   const lines = Array.from({ length: 200 }, (_, index) => `строка ${index + 1}`).join('\n');
   const session = await launch(bookRoot, {
     'Глава 1.md': `${lines}\n`,
@@ -380,7 +381,6 @@ test('папка, переехавшая на новое место, восст�
     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
 
-    const movedRoot = `${bookRoot}-переехала`;
     await rename(bookRoot, movedRoot);
 
     // Диалог теперь указывает на новое расположение; главу и прокрутку
@@ -393,6 +393,7 @@ test('папка, переехавшая на новое место, восст�
       .toBe(80);
   } finally {
     if (existsSync(bookRoot)) await rm(bookRoot, { recursive: true, force: true }).catch(() => undefined);
+    await rm(movedRoot, { recursive: true, force: true }).catch(() => undefined);
     await closeApp(session);
   }
 });

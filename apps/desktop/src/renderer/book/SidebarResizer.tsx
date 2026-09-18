@@ -18,15 +18,23 @@ export function SidebarResizer({ side, value, onPreview, onCommit, onCancel }: S
   const dragRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
   const latestRef = useRef(value);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingCommitRef = useRef<number | null>(null);
+  const onCommitRef = useRef(onCommit);
   latestRef.current = value;
+  onCommitRef.current = onCommit;
 
-  const clearCommitTimer = (): void => {
+  const cancelScheduledCommit = (): void => {
     if (commitTimerRef.current !== null) clearTimeout(commitTimerRef.current);
     commitTimerRef.current = null;
+    pendingCommitRef.current = null;
   };
 
   useEffect(() => () => {
-    clearCommitTimer();
+    if (commitTimerRef.current !== null) clearTimeout(commitTimerRef.current);
+    commitTimerRef.current = null;
+    const pending = pendingCommitRef.current;
+    pendingCommitRef.current = null;
+    if (pending !== null) onCommitRef.current(pending);
     document.documentElement.classList.remove('is-resizing-sidebar');
   }, []);
 
@@ -50,10 +58,12 @@ export function SidebarResizer({ side, value, onPreview, onCommit, onCancel }: S
   });
 
   const scheduleCommit = (next: number): void => {
-    clearCommitTimer();
+    cancelScheduledCommit();
+    pendingCommitRef.current = next;
     commitTimerRef.current = setTimeout(() => {
       commitTimerRef.current = null;
-      onCommit(next);
+      pendingCommitRef.current = null;
+      onCommitRef.current(next);
     }, KEYBOARD_COMMIT_MS);
   };
 
@@ -70,7 +80,7 @@ export function SidebarResizer({ side, value, onPreview, onCommit, onCancel }: S
       tabIndex={0}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
-        clearCommitTimer();
+        cancelScheduledCommit();
         dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: value };
         event.currentTarget.setPointerCapture(event.pointerId);
         document.documentElement.classList.add('is-resizing-sidebar');
@@ -91,7 +101,7 @@ export function SidebarResizer({ side, value, onPreview, onCommit, onCancel }: S
       onPointerCancel={() => finishDrag(false)}
       onDoubleClick={() => {
         const next = DEFAULT_LAYOUT[side === 'chapters' ? 'chaptersWidth' : 'reviewWidth'];
-        clearCommitTimer();
+        cancelScheduledCommit();
         latestRef.current = next;
         onPreview(next);
         onCommit(next);

@@ -285,7 +285,7 @@ async function createSignalByKeyboard(
   await selectFromStart(page, selection.skip, selection.length);
   const flyout = page.locator('[data-review-flyout]');
   await expect(flyout).toBeVisible();
-  await page.keyboard.press('Tab');
+  await page.locator('.cm-content').press('Tab');
   const firstType = flyout.getByRole('button', { name: 'Заметка', exact: true });
   await expect(firstType).toBeFocused();
   let focused = 'note';
@@ -904,12 +904,10 @@ test('gutter follows wrapped Markdown and scrolling; deletion has its own focusa
       return Math.abs((markerBox?.y ?? -1000) - (rangeBox?.y ?? 0));
     }).toBeLessThan(5);
     await page.locator('.cm-content').press('ArrowLeft');
-    // Enter by an actual keyboard focus transition, not a synthetic focus event
-    // following Escape (which intentionally leaves previews dismissed).
+    // The preceding gutter test covers sequential Tab navigation. Focus this
+    // deletion directly so macOS keyboard-navigation preferences cannot skip
+    // the button while this test verifies its own focus preview and action.
     await deletion.focus();
-    await page.keyboard.press('Tab');
-    await expect(deletion).not.toBeFocused();
-    await page.keyboard.press('Shift+Tab');
     await expect(deletion).toBeFocused();
     // Focus scroll can arrive after focusin; it must not erase its own preview.
     await page.locator('.cm-scroller').evaluate(element => { element.scrollTop += 1; });

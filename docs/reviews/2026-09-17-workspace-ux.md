@@ -56,7 +56,7 @@ Restart-проверка позиции требует тот же первый 
 
 ## Реальная книга и истории
 
-Источник `/home/inky/Документы/test-book` только читался и копировался во
+Настроенная реальная книга только читалась и копировалась во
 временный каталог. В копии: 27 Markdown-файлов, 8 sidecar и 144 edits/signals.
 SHA256 дерева источника до и после совпал:
 `55253e0c7ff59af1ccac74ef4cefa6d0df90fd9e5089de58e912f334d5920046`.
@@ -125,8 +125,18 @@ full isolated run), **461 unit tests passed**, typecheck/package/diff check pass
 No contract-related files changed in this correction.
 
 
-### Остаток заключительного ревью (2026-09-17)
+### Follow-up по ревью PR (2026-09-18)
 
-P2: после Escape, закрывающего меню главы, фокус возвращается на его кнопку. Следующий Escape поглощается и не закрывает панель/поиск. Явные кнопки закрытия работают; потери данных нет. Остаток отложен после одного финального цикла исправлений по SDD. Это известный дефект, а не подтверждённый PASS сценария двух последовательных Escape.
+Отложенный P2 закрыт: обработчик строки поглощает Escape только пока меню этой
+строки действительно открыто. Регрессия проверяет последовательность «первый
+Escape закрывает меню, второй закрывает overlay»; capture теперь также требует
+закрытый overlay до смены ширины окна. При переходе overlay → docked одновременно
+существует не более одной заметки главы.
 
-Linux gates на `ec589b0`: 461 unit; 104 native PASS, 1 ожидаемый performance-skip; typecheck/package PASS. [Заключительное ревью](./evidence/workspace-ux/final-review/final-rereview.md). macOS/системный IME не проверены.
+Дополнительно сохранение ширины переживает responsive unmount разделителя,
+повторяющие accessible name подсказки больше не добавляют `aria-describedby`, а
+платформенные клавиатурные сценарии используют `ControlOrMeta`. Linux follow-up
+gates: 461 unit; 102 native PASS, 5 ожидаемых skip без packaged executable;
+typecheck/package/diff check PASS. [Историческое заключительное ревью](./evidence/workspace-ux/final-review/final-rereview.md)
+описывает состояние до этого follow-up. macOS CI проверяется после публикации
+исправлений; системный IME не проверен.

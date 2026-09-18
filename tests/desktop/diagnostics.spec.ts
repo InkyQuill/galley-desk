@@ -188,6 +188,7 @@ test('the diagnostics panel opens from the welcome screen by keyboard, shows rea
 test('the diagnostics panel opens the same way from an open book, and Escape again returns focus to the titlebar button', async () => {
   const { app, page } = await launch();
   try {
+    await page.setViewportSize({ width: 1200, height: 850 });
     const trigger = page.getByRole('button', { name: 'Диагностика' });
     await trigger.click();
     const dialog = page.getByRole('dialog', { name: 'Диагностика' });
