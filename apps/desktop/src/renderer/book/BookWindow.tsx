@@ -234,6 +234,10 @@ export function BookWindow({
 
   // Flyout выделения, попап записи/черновика сигнала и карточка панели.
   const [flyout, setFlyout] = useState<{ from: number; to: number; x: number; y: number; bottom: number } | null>(null);
+  // CodeMirror can deliver another selection before React commits the flyout
+  // render. Keep the command range synchronous so a fast keyboard pick never
+  // saves the previous, shorter selection.
+  const selectionWindowRef = useRef<typeof flyout>(null);
   const [popup, setPopup] = useState<PopupState>(null);
   const [cardId, setCardId] = useState<string | null>(null);
   const [editorApi, setEditorApi] = useState<ReviewEditorApi | null>(null);
@@ -838,6 +842,7 @@ export function BookWindow({
 
   const handleSelectionWindow = useCallback(
     (range: { from: number; to: number; x: number; y: number; bottom: number } | null) => {
+      selectionWindowRef.current = range;
       setFlyout(range);
     },
     [],
@@ -851,8 +856,10 @@ export function BookWindow({
 
   const openDraft = useCallback(
     (signalType: SignalTypeName) => {
-      if (flyout === null) return;
-      setPopup({ kind: 'draft', from: flyout.from, to: flyout.to, signalType, at: flyout });
+      const range = selectionWindowRef.current ?? flyout;
+      if (range === null) return;
+      setPopup({ kind: 'draft', from: range.from, to: range.to, signalType, at: range });
+      selectionWindowRef.current = null;
       setFlyout(null);
     },
     [flyout],
