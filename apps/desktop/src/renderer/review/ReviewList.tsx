@@ -1,4 +1,4 @@
-import { recordsInReadingOrder } from '../editor/visual-range';
+import { recordsInReadingOrder, visualRecord } from '../editor/visual-range';
 import { IconPencil, IconBolt } from '@tabler/icons-react';
 import { EDIT_MARKER_COLOR, useMarkerTheme, signalColor } from '../editor/markers';
 // Правая панель рецензии: список правок и сигналов для перехода между ними.
@@ -6,6 +6,7 @@ import { EDIT_MARKER_COLOR, useMarkerTheme, signalColor } from '../editor/marker
 // попап (в BookWindow); у записи без якоря карточка раскрывается прямо здесь.
 import type { Command, RecordView } from '../../shared/api';
 import { RecordPopup } from './RecordPopup';
+import { Tooltip } from '../ui/Tooltip';
 
 /** Единая подпись записи для списка и тестов. */
 const signalLabels = { note: 'Заметка', change_required: 'Требуется правка', warning: 'Предупреждение', review: 'На проверку' };
@@ -16,6 +17,16 @@ export function recordLabel(record: RecordView): string {
   if (record.kind === 'edit') return `Правка: ${record.before} → ${record.after}${suffix}`;
   const comment = record.comment.length > 0 ? `: ${record.comment}` : '';
   return `Сигнал [${record.signalType ?? ''}]${comment}${suffix}`;
+}
+
+function statusLabel(record: RecordView): string | null {
+  if (record.status === 'conflicting') return 'Конфликтует';
+  if (record.status === 'unavailable') return `Недоступна: ${record.reason}`;
+  return null;
+}
+
+function excerpt(value: string, emptyLabel: string) {
+  return <span className={`book__record-excerpt${value.length === 0 ? ' book__record-excerpt--empty' : ''}`}>{value || emptyLabel}</span>;
 }
 
 type Props = {
@@ -34,24 +45,42 @@ export function ReviewList({ records, cardRecordId, onSelect, onCommand, onCardC
   return (
     <nav aria-label="Рецензия главы" style={{ display: 'grid', gap: '0.25rem' }}>
       <ul className="book__records">
-        {recordsInReadingOrder(records).map((record) => (
-          <li key={record.id} style={{ display: 'grid', gap: '0.35rem' }}>
-            <button
-              type="button"
-              className={`book__record book__record--${record.status}`}
-              aria-expanded={cardRecordId === record.id}
-              onClick={() => onSelect(record)}
-              aria-label={recordLabel(record)}
-              title={recordLabel(record)}
-            >
-              {record.kind === 'edit' ? <IconPencil style={{ color: EDIT_MARKER_COLOR }} /> : <IconBolt style={{ color: signalColor(record.signalType ?? 'note', theme) }} />}
-              <span className="book__record-summary">{record.kind === 'edit' ? `${record.before} → ${record.after}` : record.comment || signalLabels[record.signalType ?? 'note']}</span>
-            </button>
-            {cardRecordId === record.id && (
-              <RecordPopup readOnly={readOnly} record={record} at={null} onCommand={onCommand} onClose={onCardClose} />
-            )}
-          </li>
-        ))}
+        {recordsInReadingOrder(records).map((record) => {
+          const status = statusLabel(record);
+          const presentation = visualRecord(record);
+          return (
+            <li key={record.id} style={{ display: 'grid', gap: '0.35rem' }}>
+              <Tooltip content={recordLabel(record)} describe={false}>
+                <button
+                  type="button"
+                  className={`book__record book__record--${record.status}`}
+                  aria-expanded={cardRecordId === record.id}
+                  onClick={() => onSelect(record)}
+                  aria-label={recordLabel(record)}
+                >
+                  {record.kind === 'edit' ? <IconPencil style={{ color: EDIT_MARKER_COLOR }} /> : <IconBolt style={{ color: signalColor(record.signalType ?? 'note', theme) }} />}
+                  <span className="book__record-summary">
+                    {record.kind === 'edit' ? (
+                      <>
+                        <span className="book__record-part"><span className="book__record-label">Было</span>{excerpt(presentation.before, 'вставка')}</span>
+                        <span className="book__record-part"><span className="book__record-label">Стало</span>{excerpt(presentation.after, 'удаление')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="book__record-signal-type">{signalLabels[record.signalType ?? 'note']}</span>
+                        {excerpt(record.comment, 'Без комментария')}
+                      </>
+                    )}
+                    {status !== null && <span className="book__record-status">{status}</span>}
+                  </span>
+                </button>
+              </Tooltip>
+              {cardRecordId === record.id && (
+                <RecordPopup readOnly={readOnly} record={record} at={null} onCommand={onCommand} onClose={onCardClose} />
+              )}
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );

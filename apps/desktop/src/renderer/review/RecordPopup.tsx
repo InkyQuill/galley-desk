@@ -12,6 +12,7 @@ import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react';
 import type { Command, RecordView } from '../../shared/api';
 import { SIGNAL_TYPES, useMarkerTheme, signalColor } from '../editor/markers';
 import type { SignalTypeName } from '../editor/markers';
+import { Tooltip } from '../ui/Tooltip';
 
 export type SignalDraft = { from: number; to: number; signalType: SignalTypeName };
 export type PopupPosition = { x: number; y: number; bottom: number } | null;
@@ -273,25 +274,25 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
       </strong>
       <div style={rowStyle}>
         {SIGNAL_TYPES.map((type) => (
-          <button
-            key={type}
-            aria-label={signalLabels[type]}
-            title={signalLabels[type]}
-            type="button"
-            disabled={readOnly}
-            aria-pressed={signalType === type}
-            style={{
-              color: signalColor(type, theme),
-              borderColor: signalColor(type, theme),
-              background: signalType === type ? `color-mix(in srgb, ${signalColor(type, theme)} 15%, transparent)` : 'transparent',
-              borderRadius: 6,
-              cursor: 'pointer',
-              padding: '0.1rem 0.4rem',
-            }}
-            onClick={() => setSignalType(type)}
-          >
-            {(() => { const Icon = signalIcons[type]; return <Icon size={20} aria-hidden="true" />; })()}
-          </button>
+          <Tooltip key={type} content={signalLabels[type]} describe={false}>
+            <button
+              aria-label={signalLabels[type]}
+              type="button"
+              disabled={readOnly}
+              aria-pressed={signalType === type}
+              style={{
+                color: signalColor(type, theme),
+                borderColor: signalColor(type, theme),
+                background: signalType === type ? `color-mix(in srgb, ${signalColor(type, theme)} 15%, transparent)` : 'transparent',
+                borderRadius: 6,
+                cursor: 'pointer',
+                padding: '0.1rem 0.4rem',
+              }}
+              onClick={() => setSignalType(type)}
+            >
+              {(() => { const Icon = signalIcons[type]; return <Icon size={20} aria-hidden="true" />; })()}
+            </button>
+          </Tooltip>
         ))}
       </div>
       <textarea

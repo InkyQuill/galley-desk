@@ -1,5 +1,39 @@
 # Протокол верификации настольного приложения
 
+## Workspace UX, Linux, 2026-09-17
+
+Коммитная база проверки: `664b3e9`; итоговые тестовые поправки и evidence
+описаны в [отчёте приёмки](reviews/2026-09-17-workspace-ux.md). Все Electron-
+запуски выполнялись на отдельном Xvfb с собственным Openbox, одноразовыми
+`userData` и книгами. Пользовательский экран, установленное приложение и
+исходная реальная книга не изменялись.
+
+| Проверка | Фактический результат |
+| --- | --- |
+| `npm test` | PASS: 36 файлов, 461 тест |
+| `npx tsc -b --force --pretty false` | PASS |
+| `npm run package` | PASS, Linux x64 |
+| `npm run test:contracts` | PASS: Pocket Kotlin build и 21 TS exchange-тест |
+| Полный Linux native, packaged executable | PASS: 102 passed, 1 performance skip |
+| Атомарный Undo/Redo | PASS: середина слова и граница абзаца; точные records после Undo/Redo, decoded sidecar после reopen |
+| light/dark × 900/1280/1920 × 100/125% | PASS, 12 снимков |
+| Zen, меню, Discovery, sort preview, metadata, tooltip, поиск, плотная рецензия, comparison | PASS, сохранены снимки |
+| Реальная книга | PASS на временной копии: 27 Markdown, 8 sidecar, 144 records; истории 1 и 6–12 исполнены и проверены самим capture-скриптом |
+| SHA256 дерева исходной книги до/после | PASS: `55253e0c7ff59af1ccac74ef4cefa6d0df90fd9e5089de58e912f334d5920046` |
+| Реальный macOS и системная Linux IME | **not-run** |
+
+Старый macOS selection failure остаётся отложенным и не объявляется
+исправленным. Форматы manifest/sidecar не менялись; macOS runtime, native
+picker/clipboard/IME и Cmd-акселераторы на настоящем Mac этой Linux-проверкой
+не подтверждены.
+
+Повторный real-book walkthrough проверил picker/Recent parity, Zen через два
+Escape и shortcut, keyboard tooltip, focus и первую подсветку поиска,
+filename-фильтр, 36 плотных записей, переходы Text/Comparison с закрытием и
+Recent reopen по независимому видимому ряду, а также точные middle-word и
+paragraph-boundary Undo/Redo. Результаты записаны по историям в
+[`capture-result.json`](reviews/evidence/workspace-ux/task-13/capture-result.json).
+
 ## Исправления после проверки на реальных книгах, 2026-09-16
 
 Код `48246d4`: **383 unit**, **67 Electron**, typecheck/package/ZIP PASS.
@@ -138,3 +172,24 @@ full-suite попытка обнаружила загрязнение тесто
 Forge ZIP maker ранее не прошёл из-за `spawn zip ENOENT`; новый portable ZIP
 создан тем же Python builder с UNIX permissions/symlinks и CRC check. Проверялся
 исходный packaged executable; отдельный запуск распакованного ZIP не выполнен.
+
+### Workspace final review correction (2026-09-17)
+
+The final review's five Important findings and two small Minor findings are
+covered by `tests/desktop/workspace-layers.spec.ts` and the existing metadata,
+management, layout and tooltip suites. Tests use isolated Xvfb/Openbox only.
+The real-copy walkthrough now checks painted chapter-menu targets, last-row and
+narrow-overlay menus, plus long-YAML metadata/discard geometry at 1100/900 px and
+125% zoom. See the final-review correction section in
+[Workspace UX acceptance](reviews/2026-09-17-workspace-ux.md) for refreshed images.
+
+Final correction gates: **104 native passed / 1 expected performance skip** (one
+full isolated run), **461 unit tests passed**, typecheck/package/diff check passed.
+No contract-related files changed in this correction.
+
+
+### Остаток заключительного ревью (2026-09-17)
+
+P2: после Escape, закрывающего меню главы, фокус возвращается на его кнопку. Следующий Escape поглощается и не закрывает панель/поиск. Явные кнопки закрытия работают; потери данных нет. Остаток отложен после одного финального цикла исправлений по SDD. Это известный дефект, а не подтверждённый PASS сценария двух последовательных Escape.
+
+Linux gates на `ec589b0`: 461 unit; 104 native PASS, 1 ожидаемый performance-skip; typecheck/package PASS. [Заключительное ревью](./reviews/evidence/workspace-ux/final-review/final-rereview.md). macOS/системный IME не проверены.

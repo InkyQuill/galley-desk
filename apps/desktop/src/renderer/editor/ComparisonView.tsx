@@ -9,12 +9,13 @@ import type { RecordView, Snapshot } from '../../shared/api';
 import { comparisonTint, useMarkerTheme, deletionColor, signalColor } from './markers';
 import type { SignalTypeName } from './markers';
 import type { ComparisonSegment } from '../search/search';
+import { Tooltip } from '../ui/Tooltip';
 
 type SigMark = { id: string; type: SignalTypeName };
 
 export type ComparisonNode =
-  | { kind: 'text'; text: string; marks: SigMark[]; ends: SigMark[] }
-  | { kind: 'edit'; id: string; before: string; after: string; ends: SigMark[] };
+  | { kind: 'text'; text: string; marks: SigMark[]; ends: SigMark[]; displayStart: number; derivedFrom: number }
+  | { kind: 'edit'; id: string; before: string; after: string; ends: SigMark[]; displayStart: number; derivedFrom: number; derivedTo: number };
 
 type Piece =
   | { kind: 'text'; text: string; derivedFrom: number; displayStart: number }
@@ -142,6 +143,9 @@ export function buildComparisonNodes(snapshot: Snapshot): ComparisonNode[] {
       // Конец сигнала внутри/на краю введённой части — молния сразу после неё.
       nodes.push({
         kind: 'edit',
+        displayStart: piece.displayStart,
+        derivedFrom: piece.derivedFrom,
+        derivedTo: piece.derivedTo,
         id: piece.record.id,
         before: piece.record.before,
         after: piece.record.after,
@@ -164,6 +168,8 @@ export function buildComparisonNodes(snapshot: Snapshot): ComparisonNode[] {
       const sliceMarks = marks.filter((candidate) => candidate.start <= start && candidate.end >= end).map((candidate) => candidate.mark);
       nodes.push({
         kind: 'text',
+        displayStart: piece.displayStart + start,
+        derivedFrom: piece.derivedFrom + start,
         text: piece.text.slice(start, end),
         marks: sliceMarks,
         ends: pieceEnds.filter((candidate) => candidate.at === end).map((candidate) => candidate.mark),
@@ -189,30 +195,30 @@ function RecordMarkerButton({
   const isEdit = record.kind === 'edit';
   const deletion = isEdit && record.after === '';
   const color = isEdit ? (deletion ? deletionColor(theme) : undefined) : signalColor(record.signalType ?? 'note', theme);
+  const label = isEdit
+    ? deletion
+      ? `Удаление: ${record.before}`
+      : `Правка: ${record.before} → ${record.after}`
+    : `Сигнал [${record.signalType ?? 'note'}]${record.comment !== '' ? `: ${record.comment}` : ''}`;
   return (
-    <button
-      type="button"
-      data-record-id={record.id}
-      aria-label={isEdit ? (deletion ? `Удаление: ${record.before}` : 'Правка') : 'Сигнал'}
-      title={
-        isEdit
-          ? deletion
-            ? `Удаление: ${record.before}`
-            : `Правка: ${record.before} → ${record.after}`
-          : `Сигнал [${record.signalType ?? 'note'}]${record.comment !== '' ? `: ${record.comment}` : ''}`
-      }
-      style={{
-        border: 'none',
-        background: 'transparent',
-        color: color ?? 'inherit',
-        cursor: 'pointer',
-        padding: '0 2px',
-        font: 'inherit',
-      }}
-      onClick={(event) => onRecordClick(record, event.currentTarget.getBoundingClientRect())}
-    >
-      {isEdit ? '✎' : '⚡'}
-    </button>
+    <Tooltip content={label}>
+      <button
+        type="button"
+        data-record-id={record.id}
+        aria-label={isEdit ? (deletion ? `Удаление: ${record.before}` : 'Правка') : 'Сигнал'}
+        style={{
+          border: 'none',
+          background: 'transparent',
+          color: color ?? 'inherit',
+          cursor: 'pointer',
+          padding: '0 2px',
+          font: 'inherit',
+        }}
+        onClick={(event) => onRecordClick(record, event.currentTarget.getBoundingClientRect())}
+      >
+        {isEdit ? '✎' : '⚡'}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -226,8 +232,8 @@ export function ComparisonView({ snapshot, onRecordClick }: Props) {
       const record = records.get(node.id);
       content.push(
         <span key={`edit:${node.id}:${index}`}>
-          <del style={{ background: comparisonTint('deletion', theme) }}>{node.before}</del>
-          <ins style={{ background: comparisonTint('addition', theme), textDecoration: 'none' }}>{node.after}</ins>
+          <del data-display-start={node.displayStart} data-display-end={node.displayStart + node.before.length} data-derived-from={node.derivedFrom} data-derived-to={node.derivedFrom} style={{ background: comparisonTint('deletion', theme) }}>{node.before}</del>
+          <ins data-display-start={node.displayStart + node.before.length} data-display-end={node.displayStart + node.before.length + node.after.length} data-derived-from={node.derivedFrom} data-derived-to={node.derivedTo} style={{ background: comparisonTint('addition', theme), textDecoration: 'none' }}>{node.after}</ins>
           {record !== undefined && <RecordMarkerButton record={record} onRecordClick={onRecordClick} />}
         </span>,
       );
@@ -236,6 +242,10 @@ export function ComparisonView({ snapshot, onRecordClick }: Props) {
       content.push(
         <span key={`text:${index}`}>
           <span
+            data-display-start={node.displayStart}
+            data-display-end={node.displayStart + node.text.length}
+            data-derived-from={node.derivedFrom}
+            data-derived-to={node.derivedFrom + node.text.length}
             style={
               color !== null
                 ? {

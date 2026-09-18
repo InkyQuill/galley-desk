@@ -139,7 +139,7 @@ test('ошибки следуют теме: «папка не найдена» �
   try {
     // Книга попадает в недавние после открытия; окно книги остаётся тематическим.
     await page.getByRole('button', { name: 'Открыть папку…' }).click();
-    await expect(page.getByRole('button', { name: 'Глава первая' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Глава первая', exact: true })).toBeVisible();
     const bookBg = await page.evaluate(
       () => getComputedStyle(document.querySelector('.book')!).getPropertyValue('--app-bg').trim(),
     );

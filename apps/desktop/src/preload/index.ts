@@ -8,10 +8,13 @@ import type {
   ChapterDiscovery,
   Command,
   DeskApi,
+  DiagnosticInfo,
   Recent,
   Snapshot,
   WindowState,
 } from '../shared/api';
+import type { DiagnosticInput } from '../shared/diagnostics';
+import type { LayoutSettings } from '../shared/layout';
 
 /** Ответ основного процесса: ошибки приходят конвертом со стабильным кодом. */
 type IpcEnvelope<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
@@ -43,6 +46,8 @@ const desk: DeskApi = {
   },
   appearance: () => call<AppearanceSettings>('desk:appearance'),
   setAppearance: (value) => call<void>('desk:set-appearance', value),
+  layout: () => call<LayoutSettings>('desk:layout'),
+  setLayout: (value) => call<void>('desk:set-layout', value),
   savePosition: (bookId, chapterId, anchor, scrollTop) =>
     call<void>('desk:save-position', bookId, chapterId, anchor, scrollTop),
   chooseBook: () => call<BookView | null>('desk:choose-book'),
@@ -62,6 +67,15 @@ const desk: DeskApi = {
     const handler = (_event: unknown, state: WindowState): void => listener(state);
     ipcRenderer.on('desk:window-state-changed', handler);
     return () => { ipcRenderer.removeListener('desk:window-state-changed', handler); };
+  },
+  reportDiagnostic: (input: DiagnosticInput) => call<void>('desk:report-diagnostic', input),
+  diagnosticInfo: () => call<DiagnosticInfo>('desk:diagnostic-info'),
+  openLogsFolder: () => call<void>('desk:open-logs-folder'),
+  copyDiagnosticInfo: () => call<void>('desk:copy-diagnostic-info'),
+  onOpenDiagnosticsRequest: (listener) => {
+    const handler = (): void => listener();
+    ipcRenderer.on('desk:open-diagnostics', handler);
+    return () => { ipcRenderer.removeListener('desk:open-diagnostics', handler); };
   },
   onSnapshot: (listener) => {
     // Подписка удаляет ровно свой обработчик, не чужие.

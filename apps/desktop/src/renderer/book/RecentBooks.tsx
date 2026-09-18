@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import type { BookView, Recent } from '../../shared/api';
 
 type Props = {
-  onOpen: (book: BookView, recent?: Recent) => void;
+  /** warning — предупреждение об открытии (например, не удалось перечитать
+   * недавние после выбора папки диалогом); окно книги показывает его. */
+  onOpen: (book: BookView, recent?: Recent, warning?: string) => void;
   /** Меняется после закрытия книги — список перечитывается. */
   refreshKey: number;
 };
@@ -34,9 +36,18 @@ export function RecentBooks({ onOpen, refreshKey }: Props) {
     setError(null);
     try {
       const book = await window.desk.chooseBook();
-      if (book !== null) {
-        onOpen(book);
-        return;
+      if (book === null) return;
+      // main уже открыл книгу и обновил запись недавних с сохранённой
+      // позицией (upsert в openFolder); сопоставление строго по bookId —
+      // не по title и не по первой записи списка, папка могла переехать.
+      try {
+        const latest = await window.desk.recent();
+        const recent = latest.find((entry) => entry.bookId === book.bookId);
+        onOpen(book, recent);
+      } catch (cause) {
+        // Книга уже открыта на стороне main: не оставляем скрытую сессию —
+        // передаём её дальше без восстановления и предупреждаем в окне книги.
+        onOpen(book, undefined, `Не удалось восстановить позицию чтения: ${errorText(cause)}`);
       }
     } catch (cause) {
       setError(errorText(cause));

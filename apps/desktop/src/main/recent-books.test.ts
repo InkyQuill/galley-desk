@@ -134,7 +134,16 @@ test('toRecentViews reports missing folders and transports the reading position'
   ];
   const views = await toRecentViews(books);
   expect(views).toEqual([
-    { path: present, title: 'Есть', missing: false, lastChapterId: 'chapter-9', lastAnchor: 42, lastScrollTop: 320 },
-    { path: path.join(base, 'исчезла'), title: 'Нет', missing: true, lastChapterId: null, lastAnchor: null, lastScrollTop: null },
+    { bookId: 'id-1', path: present, title: 'Есть', missing: false, lastChapterId: 'chapter-9', lastAnchor: 42, lastScrollTop: 320 },
+    { bookId: 'id-2', path: path.join(base, 'исчезла'), title: 'Нет', missing: true, lastChapterId: null, lastAnchor: null, lastScrollTop: null },
   ]);
+});
+
+test('toRecentViews carries bookId so a folder-picker reopen can match by identity', async () => {
+  const base = await tempAppData();
+  const bookDir = path.join(base, 'книга');
+  await mkdir(bookDir);
+  const books = [entry({ path: bookDir, bookId: 'stable-id', title: 'Книга' })];
+  const [view] = await toRecentViews(books);
+  expect(view?.bookId).toBe('stable-id');
 });

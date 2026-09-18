@@ -3,15 +3,20 @@
 // сбрасывается, причина показывается в попапе. Ctrl+Enter сохраняет; Esc
 // закрывает без отправки. У полей нет перехвата ввода: undo внутри textarea —
 // нативный.
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import type { CSSProperties, KeyboardEvent } from 'react';
 
 type Props = {
   value: string;
+  state: NoteState;
+  onState: (change: Partial<NoteState>) => void;
   readOnly?: boolean;
   /** Сохранение через BookWindow; ошибка пробрасывается, черновик остаётся. */
   onCommand: (text: string) => Promise<void>;
 };
+
+export type NoteState = { open: boolean; draft: string | null; error: string | null; busy: boolean };
+export const emptyNoteState: NoteState = { open: false, draft: null, error: null, busy: false };
 
 const cardStyle: CSSProperties = {
   display: 'grid',
@@ -23,16 +28,17 @@ const cardStyle: CSSProperties = {
   color: 'var(--app-text)',
 };
 
-export function ChapterNote({ value, onCommand, readOnly = false }: Props) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+export function ChapterNote({ value, state, onState, onCommand, readOnly = false }: Props) {
+  const { open, draft, error, busy } = state;
+  const setOpen = (open: boolean) => onState({ open });
+  const setDraft = (draft: string) => onState({ draft });
+  const setError = (error: string | null) => onState({ error });
+  const setBusy = (busy: boolean) => onState({ busy });
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   const openPopup = (): void => {
     // Черновик инициализируется значением главы один раз и дальше живёт сам.
-    setDraft((current) => current ?? value);
+    setDraft(draft ?? value);
     setError(null);
     setOpen(true);
   };

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppearanceSettings, BookView, DeskApi, Recent } from '../shared/api';
+import { DEFAULT_LAYOUT, type LayoutSettings } from '../shared/layout';
 import type { ThemeDefinition } from '@inkyquill/galley-themes';
 import {
   DEFAULT_APPEARANCE,
@@ -12,6 +13,7 @@ import { BookWindow } from './book/BookWindow';
 import type { ReadingRestore } from './book/BookWindow';
 import { RecentBooks } from './book/RecentBooks';
 import { TitleBar } from './TitleBar';
+import { TooltipHost } from './ui/Tooltip';
 
 declare global {
   interface Window {
@@ -34,11 +36,18 @@ function errorText(error: unknown): string {
 export function App() {
   const [book, setBook] = useState<BookView | null>(null);
   const [restore, setRestore] = useState<ReadingRestore | null>(null);
+  // Предупреждение открытия (например, recent() не ответил после выбора
+  // папки диалогом) — книга всё равно открыта, восстановления не будет.
+  const [openWarning, setOpenWarning] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   // Настройки оформления из appData; пока они не загружены, App не рисует
   // содержимое — нейтральную подложку первого кадра даёт body (app.css).
   const [appearance, setAppearance] = useState<AppearanceSettings | null>(null);
   const [appearanceError, setAppearanceError] = useState<string | null>(null);
+  const [layout, setLayout] = useState<LayoutSettings | null>(null);
+  const [layoutError, setLayoutError] = useState<string | null>(null);
+  const layoutSaveQueue = useRef<Promise<void>>(Promise.resolve());
+  const latestLayout = useRef<LayoutSettings>(DEFAULT_LAYOUT);
   // Системная схема в состоянии + подписка matchMedia: «Системная» тема
   // следует за живой сменой схемы ОС, а не только при случайном ререндере.
   const [systemDark, setSystemDark] = useState(systemSchemeDark);
@@ -62,6 +71,21 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    window.desk.layout().then(value => {
+      if (cancelled) return;
+      latestLayout.current = value;
+      setLayout(value);
+    }).catch((cause: unknown) => {
+      if (cancelled) return;
+      latestLayout.current = { ...DEFAULT_LAYOUT };
+      setLayout({ ...DEFAULT_LAYOUT });
+      setLayoutError(errorText(cause));
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => subscribeSystemScheme(setSystemDark), []);
 
   const appearanceTheme = useMemo<ThemeDefinition | null>(
@@ -79,7 +103,25 @@ export function App() {
     });
   }, []);
 
-  const openBook = useCallback((view: BookView, recent?: Recent) => {
+  const persistLayout = useCallback((next: LayoutSettings): void => {
+    latestLayout.current = next;
+    setLayout(next);
+    setLayoutError(null);
+    layoutSaveQueue.current = layoutSaveQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        setLayoutError(null);
+        await window.desk.setLayout(next);
+        setLayoutError(null);
+      })
+      .catch((cause: unknown) => {
+        setLayoutError(errorText(cause));
+      });
+  }, []);
+
+  const retryLayout = useCallback((): void => persistLayout(latestLayout.current), [persistLayout]);
+
+  const openBook = useCallback((view: BookView, recent?: Recent, warning?: string) => {
     setRestore(
       recent?.lastChapterId
         ? {
@@ -90,15 +132,17 @@ export function App() {
           }
         : null,
     );
+    setOpenWarning(warning ?? null);
     setBook(view);
   }, []);
   const closeBook = useCallback(() => {
     setBook(null);
     setRestore(null);
+    setOpenWarning(null);
     setRefreshKey((key) => key + 1);
   }, []);
 
-  if (appearance === null || appearanceTheme === null) {
+  if (appearance === null || appearanceTheme === null || layout === null) {
     return <div className="app-root" />;
   }
 
@@ -108,7 +152,7 @@ export function App() {
       style={windowContainerStyle(appearanceTheme, appearance)}
       data-scheme={appearanceTheme.scheme}
     >
-      <TitleBar title={book?.title ?? 'Galley Desk'} />
+      {book === null && <TitleBar title="Galley Desk" />}
       <div className={`app-root__content${book === null ? ' app-root__content--welcome' : ''}`}>
         {book === null ? (
           <RecentBooks onOpen={openBook} refreshKey={refreshKey} />
@@ -116,15 +160,23 @@ export function App() {
           <BookWindow
           book={book}
           restore={restore}
+          openWarning={openWarning}
           onClose={closeBook}
           onBookChange={setBook}
           appearance={appearance}
           appearanceTheme={appearanceTheme}
           appearanceError={appearanceError}
           onAppearanceChange={updateAppearance}
+          layout={layout}
+          layoutError={layoutError}
+          onLayoutChange={persistLayout}
+          onLayoutRetry={retryLayout}
           />
         )}
       </div>
+      {/* Единственный themed host всех подсказок (Task 10) -- внутри .app-root,
+          чтобы наследовать переменные темы и UI-шрифта, а не отдельный портал. */}
+      <TooltipHost />
     </div>
   );
 }

@@ -110,7 +110,7 @@ vi.mock('electron', async () => {
   return { ipcMain: Object.assign(new EventEmitter(), { handle: vi.fn() }) };
 });
 
-function closeHarness(closeBook = vi.fn(async (): Promise<void> => undefined)) {
+function closeHarness(closeBook = vi.fn(async (): Promise<void> => undefined), logger?: import('./diagnostics/logger').Logger) {
   vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
   const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
   const event = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
@@ -121,10 +121,25 @@ function closeHarness(closeBook = vi.fn(async (): Promise<void> => undefined)) {
   });
   vi.mocked(ipcMain.handle).mockClear();
   registerDeskIpc({ service: { closeBook, subscribe: vi.fn() } as unknown as BookService,
-    broadcast: vi.fn(), openExternal: vi.fn() });
+    broadcast: vi.fn(), openExternal: vi.fn(), ...(logger ? { logger } : {}) });
   const handler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === 'desk:close-book')![1];
   return { closeBook, sender, invoke: () => handler(event as never, 'book') };
 }
+
+test('a failed handler logs the cleaned exception with a generated requestId before mapping to a stable IpcError', async () => {
+  const secret = 'PRIVATE manuscript sentence';
+  const failure = Object.assign(new Error(secret), { code: 'ENOSPC' });
+  const logger = { write: vi.fn(), fatal: vi.fn(), flush: vi.fn(), status: () => 'ready' as const };
+  const h = closeHarness(vi.fn(async () => { throw failure; }), logger);
+  const result = await h.invoke();
+  expect(result).toMatchObject({ ok: false });
+  expect(logger.write).toHaveBeenCalledOnce();
+  const [record] = logger.write.mock.calls[0]!;
+  expect(record).toMatchObject({ event: 'ipc-failed', level: 'error', process: 'main', code: 'ENOSPC' });
+  expect(typeof record.requestId).toBe('string');
+  expect(record.requestId.length).toBeGreaterThan(0);
+  expect(JSON.stringify(record)).not.toContain(secret);
+});
 
 test('successful book close keeps the input barrier through response handoff', async () => {
   const h = closeHarness();
@@ -152,6 +167,144 @@ test('management IPC validates operation and all supplied values', () => {
  for (const payload of [null, {}, {type:'trash'}, {type:'add',paths:[]}, {type:'add',paths:[42]}, {type:'rename',title:42}, {type:'create',title:'x',path:null}, {type:'unlink',chapterId:'x'}]) expect(()=>validateBookChange(payload)).toThrow();
  expect(validateBookChange({type:'add',paths:['a.md']})).toEqual({type:'add',paths:['a.md']});
  expect(validateBookChange({type:'trash',chapterId:'a'})).toEqual({type:'trash',chapterId:'a'});
+ expect(validateBookChange({type:'reorder',chapterIds:['b','a']})).toEqual({type:'reorder',chapterIds:['b','a']});
+ for (const payload of [{type:'reorder'}, {type:'reorder',chapterIds:[]}, {type:'reorder',chapterIds:['a', 1]}]) expect(()=>validateBookChange(payload)).toThrow();
+});
+
+// --- desk:report-diagnostic -------------------------------------------------
+//
+// Renderer reports are never trusted: main revalidates sender, event
+// whitelist, level, code allowlist, frame shape and per-sender flood limits
+// itself, regardless of what report-error.ts already sanitized client-side.
+import { validateRendererDiagnostic } from './ipc';
+import type { Logger } from './diagnostics/logger';
+
+function diagnosticHarness(logger: Logger | undefined = { write: vi.fn(), fatal: vi.fn(), flush: vi.fn(), status: () => 'ready' }) {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
+  const trusted = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
+  const foreign = { sender, senderFrame: { parent: null, url: 'https://example.com/' } };
+  vi.mocked(ipcMain.handle).mockClear();
+  registerDeskIpc({
+    service: { subscribe: vi.fn() } as unknown as BookService,
+    broadcast: vi.fn(),
+    openExternal: vi.fn(),
+    ...(logger ? { logger } : {}),
+  });
+  const handler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === 'desk:report-diagnostic')![1];
+  return {
+    logger,
+    invoke: (payload: unknown, event: typeof trusted | typeof foreign = trusted) => handler(event as never, payload),
+    foreign,
+    trusted,
+  };
+}
+
+test('validateRendererDiagnostic accepts a well-formed renderer report and forces process to renderer', () => {
+  expect(validateRendererDiagnostic({ event: 'unhandled-renderer', level: 'error', process: 'ignored-by-caller' }))
+    .toEqual({ event: 'unhandled-renderer', level: 'error', process: 'renderer' });
+  expect(validateRendererDiagnostic({
+    event: 'react-render-failed', level: 'warn', code: 'SAVE_FAILED', frames: ['index-abc.js:10:5'],
+  })).toEqual({ event: 'react-render-failed', level: 'warn', process: 'renderer', code: 'SAVE_FAILED', frames: ['index-abc.js:10:5'] });
+});
+
+test('validateRendererDiagnostic rejects main-only events, unknown fields, bad codes and unsafe frames', () => {
+  expect(() => validateRendererDiagnostic({ event: 'uncaught-main', level: 'error' })).toThrow();
+  expect(() => validateRendererDiagnostic({ event: 'session-start', level: 'info' })).toThrow();
+  expect(() => validateRendererDiagnostic({ event: 'unhandled-renderer', level: 'error', text: 'PRIVATE manuscript sentence' })).toThrow();
+  expect(() => validateRendererDiagnostic({ event: 'unhandled-renderer', level: 'shout' })).toThrow();
+  expect(() => validateRendererDiagnostic({ event: 'unhandled-renderer', level: 'error', code: '/home/inky/secret.md' })).toThrow();
+  expect(() => validateRendererDiagnostic({ event: 'unhandled-renderer', level: 'error', frames: 'not-an-array' })).toThrow();
+  expect(() => validateRendererDiagnostic({ event: 'unhandled-renderer', level: 'error', frames: ['/home/inky/Books/private.md:1:2'] })).toThrow();
+  expect(() => validateRendererDiagnostic({
+    event: 'unhandled-renderer', level: 'error', frames: Array.from({ length: 21 }, (_, i) => `a.js:${i}:1`),
+  })).toThrow();
+  expect(() => validateRendererDiagnostic(null)).toThrow();
+  expect(() => validateRendererDiagnostic('unhandled-renderer')).toThrow();
+});
+
+test('report-diagnostic rejects an untrusted sender before the handler logs anything', async () => {
+  const h = diagnosticHarness();
+  await expect(h.invoke({ event: 'unhandled-renderer', level: 'error' }, h.foreign)).rejects.toThrow('IPC rejected');
+  expect((h.logger as Logger).write).not.toHaveBeenCalled();
+});
+
+test('report-diagnostic writes a validated renderer report to the logger', async () => {
+  const h = diagnosticHarness();
+  const result = await h.invoke({ event: 'unhandled-renderer', level: 'error', frames: ['index-abc.js:1:1'] });
+  expect(result).toEqual({ ok: true, value: undefined });
+  expect((h.logger as Logger).write).toHaveBeenCalledWith({
+    event: 'unhandled-renderer', level: 'error', process: 'renderer', frames: ['index-abc.js:1:1'],
+  });
+});
+
+test('report-diagnostic never lets an unknown field or payload text reach the logger', async () => {
+  const secret = 'PRIVATE manuscript sentence';
+  const h = diagnosticHarness();
+  const result = await h.invoke({ event: 'unhandled-renderer', level: 'error', text: secret });
+  expect(result).toMatchObject({ ok: false });
+  expect(JSON.stringify(result)).not.toContain(secret);
+  // The rejection itself is logged as an `ipc-failed` record (main's generic
+  // exception logging), but that record is a cleaned exception -- a
+  // code/frames tuple, never the raw payload's text -- so the secret must
+  // not appear in any call the logger received.
+  for (const call of vi.mocked((h.logger as Logger).write).mock.calls) {
+    expect(JSON.stringify(call)).not.toContain(secret);
+  }
+});
+
+test('report-diagnostic is missing when no logger is configured, without throwing', async () => {
+  const h = diagnosticHarness(undefined);
+  await expect(h.invoke({ event: 'unhandled-renderer', level: 'error' })).resolves.toEqual({ ok: true, value: undefined });
+});
+
+test('report-diagnostic rate-limits a flood of renderer reports server-side, independent of renderer throttling', async () => {
+  const h = diagnosticHarness();
+  const results = await Promise.all(Array.from({ length: 25 }, () => h.invoke({ event: 'unhandled-renderer', level: 'error' })));
+  expect(results.every((r) => (r as { ok: boolean }).ok)).toBe(true);
+  expect((h.logger as Logger).write).toHaveBeenCalledTimes(20);
+});
+
+test('report-diagnostic caps a true rolling 1s window, not a fixed bucket that resets at a boundary', async () => {
+  // A fixed window anchored at the sender's first call would reset its count
+  // to zero once `now - windowStart >= 1000`, letting a sender burst ~20
+  // calls right before that boundary and another ~20 right after -- up to
+  // 2x the advertised rate within a real rolling second. Prove the limiter
+  // instead evicts only calls actually older than 1000ms, so calls spaced
+  // across a simulated window boundary are still capped at 20 in total.
+  vi.useFakeTimers();
+  try {
+    const h = diagnosticHarness();
+    vi.setSystemTime(0);
+    await h.invoke({ event: 'unhandled-renderer', level: 'error' });
+    // Fill the rest of the cap just before where a fixed window would reset.
+    vi.setSystemTime(990);
+    for (let i = 0; i < 19; i += 1) {
+      // eslint-disable-next-line no-await-in-loop -- timestamps must advance sequentially, not concurrently
+      await h.invoke({ event: 'unhandled-renderer', level: 'error' });
+    }
+    expect((h.logger as Logger).write).toHaveBeenCalledTimes(20);
+
+    // Cross the 1000ms mark from the *first* call. A fixed window would treat
+    // this as a fresh bucket and accept a full new burst of 20. Only the
+    // t=0 call is actually stale at t=1001 (cutoff=1); the 19 calls at
+    // t=990 are still within the rolling second, so only one more call
+    // should fit under the cap.
+    vi.setSystemTime(1001);
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => h.invoke({ event: 'unhandled-renderer', level: 'error' })),
+    );
+    expect(results.every((r) => (r as { ok: boolean }).ok)).toBe(true);
+    expect((h.logger as Logger).write).toHaveBeenCalledTimes(21);
+
+    // Once the 19-call burst from t=990 has also aged past 1000ms, the
+    // window is genuinely clear again and a fresh call is accepted.
+    vi.setSystemTime(1991);
+    await h.invoke({ event: 'unhandled-renderer', level: 'error' });
+    expect((h.logger as Logger).write).toHaveBeenCalledTimes(22);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test('window controls accept only explicit actions from the trusted top frame', async () => {
@@ -174,4 +327,151 @@ test('window controls accept only explicit actions from the trusted top frame', 
     ok: true, value: { maximized: false, platform: 'linux' },
   });
   expect(windowAction).toHaveBeenCalledWith(sender, 'close');
+});
+
+test('layout IPC preserves sender validation and rejects invalid widths in main', async () => {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
+  const trusted = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
+  const foreign = { sender, senderFrame: { parent: null, url: 'https://example.com/' } };
+  const { validateLayout } = await import('./settings');
+  const setLayout = vi.fn(async (value: unknown) => { validateLayout(value); });
+  const layout = vi.fn(async () => ({ chaptersWidth: 315, reviewWidth: 336 }));
+  vi.mocked(ipcMain.handle).mockClear();
+  registerDeskIpc({
+    service: { subscribe: vi.fn(), layout, setLayout } as unknown as BookService,
+    broadcast: vi.fn(), openExternal: vi.fn(),
+  });
+  const getHandler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === 'desk:layout')![1];
+  const setHandler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === 'desk:set-layout')![1];
+
+  await expect(getHandler(trusted as never)).resolves.toEqual({
+    ok: true, value: { chaptersWidth: 315, reviewWidth: 336 },
+  });
+  await expect(setHandler(trusted as never, { chaptersWidth: 400.5, reviewWidth: 360 }))
+    .resolves.toMatchObject({ ok: false, code: 'SAVE_FAILED' });
+  expect(setLayout).toHaveBeenCalledOnce();
+  await expect(setHandler(foreign as never, { chaptersWidth: 400, reviewWidth: 360 }))
+    .rejects.toThrow('IPC rejected');
+  expect(setLayout).toHaveBeenCalledOnce();
+});
+
+// --- diagnostics panel: info snapshot + two safe, argument-free actions -----
+//
+// The renderer never supplies a path or free text here; main alone decides
+// the logs directory and composes the clipboard text. These tests prove
+// that guarantee holds even when a compromised renderer sends extra invoke
+// arguments (e.g. a path) -- they must be silently ignored, never acted on.
+
+import { formatDiagnosticInfo } from './ipc';
+import type { DiagnosticInfo } from '../shared/api';
+import type { DiagnosticsInfoDeps } from './ipc';
+
+const DIAGNOSTIC_BASE: Omit<DiagnosticInfo, 'logging'> = {
+  appVersion: '1.2.3', build: 'abc123f', platform: 'linux', arch: 'x64',
+  electron: '30.0.0', editor: '0.15.0', themes: '0.15.0',
+};
+
+function diagnosticsInfoHarness(overrides: Partial<DiagnosticsInfoDeps> = {}) {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
+  const trusted = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
+  const ensureLogsDirectory = vi.fn(async () => undefined);
+  const openPath = vi.fn(async () => '');
+  const writeClipboardText = vi.fn();
+  const logger = { write: vi.fn(), fatal: vi.fn(), flush: vi.fn(), status: () => 'ready' as const };
+  const diagnostics: DiagnosticsInfoDeps = {
+    base: DIAGNOSTIC_BASE,
+    logsDirectory: '/tmp/desk-logs-test',
+    ensureLogsDirectory,
+    openPath,
+    writeClipboardText,
+    ...overrides,
+  };
+  vi.mocked(ipcMain.handle).mockClear();
+  registerDeskIpc({
+    service: { subscribe: vi.fn() } as unknown as BookService,
+    broadcast: vi.fn(), openExternal: vi.fn(), logger, diagnostics,
+  });
+  const handlerFor = (channel: string) => vi.mocked(ipcMain.handle).mock.calls.find(([c]) => c === channel)![1];
+  return { trusted, handlerFor, ensureLogsDirectory, openPath, writeClipboardText, logger, diagnostics };
+}
+
+test('formatDiagnosticInfo composes only the six documented fields plus logging status', () => {
+  const text = formatDiagnosticInfo({ ...DIAGNOSTIC_BASE, logging: 'ready' });
+  expect(text).toContain('1.2.3');
+  expect(text).toContain('abc123f');
+  expect(text).toContain('linux');
+  expect(text).toContain('x64');
+  expect(text).toContain('30.0.0');
+  expect(text).toContain('0.15.0');
+  expect(text).toContain('ведётся');
+});
+
+test('diagnostic-info returns exactly the six documented fields plus live logging status', async () => {
+  const h = diagnosticsInfoHarness();
+  const result = await h.handlerFor('desk:diagnostic-info')(h.trusted as never);
+  expect(result).toEqual({ ok: true, value: { ...DIAGNOSTIC_BASE, logging: 'ready' } });
+  expect(Object.keys((result as { value: DiagnosticInfo }).value).sort()).toEqual(
+    ['appVersion', 'arch', 'build', 'editor', 'electron', 'logging', 'platform', 'themes'].sort(),
+  );
+});
+
+test('diagnostic-info reflects an unavailable logger when none is configured', async () => {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
+  const trusted = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
+  vi.mocked(ipcMain.handle).mockClear();
+  registerDeskIpc({
+    service: { subscribe: vi.fn() } as unknown as BookService,
+    broadcast: vi.fn(), openExternal: vi.fn(),
+    diagnostics: { base: DIAGNOSTIC_BASE, logsDirectory: '/tmp/x', ensureLogsDirectory: vi.fn(), openPath: vi.fn(), writeClipboardText: vi.fn() },
+  });
+  const handler = vi.mocked(ipcMain.handle).mock.calls.find(([c]) => c === 'desk:diagnostic-info')![1];
+  const result = await handler(trusted as never);
+  expect(result).toMatchObject({ ok: true, value: { logging: 'unavailable' } });
+});
+
+test('diagnostics channels fail explicitly (not by throwing at registration) when no diagnostics deps are configured', async () => {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
+  const trusted = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
+  vi.mocked(ipcMain.handle).mockClear();
+  registerDeskIpc({ service: { subscribe: vi.fn() } as unknown as BookService, broadcast: vi.fn(), openExternal: vi.fn() });
+  const handler = vi.mocked(ipcMain.handle).mock.calls.find(([c]) => c === 'desk:diagnostic-info')![1];
+  const result = await handler(trusted as never);
+  expect(result).toMatchObject({ ok: false });
+});
+
+test('open-logs-folder creates the directory then opens exactly it, ignoring any renderer-supplied path argument', async () => {
+  const h = diagnosticsInfoHarness();
+  const handler = h.handlerFor('desk:open-logs-folder');
+  const result = await handler(h.trusted as never, '/etc/passwd', { path: '/etc/passwd' });
+  expect(result).toEqual({ ok: true, value: undefined });
+  expect(h.ensureLogsDirectory).toHaveBeenCalledWith(h.diagnostics.logsDirectory);
+  expect(h.openPath).toHaveBeenCalledWith(h.diagnostics.logsDirectory);
+  expect(h.openPath).not.toHaveBeenCalledWith('/etc/passwd');
+});
+
+test('open-logs-folder surfaces a directory-creation failure explicitly instead of failing silently', async () => {
+  const h = diagnosticsInfoHarness({ ensureLogsDirectory: vi.fn(async () => { throw new Error('EACCES'); }) });
+  const result = await h.handlerFor('desk:open-logs-folder')(h.trusted as never);
+  expect(result).toMatchObject({ ok: false });
+  expect(h.openPath).not.toHaveBeenCalled();
+});
+
+test('open-logs-folder surfaces a shell.openPath failure instead of reporting success', async () => {
+  const h = diagnosticsInfoHarness({ openPath: vi.fn(async () => 'No application found') });
+  const result = await h.handlerFor('desk:open-logs-folder')(h.trusted as never);
+  expect(result).toMatchObject({ ok: false });
+});
+
+test('copy-diagnostic-info writes a plain-text summary to the clipboard, never the logs path', async () => {
+  const h = diagnosticsInfoHarness();
+  const result = await h.handlerFor('desk:copy-diagnostic-info')(h.trusted as never, '/some/other/path');
+  expect(result).toEqual({ ok: true, value: undefined });
+  expect(h.writeClipboardText).toHaveBeenCalledOnce();
+  const [text] = h.writeClipboardText.mock.calls[0]!;
+  expect(text).not.toContain(h.diagnostics.logsDirectory);
+  for (const value of Object.values(DIAGNOSTIC_BASE)) expect(text).toContain(String(value));
 });

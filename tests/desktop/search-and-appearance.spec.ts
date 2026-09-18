@@ -120,8 +120,8 @@ test('поиск в «Тексте»: счётчик, переходы, выде
   try {
     await openByDialog();
     // Название главы берётся из первого заголовка Markdown.
-    await expect(page.getByRole('button', { name: 'Глава первая' })).toBeVisible();
-    await page.getByRole('button', { name: 'Глава первая' }).click();
+    await expect(page.getByRole('button', { name: 'Глава первая', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Глава первая', exact: true }).click();
     await expect(page.locator('.cm-content')).toBeVisible();
 
     // Область поиска подписана видом.
@@ -130,13 +130,32 @@ test('поиск в «Тексте»: счётчик, переходы, выде
     await expect(search).toBeVisible();
 
     // 40 абзацев × 1 «кот» в тексте главы (заголовок «Глава первая» не содержит).
-    await page.getByRole('textbox', { name: 'Поиск по главе' }).fill('кот');
+    // Первая находка — далеко ниже исходного viewport (40 абзацев): запрос
+    // сразу показывает 1/40, подсвечивает находку и скроллит к ней, а фокус
+    // остаётся в поле поиска (история №8) -- без клика «Далее».
+    const searchField = page.getByRole('textbox', { name: 'Поиск по главе' });
+    await searchField.fill('кот');
     await expect(page.locator('.book__search-counter')).toHaveText('1/40');
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(1);
+    await expect(page.locator('.gd-search-highlight')).toBeInViewport();
+    await expect(searchField).toBeFocused();
+    // Печать ещё одного символа продолжает работать (счётчик и подсветка обновляются).
+    await searchField.fill('коты');
+    await expect(page.locator('.book__search-counter')).toHaveText('нет совпадений');
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(0);
+    await expect(searchField).toBeFocused();
+    await searchField.fill('кот');
+    await expect(page.locator('.book__search-counter')).toHaveText('1/40');
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(1);
 
-    // Переход «Далее» выделяет совпадение в редакторе и двигает счётчик.
+    // Переход «Далее» подсвечивает следующее совпадение (не EditorSelection —
+    // поиск не должен красть фокус или открывать flyout типа сигнала) и
+    // двигает счётчик, фокус остаётся в поле.
     await page.getByRole('button', { name: 'Следующее совпадение' }).click();
     await expect(page.locator('.book__search-counter')).toHaveText('2/40');
-    await expect(page.locator('.cm-selectionLayer .cm-selectionBackground')).toHaveCount(1);
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(1);
+    await expect(page.locator('.cm-selectionLayer .cm-selectionBackground')).toHaveCount(0);
+    await expect(page.getByRole('toolbar', { name: 'Тип сигнала' })).toHaveCount(0);
 
     // «Предыдущее» идёт назад и замыкает кольцо (1/40 → 40/40).
     await page.getByRole('button', { name: 'Предыдущее совпадение' }).click();
@@ -160,7 +179,7 @@ test('область поиска зависит от вида: «Текст» �
   const session = await launchWithBook({ 'Глава 1.md': chapterText });
   const { page, bookRoot, userData, openByDialog } = session;
   await openByDialog();
-  await expect(page.getByRole('button', { name: 'Заголовок' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Заголовок', exact: true })).toBeVisible();
   await closeApp(session);
   // Активная правка кот → кит-кот: производный текст содержит «кит», исходник нет.
   await writeEditSidecar(bookRoot, 'Глава 1.md', chapterText, 'кот', 'кит-кот');
@@ -168,7 +187,7 @@ test('область поиска зависит от вида: «Текст» �
   const { app, page: page2 } = await relaunch(userData);
   try {
     await page2.getByRole('button', { name: 'Открыть', exact: true }).click();
-    await page2.getByRole('button', { name: 'Заголовок' }).click();
+    await page2.getByRole('button', { name: 'Заголовок', exact: true }).click();
     await expect(page2.locator('.cm-content')).toBeVisible();
 
     // В «Тексте» (snapshot.text) применённая правка видна: «кит» найден.
@@ -199,7 +218,7 @@ test('в «Сравнении» находка во введённой част�
   const session = await launchWithBook({ 'Глава 1.md': chapterText });
   const { page, bookRoot, userData, openByDialog } = session;
   await openByDialog();
-  await expect(page.getByRole('button', { name: 'Заголовок' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Заголовок', exact: true })).toBeVisible();
   await closeApp(session);
   // Sidecar появляется после первого открытия (манифест уже создан).
   await writeEditSidecar(bookRoot, 'Глава 1.md', chapterText, 'кот спит', 'кот-кит спит');
@@ -208,7 +227,7 @@ test('в «Сравнении» находка во введённой част�
   const { app, page: page2 } = await relaunch(userData);
   try {
     await page2.getByRole('button', { name: 'Открыть', exact: true }).click();
-    await page2.getByRole('button', { name: 'Заголовок' }).click();
+    await page2.getByRole('button', { name: 'Заголовок', exact: true }).click();
     await expect(page2.locator('.cm-content')).toBeVisible();
 
     await page2.getByRole('button', { name: 'Сравнение' }).click();
@@ -228,27 +247,185 @@ test('в «Сравнении» находка во введённой част�
   }
 });
 
+test('смена главы во время поиска сбрасывает переход к первой находке новой главы; смена ревизии той же главы -- только клэмп', async () => {
+  const paragraph = 'кот спит на подоконнике.\n\n';
+  const session = await launchWithBook({
+    'Глава 1.md': `# Глава первая\n\n${paragraph.repeat(10)}`,
+    'Глава 2.md': `# Глава вторая\n\n${paragraph.repeat(3)}`,
+  });
+  const { page, openByDialog } = session;
+  try {
+    await openByDialog();
+    await expect(page.getByRole('button', { name: 'Глава первая', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Глава первая', exact: true }).click();
+    await expect(page.locator('.cm-content')).toContainText('Глава первая');
+
+    await page.keyboard.press('Control+f');
+    const searchField = page.getByRole('textbox', { name: 'Поиск по главе' });
+    await searchField.fill('кот');
+    await expect(page.locator('.book__search-counter')).toHaveText('1/10');
+
+    // Уходим на 4-ю находку в «Главе первой» (active=3 из 10).
+    await page.getByRole('button', { name: 'Следующее совпадение' }).click();
+    await page.getByRole('button', { name: 'Следующее совпадение' }).click();
+    await page.getByRole('button', { name: 'Следующее совпадение' }).click();
+    await expect(page.locator('.book__search-counter')).toHaveText('4/10');
+
+    // Смена главы: BookWindow.switchChapter синхронно обнуляет snapshot,
+    // пока новая глава не загрузится (см. switchChapter в BookWindow.tsx) --
+    // ChapterSearch гейтится на `snapshot !== null`, поэтому размонтируется
+    // и монтируется заново для новой главы: активный поиск НЕ переносит
+    // старый индекс/запрос старой главы (никакого «4/3» или «4/10» на
+    // чужом тексте). Панель поиска снова открыта и готова к вводу с чистого
+    // листа -- ровно то поведение, которое проп chapterId на ChapterSearch
+    // обязан гарантировать и для случая, когда экземпляр не размонтируется
+    // (см. эффект по [chapterId, area, query] в ChapterSearch.tsx).
+    await page.getByRole('button', { name: 'Глава вторая', exact: true }).click();
+    await expect(page.locator('.cm-content')).toContainText('Глава вторая');
+    await expect(searchField).toHaveValue('');
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(0);
+
+    // Поиск в «Главе второй» с нуля: свежая находка новой главы (1/3), не
+    // старый счётчик и не текст прежней главы.
+    await searchField.fill('кот');
+    await expect(page.locator('.book__search-counter')).toHaveText('1/3');
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(1);
+    await expect(searchField).toBeFocused();
+
+    // В «Главе второй» уходим на последнюю находку (active=2 из 3).
+    await page.getByRole('button', { name: 'Следующее совпадение' }).click();
+    await page.getByRole('button', { name: 'Следующее совпадение' }).click();
+    await expect(page.locator('.book__search-counter')).toHaveText('3/3');
+
+    // Смена РЕВИЗИИ той же главы (ввод текста добавляет 4-ю находку) --
+    // в отличие от смены главы, здесь нет прыжка к первой находке: активный
+    // индекс остаётся на месте (клэмп, не reset), 3-й из теперь 4-х.
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('ControlOrMeta+End');
+    await page.keyboard.type('кот спит.\n');
+    await expect(page.locator('.book__search-counter')).toHaveText('3/4');
+  } finally {
+    await closeApp(session);
+  }
+});
+
+test('поиск в «Сравнении»/«Исходнике»: первая находка ниже viewport подсвечивается сразу, фокус остаётся в поле, guard не стирает выделение пользователя', async () => {
+  const filler = 'наполнитель без совпадений.\n\n';
+  const paragraph = 'кот спит на подоконнике.\n\n';
+  const chapterText = `# Заголовок\n\n${filler.repeat(30)}${paragraph.repeat(30)}`;
+  const session = await launchWithBook({ 'Глава 1.md': chapterText });
+  const { page, openByDialog } = session;
+  try {
+    await openByDialog();
+    await expect(page.getByRole('button', { name: 'Заголовок', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Заголовок', exact: true }).click();
+    await expect(page.locator('.cm-content')).toBeVisible();
+
+    for (const [buttonName, containerClass] of [
+      ['Исходник', '.book__source'],
+      ['Сравнение', '.book__comparison'],
+    ] as const) {
+      await page.getByRole('button', { name: buttonName }).click();
+      await page.keyboard.press('Control+f');
+      const searchField = page.getByRole('textbox', { name: 'Поиск по главе' });
+
+      // Первая находка — только после 30 абзацев-«наполнителей», далеко
+      // ниже исходного viewport: сразу 1/30, выделение и фокус в поле, без
+      // клика «Далее» (история №8, теперь и для DOM-видов).
+      await searchField.fill('кот');
+      await expect(page.locator('.book__search-counter')).toHaveText('1/30');
+      const selected = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+      expect(selected).toBe('кот');
+      await expect(searchField).toBeFocused();
+      const scrollTop = await page.locator(containerClass).evaluate((el) => el.scrollTop);
+      expect(scrollTop).toBeGreaterThan(0);
+
+      // Ручное действие пользователя (mousedown) в этом виде сбрасывает
+      // searchHighlightActiveRef -- дальнейшее снятие поисковой подсветки
+      // (пустой запрос) не должно тронуть чужое выделение.
+      await page.locator(containerClass).click({ position: { x: 5, y: 5 } });
+      await page.evaluate((selector) => {
+        const el = document.querySelector(selector)!;
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const textNode = walker.nextNode() as Text;
+        const range = document.createRange();
+        range.setStart(textNode, 0);
+        range.setEnd(textNode, Math.min(3, textNode.data.length));
+        const sel = window.getSelection()!;
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }, containerClass);
+      const manualSelection = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+      expect(manualSelection.length).toBeGreaterThan(0);
+
+      // Очищаем запрос без фокусировки поля: обычный .fill('') сам по себе
+      // фокусирует input, а фокус на текстовом поле уже сам по себе гасит
+      // window.getSelection() в браузере -- это увело бы тест от того, что
+      // проверяется (наш guard), к постороннему эффекту фокуса. Меняем
+      // value программно и диспатчим 'input', как сделал бы React onChange.
+      await page.evaluate(() => {
+        const input = document.querySelector<HTMLInputElement>('.book__search-input')!;
+        const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+        setValue.call(input, '');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      await expect(page.locator('.book__search-counter')).toHaveText('');
+      const afterClear = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+      expect(afterClear).toBe(manualSelection);
+
+      await page.getByRole('button', { name: 'Закрыть поиск' }).click();
+    }
+  } finally {
+    await closeApp(session);
+  }
+});
+
 test('фильтр глав скрывает лишние записи и не меняет манифест', async () => {
   const session = await launchWithBook({
     'Медведь.md': 'текст\n',
     'Кит.md': 'текст\n',
     'Ёж.md': 'текст\n',
+    '012-без-заголовка.md': 'текст без заголовка\n',
+    'medved-fish.md': '# Заголовок\n\nтекст\n',
   });
   const { page, bookRoot, openByDialog } = session;
   try {
     await openByDialog();
-    await expect(page.getByRole('button', { name: 'Медведь' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Медведь', exact: true })).toBeVisible();
     const manifestPath = path.join(bookRoot, '.pocket-editor.json');
     const before = await readFile(manifestPath, 'utf8');
 
     await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('кит');
-    await expect(page.getByRole('button', { name: 'Кит' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Медведь' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Ёж' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Кит', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Медведь', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Ёж', exact: true })).toHaveCount(0);
     await expect(page.getByText('Главы не найдены')).toHaveCount(0);
+
+    // Регистр не важен (история №9).
+    await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('КИТ');
+    await expect(page.getByRole('button', { name: 'Кит', exact: true })).toBeVisible();
+
+    // Без Markdown-заголовка отображается выведенное из имени файла название;
+    // фильтр находит её и по числовому фрагменту пути «012».
+    await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('012');
+    await expect(page.getByRole('button', { name: '012-без-заголовка', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Медведь', exact: true })).toHaveCount(0);
+
+    // Совпадение по пути, а не только по названию: файл «medved-fish.md»
+    // отображается под названием «Заголовок» (h1), но фильтр всё равно
+    // находит его по латинскому пути, которого нет в названии.
+    await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('medved');
+    await expect(page.getByRole('button', { name: 'Заголовок', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Кит', exact: true })).toHaveCount(0);
 
     await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('выдра');
     await expect(page.getByText('Главы не найдены')).toBeVisible();
+
+    // Пустой фильтр возвращает все главы.
+    await page.getByRole('textbox', { name: 'Фильтр глав' }).fill('');
+    await expect(page.getByRole('button', { name: 'Медведь', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Кит', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Ёж', exact: true })).toBeVisible();
 
     // Манифест на диске не менялся: фильтр живёт только в отображении.
     expect(await readFile(manifestPath, 'utf8')).toBe(before);
@@ -257,17 +434,21 @@ test('фильтр глав скрывает лишние записи и не �
   }
 });
 
-test('оформление: тема красит контейнер, настройки сохраняются в appData, границы в main', async () => {
+test('оформление: тема красит контейнер, настройки сохраняются в appData, границы в main', async ({}, testInfo) => {
   const session = await launchWithBook({ 'Глава 1.md': 'текст\n' });
   const { page, userData, openByDialog } = session;
   try {
     await openByDialog();
-    await expect(page.getByRole('button', { name: 'Глава 1' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Глава 1', exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Меню книги' }).click();
     await page.getByRole('button', { name: 'Оформление' }).click();
     const themeSelect = page.getByLabel('Тема');
     await expect(themeSelect).toBeVisible();
+
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await themeSelect.selectOption('galley-light');
+    await page.screenshot({ path: testInfo.outputPath('titlebar-1920-light.png') });
 
     const bgBefore = await page.evaluate(
       () => getComputedStyle(document.querySelector('.book')!).getPropertyValue('--app-bg').trim(),
@@ -277,6 +458,7 @@ test('оформление: тема красит контейнер, настр
       () => getComputedStyle(document.querySelector('.book')!).getPropertyValue('--app-bg').trim(),
     );
     expect(bgAfter).not.toBe(bgBefore);
+    await page.screenshot({ path: testInfo.outputPath('titlebar-1920-dark.png') });
     // Схема темы доезжает до контейнера (color-scheme).
     await expect
       .poll(() =>
@@ -296,6 +478,12 @@ test('оформление: тема красит контейнер, настр
         return { themeId: appearance.themeId, fontSize: appearance.fontSize };
       })
       .toEqual({ themeId: 'gruvbox-dark', fontSize: 20 });
+
+    await page.setViewportSize({ width: 900, height: 700 });
+    await page.screenshot({ path: testInfo.outputPath('titlebar-900-dark.png') });
+    await themeSelect.selectOption('galley-light');
+    await page.screenshot({ path: testInfo.outputPath('titlebar-900-light.png') });
+    await themeSelect.selectOption('gruvbox-dark');
 
     // The passive editor preview uses interface typography, independently of book text.
     await page.getByLabel('Шрифт интерфейса', { exact: true }).fill('Georgia');
@@ -339,49 +527,69 @@ test('оформление: тема красит контейнер, настр
   }
 });
 
-test('Zen: панели и topbar скрыты, Escape сначала закрывает popup, затем выходит', async () => {
+test('Zen: панели скрыты; unified titlebar keeps exit and window controls while Escape never switches Zen', async () => {
   const chapterText = '# Заголовок\n\nкот спит на подоконнике.\n';
   const session = await launchWithBook({ 'Глава 1.md': chapterText });
   const { page, bookRoot, userData, openByDialog } = session;
   await openByDialog();
-  await expect(page.getByRole('button', { name: 'Заголовок' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Заголовок', exact: true })).toBeVisible();
   await closeApp(session);
   await writeEditSidecar(bookRoot, 'Глава 1.md', chapterText, 'кот спит', 'кит спит');
+
+  // Ctrl+Alt+Z (Linux/Windows) / Cmd+Alt+Z (macOS) -- см. shortcuts.ts.
+  const zenShortcut = process.platform === 'darwin' ? 'Meta+Alt+z' : 'Control+Alt+z';
 
   const { app, page: zenPage } = await relaunch(userData);
   try {
     await zenPage.getByRole('button', { name: 'Открыть', exact: true }).click();
-    await zenPage.getByRole('button', { name: 'Заголовок' }).click();
+    await zenPage.getByRole('button', { name: 'Заголовок', exact: true }).click();
     await expect(zenPage.locator('.cm-content')).toBeVisible();
 
-    // Вход в Zen: topbar/панели скрыты, выход виден всегда.
-    await zenPage.getByRole('button', { name: 'Режим Zen' }).click();
-    await expect(zenPage.locator('.book__header')).toHaveCount(0);
+    // Вход в Zen: панели скрыты, единый chrome и выход видны всегда.
+    await zenPage.getByRole('button', { name: 'Режим Zen', exact: true }).click();
+    await expect(zenPage.locator('header.titlebar')).toHaveCount(1);
     await expect(zenPage.getByRole('navigation', { name: 'Оглавление' })).toHaveCount(0);
     await expect(zenPage.getByRole('complementary', { name: 'Рецензия' })).toHaveCount(0);
     await expect(zenPage.locator('.book__zen-exit')).toBeVisible();
+    await expect(zenPage.locator('.book--zen')).toBeVisible();
     await expect(zenPage.locator('.cm-content')).toBeVisible();
+
+    // Escape дважды без открытых слоёв не выходит из Zen -- Zen никогда не
+    // переключается Escape (история №6 / task 7).
+    await zenPage.keyboard.press('Escape');
+    await zenPage.keyboard.press('Escape');
+    await expect(zenPage.locator('.book--zen')).toBeVisible();
 
     // Попап открывается и в Zen (клик по маркеру правки в тексте).
     await zenPage.getByRole('button', { name: 'Правка', exact: true }).first().click();
     const dialog = zenPage.getByRole('dialog', { name: 'Правка' });
     await expect(dialog).toBeVisible();
 
-    // Первый Escape закрывает попап, Zen остаётся.
+    // Escape закрывает попап, Zen остаётся; ещё один Escape тоже не выходит.
     await zenPage.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     await expect(zenPage.getByRole('tooltip', { name: 'До правки' })).toHaveCount(0);
-    await expect(zenPage.locator('.book__zen-exit')).toBeVisible();
-
-    // Второй Escape выходит из Zen.
+    await expect(zenPage.locator('.book--zen')).toBeVisible();
     await zenPage.keyboard.press('Escape');
-    await expect(zenPage.locator('.book__header')).toBeVisible();
+    await expect(zenPage.locator('.book--zen')).toBeVisible();
+    await expect(zenPage.locator('header.titlebar')).toBeVisible();
 
-    // Постоянная кнопка выхода тоже работает.
-    await zenPage.getByRole('button', { name: 'Режим Zen' }).click();
-    await expect(zenPage.locator('.book__zen-exit')).toBeVisible();
+    // Постоянная кнопка выхода работает (тот же toggle, что и вход).
     await zenPage.getByRole('button', { name: 'Выйти из Zen' }).click();
-    await expect(zenPage.locator('.book__header')).toBeVisible();
+    await expect(zenPage.getByRole('button', { name: 'Режим Zen', exact: true })).toBeVisible();
+
+    // Shortcut переключает Zen туда и обратно, независимо от Escape.
+    await zenPage.keyboard.press(zenShortcut);
+    await expect(zenPage.locator('.book--zen')).toBeVisible();
+    await zenPage.keyboard.press(zenShortcut);
+    await expect(zenPage.getByRole('button', { name: 'Режим Zen', exact: true })).toBeVisible();
+
+    // На компактной ширине редкое действие переезжает в меню без второго tab stop.
+    await zenPage.setViewportSize({ width: 900, height: 700 });
+    await expect(zenPage.locator('.book__zen-direct')).toBeHidden();
+    await zenPage.getByRole('button', { name: 'Меню книги' }).click();
+    await zenPage.locator('.book__menu-items').getByRole('button', { name: 'Режим Zen', exact: true }).click();
+    await expect(zenPage.locator('.book--zen')).toBeVisible();
   } finally {
     await app.close();
   }
@@ -398,14 +606,18 @@ test('поиск открывается с клавиатуры и Escape очи
     await page.keyboard.press('Control+f');
     await expect(field).toBeFocused();
     await field.fill('кот');
+    // Первая находка сразу подсвечена (история №8), фокус остаётся в поле.
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(1);
     await page.keyboard.press('Escape');
     await expect(field).toHaveValue('');
     await expect(field).toBeFocused();
+    // Пустой запрос снимает подсветку, не трогая ничего другого в редакторе.
+    await expect(page.locator('.gd-search-highlight')).toHaveCount(0);
     await page.keyboard.press('Escape');
     await expect(field).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Поиск по главе', exact: true })).toBeFocused();
     await page.getByRole('button', { name: 'Меню книги' }).click();
-    await expect(page.getByRole('button', { name: 'Управление книгой', exact: true })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Переименовать книгу', exact: true })).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'Оформление', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Меню книги' })).toBeFocused();
@@ -436,13 +648,13 @@ test('размер книги не меняет интерфейс; оба ло�
 });
 
 
-test('Escape на кнопках поиска очищает запрос, закрывает поиск и лишь затем выходит из Zen', async () => {
+test('Escape на кнопках поиска очищает запрос и закрывает поиск, но не выходит из Zen', async () => {
   const session = await launchWithBook({ 'Глава.md': 'кот спит\n' });
   try {
     await session.openByDialog();
     const { page } = session;
     await expect(page.locator('.cm-content')).toBeVisible();
-    await page.getByRole('button', { name: 'Режим Zen' }).click();
+    await page.getByRole('button', { name: 'Режим Zen', exact: true }).click();
     await page.keyboard.press('Control+f');
     const field = page.getByRole('textbox', { name: 'Поиск по главе' });
     await field.fill('кот');
@@ -453,7 +665,10 @@ test('Escape на кнопках поиска очищает запрос, за�
     await page.keyboard.press('Escape');
     await expect(field).toHaveCount(0);
     await expect(page.locator('.book__zen-exit')).toBeVisible();
+    // Дальнейший Escape не выходит из Zen -- переключение отделено от Escape;
+    // выход только явным toggle (кнопка/меню/shortcut, см. предыдущий тест).
     await page.keyboard.press('Escape');
-    await expect(page.locator('.book__header')).toBeVisible();
+    await expect(page.locator('.book--zen')).toBeVisible();
+    await expect(page.locator('.book__zen-exit')).toBeVisible();
   } finally { await closeApp(session); }
 });

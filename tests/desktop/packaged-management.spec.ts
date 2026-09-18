@@ -65,10 +65,10 @@ test('actual packaged executable persists book management and uses native trash'
       .getByRole('button', { name: 'Меню книги', exact: true })
       .click();
     await page
-      .getByRole('button', { name: 'Управление книгой', exact: true })
+      .getByRole('button', { name: 'Переименовать книгу', exact: true })
       .click();
     const panel = page.getByRole('dialog', {
-      name: 'Управление книгой',
+      name: 'Переименовать книгу',
       exact: true,
     });
     await panel
@@ -92,21 +92,26 @@ test('actual packaged executable persists book management and uses native trash'
             .edits.length,
       )
       .toBe(1);
-    await panel.getByLabel('Название новой главы').fill('Created chapter');
-    await panel.getByLabel('Имя файла (.md)').fill('b.md');
-    await panel
+    const toc = page.getByRole('navigation', { name: 'Оглавление' });
+    await toc.getByRole('button', { name: 'Добавить главу', exact: true }).click();
+    const create = page.getByRole('dialog', { name: 'Новая глава' });
+    await create.getByLabel('Название новой главы').fill('Created chapter');
+    await create.getByLabel('Имя файла (.md)').fill('b.md');
+    await create
       .getByRole('button', { name: 'Создать главу', exact: true })
       .click();
     await expect
       .poll(async () => readCreatedFile(path.join(root, 'b.md')))
       .toBe('# Created chapter\n');
-    await panel.getByRole('button', { name: 'Удалить файлы главы…' }).click();
-    await panel.getByRole('button', { name: 'Отмена удаления' }).click();
+    await toc.getByRole('button', { name: 'Действия главы: First' }).click();
+    await page.getByRole('button', { name: 'Переместить в корзину…' }).click();
+    await page.getByRole('dialog', { name: 'Переместить главу в корзину?' }).getByRole('button', { name: 'Отмена удаления' }).click();
     expect(await readFile(path.join(root, 'a.md'), 'utf8')).toBe(
       'Packaged source.\n',
     );
-    await panel.getByRole('button', { name: 'Удалить файлы главы…' }).click();
-    await panel
+    await toc.getByRole('button', { name: 'Действия главы: First' }).click();
+    await page.getByRole('button', { name: 'Переместить в корзину…' }).click();
+    await page.getByRole('dialog', { name: 'Переместить главу в корзину?' })
       .getByRole('button', { name: 'Переместить в корзину', exact: true })
       .click();
     await expect
@@ -121,9 +126,6 @@ test('actual packaged executable persists book management and uses native trash'
       readFile(path.join(root, 'a.review.json')),
     ).rejects.toThrow();
     await page.screenshot({ path: '/tmp/galley-packaged-management.png' });
-    await panel
-      .getByRole('button', { name: 'Закрыть управление книгой' })
-      .click();
     await page
       .getByRole('button', { name: 'Меню книги', exact: true })
       .click();

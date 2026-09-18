@@ -8,12 +8,24 @@ import type { WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
-import type { Command, WindowAction, WindowState } from '../shared/api';
+import type { Command, DiagnosticInfo, WindowAction, WindowState } from '../shared/api';
+import {
+  IPC_ERROR_CODES,
+  isDiagnosticFrame,
+  MAX_DIAGNOSTIC_FRAMES,
+  RENDERER_DIAGNOSTIC_EVENTS,
+  type DiagnosticEvent,
+  type DiagnosticInput,
+  type IpcErrorCode,
+} from '../shared/diagnostics';
+import { ALLOWED_CODES, safeError } from './diagnostics/safe-error';
+import type { Logger } from './diagnostics/logger';
 import { isHttpHttpsUrl } from './resources';
 
-/** Stable IPC error codes of the contract (never renamed). */
-export const IPC_ERROR_CODES = ['STALE_REVISION', 'SAVE_FAILED', 'EMPTY_SOURCE', 'UNAVAILABLE_RECORD', 'BOOK_MISSING'] as const;
-export type IpcErrorCode = (typeof IPC_ERROR_CODES)[number];
+/** Stable IPC error codes of the contract (never renamed); defined in
+ * shared/diagnostics.ts -- see the import above for why. */
+export { IPC_ERROR_CODES };
+export type { IpcErrorCode };
 
 /** An IPC failure with a stable machine-readable code and a safe message. */
 export class IpcError extends Error {
@@ -150,6 +162,127 @@ export function validateCommand(value: unknown): Command {
   throw new CommandError(`Unknown command type: ${JSON.stringify(type)}`);
 }
 
+// --- renderer diagnostic reports ---------------------------------------------
+//
+// The renderer's report-error.ts sanitizes before sending, but that
+// sanitization is never trusted here: every field is revalidated against the
+// exact same closed vocabulary/allowlist/size limits main would apply to its
+// own exceptions. `process` is always forced to 'renderer' regardless of what
+// was sent, and `requestId` is dropped -- it is not part of the renderer
+// contract and free-form values from an untrusted sender are never retained.
+
+const DIAGNOSTIC_FIELDS = new Set(['event', 'level', 'process', 'code', 'frames']);
+const DIAGNOSTIC_LEVELS = new Set(['info', 'warn', 'error']);
+const RENDERER_DIAGNOSTIC_EVENT_SET = new Set<string>(RENDERER_DIAGNOSTIC_EVENTS);
+
+/**
+ * Validates an untrusted `desk:report-diagnostic` payload into a
+ * {@linkcode DiagnosticInput} safe to hand to {@linkcode Logger.write}.
+ * Rejects unknown fields, main-only event types, unknown levels/codes and
+ * frames outside the sanitized `file:line:column` shape -- the payload's own
+ * free text (if any was smuggled onto the object) never reaches this shape.
+ */
+export function validateRendererDiagnostic(value: unknown): DiagnosticInput {
+  const record = asRecord(value, 'DiagnosticInput');
+  for (const key of Object.keys(record)) {
+    if (!DIAGNOSTIC_FIELDS.has(key)) throw new CommandError(`Unknown diagnostic field: ${key}`);
+  }
+  const event = asString(record.event, 'DiagnosticInput.event');
+  if (!RENDERER_DIAGNOSTIC_EVENT_SET.has(event)) {
+    throw new CommandError('Unknown or main-only diagnostic event');
+  }
+  const level = asString(record.level, 'DiagnosticInput.level');
+  if (!DIAGNOSTIC_LEVELS.has(level)) throw new CommandError('Unknown diagnostic level');
+  const input: DiagnosticInput = { event: event as DiagnosticEvent, level: level as DiagnosticInput['level'], process: 'renderer' };
+  if (record.code !== undefined) {
+    const code = asString(record.code, 'DiagnosticInput.code');
+    if (!ALLOWED_CODES.has(code)) throw new CommandError('Unknown diagnostic code');
+    input.code = code;
+  }
+  if (record.frames !== undefined) {
+    if (!Array.isArray(record.frames)) throw new CommandError('DiagnosticInput.frames must be an array');
+    if (record.frames.length > MAX_DIAGNOSTIC_FRAMES) throw new CommandError('Too many diagnostic frames');
+    input.frames = record.frames.map((frame) => {
+      if (!isDiagnosticFrame(frame)) throw new CommandError('Unsafe diagnostic frame');
+      return frame;
+    });
+  }
+  return input;
+}
+
+/** Renderer events are rate-limited server-side to at most this many per
+ * *any* rolling one-second interval per sender; the renderer's own
+ * throttling (if any) is never trusted. */
+const DIAGNOSTIC_RATE_LIMIT_PER_SECOND = 20;
+const DIAGNOSTIC_RATE_LIMIT_WINDOW_MS = 1000;
+
+/**
+ * True sliding-window limiter: keeps each sender's recent call timestamps,
+ * evicts anything older than the window on every check, and rejects once
+ * the remaining count is already at the cap. This bounds the rate to
+ * <=20 calls in any rolling 1s span, not just within fixed-size buckets
+ * (a fixed window lets a sender burst ~20 calls at the end of one window
+ * and another ~20 right after the boundary).
+ */
+function createDiagnosticRateLimiter(): (sender: WebContents) => boolean {
+  const recentCalls = new WeakMap<WebContents, number[]>();
+  return (sender: WebContents): boolean => {
+    const now = Date.now();
+    const cutoff = now - DIAGNOSTIC_RATE_LIMIT_WINDOW_MS;
+    const timestamps = recentCalls.get(sender) ?? [];
+    const live = timestamps.filter((timestamp) => timestamp > cutoff);
+    if (live.length >= DIAGNOSTIC_RATE_LIMIT_PER_SECOND) {
+      recentCalls.set(sender, live);
+      return false;
+    }
+    live.push(now);
+    recentCalls.set(sender, live);
+    return true;
+  };
+}
+
+// --- diagnostics panel (read-only info + two safe actions) ------------------
+//
+// The renderer only ever asks "what is the current state?" and "do this
+// fixed action"; it never supplies a path, a directory or free text that
+// main would then act on. `base` is computed once in main.ts from trusted
+// process/build info (never from IPC); `logging` is read live from the
+// Logger's own status() on every call so the panel reflects reality even if
+// the log file becomes unavailable mid-session.
+
+export type DiagnosticsInfoDeps = {
+  /** Everything except `logging`, which is derived live from the logger. */
+  base: Omit<DiagnosticInfo, 'logging'>;
+  /** Directory main alone chooses; never influenced by any IPC argument. */
+  logsDirectory: string;
+  ensureLogsDirectory: (directory: string) => Promise<void>;
+  /** shell.openPath-shaped: resolves to '' on success, otherwise a
+   * human-readable failure reason that must reach the caller, not just stderr. */
+  openPath: (directory: string) => Promise<string>;
+  writeClipboardText: (text: string) => void;
+};
+
+function currentDiagnosticInfo(deps: DeskIpcDeps): DiagnosticInfo {
+  if (deps.diagnostics === undefined) throw new IpcError('SAVE_FAILED', 'Диагностика недоступна');
+  return { ...deps.diagnostics.base, logging: deps.logger?.status() ?? 'unavailable' };
+}
+
+/**
+ * Plain-text clipboard summary: exactly the six documented fields plus live
+ * logging status, one per line. Never a path, never book content — there is
+ * nothing else in a {@linkcode DiagnosticInfo} to include.
+ */
+export function formatDiagnosticInfo(info: DiagnosticInfo): string {
+  return [
+    `Galley Desk ${info.appVersion} (build ${info.build})`,
+    `Платформа: ${info.platform} (${info.arch})`,
+    `Electron: ${info.electron}`,
+    `Редактор: ${info.editor}`,
+    `Темы: ${info.themes}`,
+    `Журнал: ${info.logging === 'ready' ? 'ведётся' : 'недоступен'}`,
+  ].join('\n');
+}
+
 // --- sender validation -------------------------------------------------------
 
 /**
@@ -207,9 +340,20 @@ export type DeskIpcDeps = {
   openExternal: (url: string) => Promise<void>;
   windowState?: (contents: WebContents) => WindowState;
   windowAction?: (contents: WebContents, action: WindowAction) => WindowState;
+  /** Диагностический журнал; опционален (сбой создания логгера не блокирует IPC). */
+  logger?: Logger;
+  /** Diagnostics panel read-only info + safe actions; опционален так же, как logger. */
+  diagnostics?: DiagnosticsInfoDeps;
 };
 
-/** Only a matching one-shot acknowledgement from the requested top frame counts. */
+/**
+ * Only a matching one-shot acknowledgement from the requested top frame
+ * counts. A renderer whose process has already gone (crashed/killed) can
+ * never answer `desk:flush-request` -- its `WebContents` object survives
+ * the crash (it is not `destroyed`, only its OS process is gone), so
+ * without an explicit `render-process-gone` check this would otherwise
+ * silently wait out the full 30s timeout below instead of failing fast.
+ */
 export function flushRenderer(contents: WebContents): Promise<void> {
   return new Promise((resolve, reject) => {
     const id = randomUUID();
@@ -217,6 +361,7 @@ export function flushRenderer(contents: WebContents): Promise<void> {
       clearTimeout(timeout);
       ipcMain.removeListener('desk:flush-ack', ack);
       contents.removeListener('destroyed', destroyed);
+      contents.removeListener('render-process-gone', gone);
       if (ok) resolve();
       else reject(new IpcError('SAVE_FAILED', 'Не удалось сохранить изменения; окно остаётся открытым'));
     };
@@ -225,9 +370,11 @@ export function flushRenderer(contents: WebContents): Promise<void> {
       finish(ok === true);
     };
     const destroyed = (): void => finish(false);
+    const gone = (): void => finish(false);
     const timeout = setTimeout(() => finish(false), 30_000);
     ipcMain.on('desk:flush-ack', ack);
     contents.once('destroyed', destroyed);
+    contents.once('render-process-gone', gone);
     contents.send('desk:flush-request', id);
   });
 }
@@ -244,6 +391,7 @@ export function resumeRenderer(contents: WebContents): void {
  */
 export function registerDeskIpc(deps: DeskIpcDeps): void {
   const { service } = deps;
+  const allowedByDiagnosticRateLimit = createDiagnosticRateLimiter();
   const handle = (channel: string, handler: (event: IpcMainInvokeEvent, args: unknown[]) => unknown | Promise<unknown>): void => {
     ipcMain.handle(channel, async (event, ...args) => {
       if (!senderIsTrusted(event)) {
@@ -253,8 +401,13 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
       try {
         return { ok: true, value: await handler(event, args) } satisfies IpcResult<unknown>;
       } catch (error) {
+        // Очищенный исходный exception (код + безопасные кадры, никогда
+        // сообщение) уходит в журнал до перевода на стабильный IpcError —
+        // ошибка деградации самого журнала никогда не блокирует ответ IPC.
+        const requestId = randomUUID();
+        deps.logger?.write({ event: 'ipc-failed', level: 'error', process: 'main', requestId, ...safeError(error) });
         const mapped = toIpcError(error);
-        // В журнал попадают только код и операция — никогда рукопись.
+        // В журнал stderr попадают только код и операция — никогда рукопись.
         console.error(`[desk] ${channel}: code=${mapped.code}`);
         return { ok: false, code: mapped.code, message: mapped.message } satisfies IpcResult<never>;
       }
@@ -277,6 +430,9 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
   // Валидация значения происходит в сервисе (validateAppearance принимает
   // неизвестные данные); на границе это лишь формальная типизация.
   handle('desk:set-appearance', (_event, args) => service.setAppearance(args[0] as import('../shared/api').AppearanceSettings));
+  handle('desk:layout', () => service.layout());
+  // The service validates this untrusted object before persistence.
+  handle('desk:set-layout', (_event, args) => service.setLayout(args[0] as import('../shared/layout').LayoutSettings));
   handle('desk:save-position', (_event, args) =>
     service.savePosition(asStringArg(args[0]), asStringArg(args[1]), asNumberArg(args[2]), asNumberArg(args[3])));
   handle('desk:discover-chapters', (_event, args) => service.discoverChapters(asStringArg(args[0])));
@@ -319,6 +475,39 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
     return pending;
   });
   handle('desk:open-external', (_event, args) => openExternalVia(deps.openExternal, args[0]));
+  // Successful per-keystroke typing is never logged: only a report the
+  // renderer explicitly sends (unhandled error/rejection, boundary catch)
+  // reaches this channel, and a flood of such reports beyond the rate limit
+  // is silently dropped -- the caller still receives an ok response
+  // (report-error.ts already treats failures as `.catch(() => undefined)`).
+  handle('desk:report-diagnostic', (event, args) => {
+    if (!allowedByDiagnosticRateLimit(event.sender)) return undefined;
+    if (deps.logger === undefined) return undefined;
+    deps.logger.write(validateRendererDiagnostic(args[0]));
+    return undefined;
+  });
+  // The three channels below take no meaningful argument on purpose: every
+  // handler ignores whatever the caller sent (`_args`) and main alone
+  // decides the directory/text. A compromised renderer invoking these with
+  // an arbitrary path can never redirect them -- there is no parameter path
+  // through which one could.
+  handle('desk:diagnostic-info', () => currentDiagnosticInfo(deps));
+  handle('desk:open-logs-folder', async () => {
+    const diagnostics = deps.diagnostics;
+    if (diagnostics === undefined) throw new IpcError('SAVE_FAILED', 'Диагностика недоступна');
+    try {
+      await diagnostics.ensureLogsDirectory(diagnostics.logsDirectory);
+    } catch {
+      throw new IpcError('SAVE_FAILED', 'Не удалось создать папку журнала');
+    }
+    const failure = await diagnostics.openPath(diagnostics.logsDirectory);
+    if (failure !== '') throw new IpcError('SAVE_FAILED', 'Не удалось открыть папку журнала');
+  });
+  handle('desk:copy-diagnostic-info', () => {
+    const diagnostics = deps.diagnostics;
+    if (diagnostics === undefined) throw new IpcError('SAVE_FAILED', 'Диагностика недоступна');
+    diagnostics.writeClipboardText(formatDiagnosticInfo(currentDiagnosticInfo(deps)));
+  });
   handle('desk:resolve-external', (_event, args) => {
     const choice = args[2];
     if (choice !== 'open-external' && choice !== 'export-local') {
@@ -373,6 +562,9 @@ export function validateBookChange(value: unknown): import('../shared/api').Book
     case 'add':
       if (!Array.isArray(record.paths) || !record.paths.length) throw new CommandError('paths must be nonempty');
       return { type: 'add', paths: record.paths.map(p => asNonEmptyString(p, 'path')) };
+    case 'reorder':
+      if (!Array.isArray(record.chapterIds) || !record.chapterIds.length) throw new CommandError('chapterIds must be nonempty');
+      return { type: 'reorder', chapterIds: record.chapterIds.map(id => asNonEmptyString(id, 'chapterId')) };
     case 'remove': case 'trash': return { type: record.type, chapterId: asNonEmptyString(record.chapterId, 'chapterId') };
     default: throw new CommandError('Unknown book change');
   }

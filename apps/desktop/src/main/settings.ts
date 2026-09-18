@@ -4,8 +4,10 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isThemeId } from '@inkyquill/galley-themes';
+import { SaveQueue } from '@galley-desk/book-storage';
 import type { AppearanceSettings } from '../shared/api';
 import { UI_FONT_SIZE_BOUNDS } from '../shared/appearance';
+import { DEFAULT_LAYOUT, SIDEBAR_BOUNDS, type LayoutSettings } from '../shared/layout';
 
 const SETTINGS_FILE = 'settings.json';
 
@@ -23,8 +25,38 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
 
 export type DeskSettings = {
   appearance: AppearanceSettings;
+  layout: LayoutSettings;
   positions: Record<string, Record<string, { anchor: number; scrollTop: number }>>;
 };
+
+const saveQueues = new Map<string, SaveQueue>();
+
+function saveQueueFor(appData: string): SaveQueue {
+  let queue = saveQueues.get(appData);
+  if (queue === undefined) {
+    queue = new SaveQueue();
+    saveQueues.set(appData, queue);
+  }
+  return queue;
+}
+
+export function validateLayout(value: unknown): LayoutSettings {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('Настройки ширины сайдбаров должны быть объектом');
+  }
+  const record = value as Partial<LayoutSettings>;
+  for (const width of [record.chaptersWidth, record.reviewWidth]) {
+    if (
+      typeof width !== 'number' ||
+      !Number.isSafeInteger(width) ||
+      width < SIDEBAR_BOUNDS.min ||
+      width > SIDEBAR_BOUNDS.max
+    ) {
+      throw new Error(`Ширина сайдбара должна быть целым числом от ${SIDEBAR_BOUNDS.min} до ${SIDEBAR_BOUNDS.max}`);
+    }
+  }
+  return { chaptersWidth: record.chaptersWidth!, reviewWidth: record.reviewWidth! };
+}
 
 /** Validates an untrusted appearance value; numbers keep the plan bounds. */
 export function validateAppearance(value: unknown): AppearanceSettings {
@@ -81,12 +113,12 @@ export async function loadSettings(appData: string): Promise<DeskSettings> {
   try {
     raw = await readFile(path.join(appData, SETTINGS_FILE), 'utf8');
   } catch {
-    return { appearance: { ...DEFAULT_APPEARANCE }, positions: {} };
+    return { appearance: { ...DEFAULT_APPEARANCE }, layout: { ...DEFAULT_LAYOUT }, positions: {} };
   }
   try {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) {
-      return { appearance: { ...DEFAULT_APPEARANCE }, positions: {} };
+      return { appearance: { ...DEFAULT_APPEARANCE }, layout: { ...DEFAULT_LAYOUT }, positions: {} };
     }
     const record = parsed as Partial<DeskSettings>;
     // Загруженный блок оформления проходит ту же валидацию, что и set:
@@ -99,16 +131,25 @@ export async function loadSettings(appData: string): Promise<DeskSettings> {
       appearance = { ...DEFAULT_APPEARANCE };
     }
     const positions = positionsFrom(record.positions);
-    return { appearance, positions };
+    let layout: LayoutSettings;
+    try {
+      layout = validateLayout(record.layout);
+    } catch {
+      layout = { ...DEFAULT_LAYOUT };
+    }
+    return { appearance, layout, positions };
   } catch {
-    return { appearance: { ...DEFAULT_APPEARANCE }, positions: {} };
+    return { appearance: { ...DEFAULT_APPEARANCE }, layout: { ...DEFAULT_LAYOUT }, positions: {} };
   }
 }
 
 /** Persists the appearance block atomically, keeping positions intact. */
 export async function saveAppearance(appData: string, value: AppearanceSettings): Promise<void> {
-  const settings = await loadSettings(appData);
-  await writeSettings(appData, { ...settings, appearance: value });
+  await updateSettings(appData, settings => ({ ...settings, appearance: value }));
+}
+
+export async function saveLayout(appData: string, value: LayoutSettings): Promise<void> {
+  await updateSettings(appData, settings => ({ ...settings, layout: value }));
 }
 
 /** Stores the reading position of one chapter keyed by the stable book id. */
@@ -119,10 +160,21 @@ export async function savePosition(
   anchor: number,
   scrollTop: number,
 ): Promise<void> {
-  const settings = await loadSettings(appData);
-  const bookPositions = { ...(settings.positions[bookId] ?? {}) };
-  bookPositions[chapterId] = { anchor, scrollTop };
-  await writeSettings(appData, { ...settings, positions: { ...settings.positions, [bookId]: bookPositions } });
+  await updateSettings(appData, settings => {
+    const bookPositions = { ...(settings.positions[bookId] ?? {}) };
+    bookPositions[chapterId] = { anchor, scrollTop };
+    return { ...settings, positions: { ...settings.positions, [bookId]: bookPositions } };
+  });
+}
+
+async function updateSettings(
+  appData: string,
+  update: (settings: DeskSettings) => DeskSettings,
+): Promise<void> {
+  await saveQueueFor(appData).enqueue(async () => {
+    const settings = await loadSettings(appData);
+    await writeSettings(appData, update(settings));
+  });
 }
 
 async function writeSettings(appData: string, settings: DeskSettings): Promise<void> {

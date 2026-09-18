@@ -5,6 +5,7 @@ import { signalLabels, signalIcons } from './signal-types';
 import { useLayoutEffect } from 'react';
 import { SIGNAL_TYPES, useMarkerTheme, signalColor } from '../editor/markers';
 import type { SignalTypeName } from '../editor/markers';
+import { Tooltip } from '../ui/Tooltip';
 
 type Props = {
   /** Viewport-координаты начала flyout (у конца выделения). */
@@ -46,25 +47,25 @@ export function SignalFlyout({ x, bottom, onPick, registerFocus }: Props) {
       }}
     >
       {SIGNAL_TYPES.map((type) => (
-        <button
-          key={type}
-          aria-label={signalLabels[type]}
-          title={signalLabels[type]}
-          type="button"
-          // preventDefault на mousedown сохраняет выделение и фокус редактора.
-          onMouseDown={(event) => event.preventDefault()}
-          style={{
-            color: signalColor(type, theme),
-            borderColor: signalColor(type, theme),
-            background: 'transparent',
-            borderRadius: 6,
-            cursor: 'pointer',
-            padding: '0.15rem 0.5rem',
-          }}
-          onClick={() => onPick(type)}
-        >
-          {(() => { const Icon = signalIcons[type]; return <Icon size={20} aria-hidden="true" />; })()}
-        </button>
+        <Tooltip key={type} content={signalLabels[type]} describe={false}>
+          <button
+            aria-label={signalLabels[type]}
+            type="button"
+            // preventDefault на mousedown сохраняет выделение и фокус редактора.
+            onMouseDown={(event) => event.preventDefault()}
+            style={{
+              color: signalColor(type, theme),
+              borderColor: signalColor(type, theme),
+              background: 'transparent',
+              borderRadius: 6,
+              cursor: 'pointer',
+              padding: '0.15rem 0.5rem',
+            }}
+            onClick={() => onPick(type)}
+          >
+            {(() => { const Icon = signalIcons[type]; return <Icon size={20} aria-hidden="true" />; })()}
+          </button>
+        </Tooltip>
       ))}
     </div>
   );

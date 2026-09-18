@@ -1,3 +1,4 @@
+import type { ViewportAnchor } from './reading-position';
 import { protectedFrontmatter } from './frontmatter';
 import { frontmatter } from '../../shared/metadata';
 // ReviewEditor: один экземпляр Galley на главу, связывающий транзакции
@@ -31,7 +32,9 @@ import { bookResourceUrl, isHttpHttpsUrl, isLocalImagePath } from '../book/bookr
 import { dispatchRecordMarkers, mappedVisualRecords, recordMarkers, subscribeScheme } from './markers';
 import { CommandQueue, TypingGroups, fromSnapshot, isHistoryCommand, toTextChanges } from './transaction-adapter';
 import { dismissRecordPreview, recordPreview, setRecordPreviewBlocked } from './record-preview';
+import { searchHighlight, setSearchHighlight } from './search-highlight';
 import { snapshotChange } from './snapshot-change';
+import { attachTooltip } from '../ui/tooltip-controller';
 import '@inkyquill/galley-editor/style.css';
 
 /** Императивный доступ панели/попапов к FIFO-очереди и геометрии редактора. */
@@ -43,8 +46,21 @@ export type ReviewEditorApi = {
   dismissPreview: () => boolean;
   /** Скроллит к записи и выделяет её диапазон; false, если якоря нет. */
   reveal: (recordId: string) => boolean;
-  /** Выделяет произвольный диапазон (поиск) и скроллит к нему; false без view. */
-  revealRange: (from: number, to: number) => boolean;
+  /**
+   * Скроллит к диапазону (поиск); false без view. `focus: false` (по
+   * умолчанию для поиска) подсвечивает диапазон отдельной декорацией, не
+   * трогая EditorSelection — поиск не должен красть фокус из своего поля и
+   * не должен открывать flyout типа сигнала (он завязан на непустое
+   * выделение). `focus: true` (по умолчанию метода) сохраняет прежнюю
+   * семантику — реальное выделение, как раньше.
+   */
+  revealRange: (from: number, to: number, options?: { focus?: boolean }) => boolean;
+  /** Снимает поисковую подсветку (пустой запрос/нет совпадений/смена главы). */
+  clearSearchHighlight: () => void;
+  captureViewport: () => ViewportAnchor | null;
+  /** Actual local document, including optimistic input not yet acknowledged. */
+  getText: () => string | null;
+  restoreViewport: (anchor: ViewportAnchor) => boolean;
   coordsAt: (pos: number) => { top: number; left: number; bottom: number } | null;
 };
 
@@ -53,7 +69,7 @@ type Props = {
   theme: 'light' | 'dark';
   previewBlocked?: boolean;
   onCommand: (c: Command) => Promise<Snapshot>;
-  /** Реальный якорь выделения — уходит в savePosition (контракт Recent). */
+  /** Якорь выделения для повторного монтирования редактора; viewport хранится отдельно. */
   onSelectionChange?: (anchor: number) => void;
   /** Реальный scrollTop скроллера редактора — уходит в savePosition. */
   onScrollChange?: (scrollTop: number) => void;
@@ -316,6 +332,20 @@ export function ReviewEditor({
 
   // Локальные картинки — через защищённую схему bookres; чужие схемы и
   // обход каталогов рендерятся как недоступные, не как bookres-ссылки.
+  //
+  // attachTooltip cleanup для картинок (Task 10, fix после ревью): Galley
+  // сам решает, когда пересоздать/выбросить DOM виджета (например, картинка
+  // уходит из visibleRanges при скролле или документ целиком заменяется при
+  // смене главы) и не даёт нам хука уничтожения — ImageRenderer возвращает
+  // голый HTMLElement и всё. Скролл и так глобально гасит подсказку (см.
+  // tooltip-controller.ts), но смена главы/внешняя синхронизация документа
+  // может убрать картинку из DOM без mouseleave/blur, если курсор в этот
+  // момент неподвижен над ней — тогда controller остался бы с activeTarget
+  // на отсоединённом узле. Поэтому cleanup не отбрасывается: он копится в
+  // imageTooltipCleanupsRef и снимается MutationObserver'ом ниже, как только
+  // соответствующий <img> реально покидает DOM хоста редактора, плюс
+  // финальным flush при размонтировании — какой бы путь его ни убрал.
+  const imageTooltipCleanupsRef = useRef<Map<Element, () => void>>(new Map());
   const imageRendererRef = useRef<(image: GalleyImageInfo) => HTMLElement | null>(() => null);
   imageRendererRef.current = (image) => {
     if (!isLocalImagePath(image.url)) {
@@ -328,13 +358,52 @@ export function ReviewEditor({
     element.className = 'book__image';
     element.src = bookResourceUrl(snapshot.bookId, image.url);
     element.alt = image.alt;
-    element.title = image.url;
+    // Императивный DOM-виджет (Galley отдаёт голый HTMLElement, не React-дерево)
+    // -- общая подсказка через attachTooltip вместо нативного title (Task 10).
+    imageTooltipCleanupsRef.current.set(element, attachTooltip(element, image.url));
     return element;
   };
   const imageRenderer = useCallback(
     (image: GalleyImageInfo) => imageRendererRef.current(image),
     [],
   );
+
+  // Снимает cleanup картиночных подсказок, как только их <img> реально
+  // покидает DOM хоста (childList/subtree покрывает и точечное удаление
+  // одного узла Galley, и целиком заменённое поддерево при смене главы).
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const cleanups = imageTooltipCleanupsRef.current;
+    const releaseRemoved = (node: Node): void => {
+      if (!(node instanceof Element)) return;
+      const own = cleanups.get(node);
+      if (own) {
+        own();
+        cleanups.delete(node);
+      }
+      for (const image of node.querySelectorAll('img.book__image')) {
+        const cleanup = cleanups.get(image);
+        if (cleanup) {
+          cleanup();
+          cleanups.delete(image);
+        }
+      }
+    };
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) mutation.removedNodes.forEach(releaseRemoved);
+    });
+    observer.observe(host, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      // Размонтирование ReviewEditor: что бы ни осталось непойманным
+      // наблюдателем (гонка с его собственным disconnect), листенеры и
+      // возможную видимую/отложенную подсказку снимаем явно, а не полагаемся
+      // на сборщик мусора DOM-узла.
+      for (const cleanup of cleanups.values()) cleanup();
+      cleanups.clear();
+    };
+  }, []);
 
   // Undo/redo в «Тексте» — команды сессии. Prec.highest обязателен: ключ
   // биндинга Galley (historyKeymap CodeMirror) перебивал бы наш по порядку
@@ -372,7 +441,7 @@ export function ReviewEditor({
   }
   const extensionsRef = useRef<Extension[] | null>(null);
   if (extensionsRef.current === null) {
-    extensionsRef.current = [protectedFrontmatter(), readOnlyCompartment.current.of(readOnlyExtensions(readOnly)), Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers(), recordPreview()];
+    extensionsRef.current = [protectedFrontmatter(), readOnlyCompartment.current.of(readOnlyExtensions(readOnly)), Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers(), recordPreview(), searchHighlight()];
   }
 
   // Выделение → окно flyout: непустой диапазон даёт координаты конца выделения,
@@ -447,13 +516,48 @@ export function ReviewEditor({
         view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
         return true;
       },
-      revealRange: (from, to) => {
+      revealRange: (from, to, options) => {
         const view = handleRef.current?.view ?? null;
         if (view === null) return false;
         const length = view.state.doc.length;
         const anchor = Math.max(0, Math.min(from, length));
         const head = Math.max(0, Math.min(to, length));
-        view.dispatch({ selection: { anchor, head }, effects: EditorView.scrollIntoView(head, { y: 'center' }) });
+        const focus = options?.focus ?? true;
+        view.dispatch(
+          focus
+            ? { selection: { anchor, head }, effects: EditorView.scrollIntoView(head, { y: 'center' }) }
+            : {
+                effects: [setSearchHighlight.of({ from: anchor, to: head }), EditorView.scrollIntoView(head, { y: 'center' })],
+              },
+        );
+        return true;
+      },
+      clearSearchHighlight: () => {
+        const view = handleRef.current?.view ?? null;
+        if (view !== null) view.dispatch({ effects: setSearchHighlight.of(null) });
+      },
+      getText: () => handleRef.current?.view?.state.doc.toString() ?? null,
+      captureViewport: () => {
+        const view = handleRef.current?.view;
+        if (!view || !view.inView) return null;
+        const top = view.scrollDOM.getBoundingClientRect().top;
+        const block = view.lineBlockAtHeight(top - view.documentTop);
+        let pos = view.posAtCoords({ x: view.contentDOM.getBoundingClientRect().left + 1, y: top + 1 }) ?? block.from;
+        // Blank lines have no reliable collapsed DOM range in comparison.
+        while (pos < view.state.doc.length && view.state.doc.lineAt(pos).length === 0) pos++;
+        const coords = view.coordsAtPos(pos);
+        return coords === null ? null : { derivedOffset: pos, topOffset: coords.top - top };
+      },
+      restoreViewport: (anchor) => {
+        const view = handleRef.current?.view;
+        if (!view || !view.inView) return false;
+        const pos = Math.max(frontmatter(view.state.doc.toString())?.end ?? 0, Math.min(anchor.derivedOffset, view.state.doc.length));
+        const coords = view.coordsAtPos(pos);
+        if (coords === null) {
+          view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'start', yMargin: Math.max(0, anchor.topOffset) }) });
+          return false;
+        }
+        view.scrollDOM.scrollTop += coords.top - view.scrollDOM.getBoundingClientRect().top - anchor.topOffset;
         return true;
       },
       coordsAt: (pos) => {

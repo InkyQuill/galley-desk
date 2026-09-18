@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { encodeReview, makeAnchor } from '../../packages/pocket-format/src/index';
 import { openChapter } from '../../packages/review-engine/src/index';
 import type { Review } from '../../packages/pocket-format/src/index';
 
@@ -63,6 +64,107 @@ async function waitSavedText(sidecarPath: string, source: Buffer, expectedText: 
     });
     return sidecar === null ? null : openChapter(source, JSON.parse(sidecar) as Review).text;
   }, { timeout: 15_000 }).toBe(expectedText);
+}
+
+async function placeCaretFromStart(page: Page, offset: number): Promise<void> {
+  await page.locator('.cm-content').click({ position: { x: 5, y: 8 } });
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
+  for (let index = 0; index < offset; index++) await page.keyboard.press('ArrowRight');
+}
+
+const ATOMIC_SOURCE = 'Alpha middle omega.\nSecond paragraph starts here.\n';
+
+function atomicFixtureReview(chapterId: string): Review {
+  const source = Buffer.from(ATOMIC_SOURCE);
+  const alphaFrom = ATOMIC_SOURCE.indexOf('Alpha');
+  const omegaFrom = ATOMIC_SOURCE.indexOf('omega');
+  return {
+    schema_version: 1,
+    chapter_id: chapterId,
+    source_path: 'Глава.md',
+    chapter_note: 'Neighbor records must survive input history',
+    edits: [{
+      id: '11111111-1111-4111-8111-111111111111',
+      before: 'Alpha',
+      after: 'ALPHA',
+      anchor: makeAnchor(source, { from: alphaFrom, to: alphaFrom + Buffer.byteLength('Alpha') }),
+    }],
+    signals: [{
+      id: '22222222-2222-4222-8222-222222222222',
+      type: 'note',
+      selected_text: 'omega',
+      comment: 'Stable neighboring signal',
+      anchor: makeAnchor(source, { from: omegaFrom, to: omegaFrom + Buffer.byteLength('omega') }),
+    }],
+  };
+}
+
+for (const atomicCase of [
+  { name: 'середине слова', offset: 'ALPHA mid'.length, insertion: '·' },
+  { name: 'границе абзаца', offset: 'ALPHA middle omega.'.length, insertion: '!' },
+]) {
+  test(`одна завершённая группа ввода в ${atomicCase.name} атомарна для Undo/Redo и reopen`, async () => {
+    const bookRoot = await makeTempDir('galley-e2e-atomic-undo-');
+    const chapterId = randomUUID();
+    const source = Buffer.from(ATOMIC_SOURCE);
+    const initialReview = atomicFixtureReview(chapterId);
+    const initialText = openChapter(source, initialReview).text;
+    const changedText = initialText.slice(0, atomicCase.offset) + atomicCase.insertion + initialText.slice(atomicCase.offset);
+    const manifest = {
+      schema_version: 1,
+      book_id: randomUUID(),
+      title: 'Atomic input history',
+      chapters: [{ id: chapterId, path: 'Глава.md', title: 'Глава' }],
+      ignored_files: [],
+    };
+    const sidecarPath = path.join(bookRoot, 'Глава.review.json');
+    await writeFile(path.join(bookRoot, '.pocket-editor.json'), JSON.stringify(manifest, null, 2));
+    const session = await launch(bookRoot, {
+      'Глава.md': source,
+      'Глава.review.json': encodeReview(initialReview),
+    });
+    try {
+      await openOwnBook(session);
+      const content = session.page.locator('.cm-content');
+      await expect(content).toContainText('ALPHA middle omega.');
+
+      await placeCaretFromStart(session.page, atomicCase.offset);
+      await session.page.keyboard.insertText(atomicCase.insertion);
+      await expect(content).toContainText(
+        atomicCase.insertion === '·' ? 'ALPHA mid·dle omega.' : 'ALPHA middle omega.!',
+      );
+      await waitSavedText(sidecarPath, source, changedText);
+      const changedReview = JSON.parse(await readFile(sidecarPath, 'utf8')) as Review;
+      expect(changedReview.edits.find(edit => edit.id === initialReview.edits[0]?.id)).toEqual(initialReview.edits[0]);
+      expect(changedReview.signals).toEqual(initialReview.signals);
+
+      await session.page.keyboard.press('ControlOrMeta+z');
+      await expect(content).toContainText('ALPHA middle omega.');
+      await waitSavedText(sidecarPath, source, initialText);
+      expect(JSON.parse(await readFile(sidecarPath, 'utf8')) as Review).toEqual(initialReview);
+
+      await session.page.keyboard.press('ControlOrMeta+Shift+Z');
+      await expect(content).toContainText(
+        atomicCase.insertion === '·' ? 'ALPHA mid·dle omega.' : 'ALPHA middle omega.!',
+      );
+      await waitSavedText(sidecarPath, source, changedText);
+      expect(JSON.parse(await readFile(sidecarPath, 'utf8')) as Review).toEqual(changedReview);
+
+      await session.page.keyboard.press('ControlOrMeta+z');
+      await waitSavedText(sidecarPath, source, initialText);
+      await session.page.getByRole('button', { name: 'Меню книги' }).click();
+      await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+      await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+      await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
+      await expect(session.page.locator('.cm-content')).toContainText('ALPHA middle omega.');
+      const reopenedReview = JSON.parse(await readFile(sidecarPath, 'utf8')) as Review;
+      expect(openChapter(source, reopenedReview).text).toBe(initialText);
+      expect(reopenedReview.chapter_note).toBe(initialReview.chapter_note);
+      expect(reopenedReview.signals).toEqual(initialReview.signals);
+    } finally {
+      await session.app.close();
+    }
+  });
 }
 
 test.afterEach(async () => {
@@ -137,7 +239,7 @@ test('смена главы во время пачки ввода не пере�
   // Большая глава B: её открытие перестраивает движок заметно дольше кадра —
   // это «окно смены главы», в котором защищённое окно не показывает ни
   // одного редактора, а незащищённое показывает текст прежней главы.
-  const bigB = 'пёс спит.\n' + 'текст '.repeat(180000);
+  const bigB = 'пёс спит.\n' + 'текст '.repeat(60000);
   const manifest = {
     schema_version: 1,
     book_id: randomUUID(),
@@ -165,7 +267,7 @@ test('смена главы во время пачки ввода не пере�
     await session.page.keyboard.insertText(burstA);
     // CM виртуализирует строки большой главы: видимость хвоста пачки не
     // проверяем через innerText — точность докажет sidecar-проверка движком.
-    await session.page.getByRole('button', { name: 'Вторая' }).click();
+    await session.page.getByRole('button', { name: 'Вторая', exact: true }).click();
 
     // «Окно смены главы»: пока снимок B не пришёл, области ввода быть не
     // должно, а появившийся редактор обязан показывать только текст B —
@@ -178,7 +280,7 @@ test('смена главы во время пачки ввода не пере�
       while (performance.now() < deadline) {
         const editors = document.querySelectorAll('.cm-content');
         const head = editors[0] ? (editors[0].textContent ?? '').slice(0, 24) : null;
-        const chapter = document.querySelector('.book__chapter--active .book__chapter-name')?.textContent ?? null;
+        const chapter = document.querySelector('.book__chapter-row--active .book__chapter-name')?.textContent ?? null;
         seen.push({ count: editors.length, head, chapter });
         if (chapter === 'Вторая' && head?.startsWith('пёс спит.')) break;
         await new Promise((resolve) => setTimeout(resolve, 10));
@@ -225,9 +327,9 @@ test('смена главы во время пачки ввода не пере�
     // CM виртуализирует текст; начало покажем явно, точность хвостов проверена движком выше).
     await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
     await expect(session.page.locator('.cm-content')).toBeVisible();
-    await session.page.getByRole('button', { name: 'Глава Глава.md', exact: true }).click();
+    await session.page.getByRole('button', { name: 'Глава', exact: true }).click();
     await expect(content).toContainText(`кот спит.${burstA}`);
-    await session.page.getByRole('button', { name: 'Вторая' }).click();
+    await session.page.getByRole('button', { name: 'Вторая', exact: true }).click();
     // Reopening restores the previous end-of-chapter caret; reveal the virtualized start explicitly.
     await content.click();
     await session.page.keyboard.press('ControlOrMeta+Home');

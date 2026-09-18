@@ -194,6 +194,46 @@ function conflictingReview(): Review {
   };
 }
 
+function denseReview(): { source: string; review: Review } {
+  const parts = Array.from({ length: 30 }, (_, index) => `фрагмент-${String(index).padStart(2, '0')}-${'длинныйтекст'.repeat(4)}`);
+  const sourceText = `${parts.join('\n')}\n`;
+  const source = new TextEncoder().encode(sourceText);
+  const ranges = parts.map((part, index) => {
+    const prefix = parts.slice(0, index).join('\n') + (index === 0 ? '' : '\n');
+    const from = new TextEncoder().encode(prefix).length;
+    return { from, to: from + new TextEncoder().encode(part).length };
+  });
+  const wrong = new TextEncoder().encode('чужой текст для недоступной записи');
+  const edits: Review['edits'] = Array.from({ length: 24 }, (_, index) => ({
+    id: randomUUID(),
+    before: parts[index]!,
+    after: index === 2
+      ? ''
+      : index === 3
+        ? `вставленный-фрагмент-${parts[index]}`
+        : `новая редакция ${index}: ${'ещёболееобстоятельныйтекст'.repeat(4)}`,
+    anchor: index === 23 ? makeAnchor(wrong, { from: 0, to: wrong.length }) : makeAnchor(source, ranges[index]!),
+  }));
+  // Два участника конфликта при том же диапазоне.
+  edits[1] = { ...edits[1]!, anchor: makeAnchor(source, ranges[0]!), before: parts[0]! };
+  const signals: Review['signals'] = Array.from({ length: 6 }, (_, index) => ({
+    id: randomUUID(),
+    type: index === 0 ? 'warning' : 'note',
+    selected_text: parts[index + 24]!,
+    comment: `Комментарий сигнала ${index}: ${'подробно'.repeat(12)}`,
+    anchor: makeAnchor(source, ranges[index + 24]!),
+  }));
+  return { source: sourceText, review: { schema_version: 1, chapter_id: CHAPTER_ID, source_path: CHAPTER_PATH, chapter_note: '', edits, signals } };
+}
+
+async function writeDenseBook(bookRoot: string): Promise<void> {
+  const fixture = denseReview();
+  const manifest = { schema_version: 1, book_id: randomUUID(), title: 'Плотная рецензия', chapters: [{ id: CHAPTER_ID, path: CHAPTER_PATH, title: 'Глава' }], ignored_files: [] };
+  await writeFile(path.join(bookRoot, '.pocket-editor.json'), JSON.stringify(manifest, null, 2));
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), fixture.source, 'utf8');
+  await writeFile(path.join(bookRoot, SIDECAR_PATH), encodeReview(fixture.review), 'utf8');
+}
+
 async function writeBook(bookRoot: string, review: Review): Promise<void> {
   const manifest = {
     schema_version: 1,
@@ -234,27 +274,32 @@ async function selectFromStart(page: Page, skip: number, length: number): Promis
   for (let i = 0; i < length; i++) await page.keyboard.press('Shift+ArrowRight');
 }
 
-/** Клавиатурный путь выделение → flyout → попап: создаёт сигнал заданного типа. */
-async function createSignalByKeyboard(
+/** Создаёт сигнал; dedicated keyboard-сценарий входит во flyout через Tab. */
+async function createSignal(
   page: Page,
   sidecarPath: string,
   selection: { skip: number; length: number },
   type: string,
   comment: string,
+  keyboardEntry = false,
 ): Promise<Review> {
   await selectFromStart(page, selection.skip, selection.length);
   const flyout = page.locator('[data-review-flyout]');
   await expect(flyout).toBeVisible();
-  await page.keyboard.press('Tab');
-  const firstType = flyout.getByRole('button', { name: 'Заметка', exact: true });
-  await expect(firstType).toBeFocused();
-  let focused = 'note';
-  while (focused !== type) {
+  if (keyboardEntry) {
+    await expect(page.locator('.cm-content')).toBeFocused();
     await page.keyboard.press('Tab');
-    const labels = ['note', 'change_required', 'warning', 'review'];
-    focused = labels[(labels.indexOf(focused) + 1) % labels.length] as string;
+    await expect(flyout.getByRole('button', { name: 'Заметка', exact: true })).toBeFocused();
+    await page.keyboard.press('Enter');
+  } else {
+    const labels: Record<string, string> = {
+      note: 'Заметка',
+      change_required: 'Требуется правка',
+      warning: 'Предупреждение',
+      review: 'На проверку',
+    };
+    await flyout.getByRole('button', { name: labels[type], exact: true }).click();
   }
-  await page.keyboard.press('Enter');
   const textarea = page.getByRole('textbox', { name: 'Комментарий сигнала' });
   await expect(textarea).toBeFocused();
   if (comment !== '') await textarea.fill(comment);
@@ -285,7 +330,7 @@ test('заметка главы сохраняется в sidecar; при оши
     await note.fill('Глава требует вычитки и правки');
     await chmod(bookRoot, 0o555);
     await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
-    await expect(page.getByRole('alert')).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Заметка главы' }).getByRole('alert')).toBeVisible();
     await expect(note).toHaveValue('Глава требует вычитки и правки');
   } finally {
     await chmod(bookRoot, 0o755);
@@ -311,7 +356,7 @@ test('черновик заметки главы не переезжает в д
     await noteA.fill('Черновик главы A');
 
     // Смена главы закрывает попап: у главы B своя (пустая) заметка.
-    await page.getByRole('button', { name: 'Вторая Вторая.md', exact: true }).click();
+    await page.getByRole('button', { name: 'Вторая', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Заметка главы' })).toHaveCount(0);
     await page.getByRole('button', { name: 'Заметка главы' }).click();
     const noteB = page.getByRole('textbox', { name: 'Текст заметки' });
@@ -394,7 +439,7 @@ test('клавиатурный путь выделение → flyout → поп
     // Flyout не переносит фокус: копирование и навигация остаются в редакторе.
     await expect(content).toBeFocused();
 
-    const sidecar = await createSignalByKeyboard(page, sidecarPath, { skip: 0, length: 3 }, 'note', 'Обсудить');
+    const sidecar = await createSignal(page, sidecarPath, { skip: 0, length: 3 }, 'note', 'Обсудить', true);
     const signal = sidecar.signals.find((candidate) => candidate.comment === 'Обсудить');
     expect(signal?.type).toBe('note');
     expect(signal?.selected_text).toBe('кот');
@@ -472,11 +517,11 @@ test('четыре типа сигналов получают свои цвет�
     }
 
     // Пустой комментарий допустим; правка существующего сигнала — отдельный тест.
-    await createSignalByKeyboard(page, sidecarPath, { skip: 0, length: 3 }, 'note', '');
+    await createSignal(page, sidecarPath, { skip: 0, length: 3 }, 'note', '');
     // Пересекающийся сигнал на том же диапазоне: оба маркера остаются видимы.
-    await createSignalByKeyboard(page, sidecarPath, { skip: 0, length: 3 }, 'change_required', 'Проверить');
-    await createSignalByKeyboard(page, sidecarPath, { skip: 4, length: 4 }, 'warning', 'Тон');
-    await createSignalByKeyboard(page, sidecarPath, { skip: 8, length: 1 }, 'review', '');
+    await createSignal(page, sidecarPath, { skip: 0, length: 3 }, 'change_required', 'Проверить');
+    await createSignal(page, sidecarPath, { skip: 4, length: 4 }, 'warning', 'Тон');
+    await createSignal(page, sidecarPath, { skip: 8, length: 1 }, 'review', '');
     await expect(page.getByRole('button', { name: 'Сигнал', exact: true })).toHaveCount(4);
     await expect(page.locator('.gd-signal-comment')).toHaveCount(2);
     await expect(page.locator('.book__review')).toContainText('Проверить');
@@ -516,7 +561,7 @@ test('изменение существующего сигнала заменя�
     await openOwnBook(session);
     const sidecarPath = path.join(bookRoot, SIDECAR_PATH);
 
-    const before = await createSignalByKeyboard(page, sidecarPath, { skip: 0, length: 3 }, 'note', 'Первый');
+    const before = await createSignal(page, sidecarPath, { skip: 0, length: 3 }, 'note', 'Первый');
     const signalId = before.signals[0]!.id;
 
     // Клик по молнии открывает тот же попап с типом и комментарием.
@@ -558,7 +603,7 @@ test('сигнал на добавленном тексте якорится к 
 
     // Сигнал внутри добавленного текста получает исходный якорь правки
     // (какой она ни приобрела после последовательного ввода).
-    const sidecar = await createSignalByKeyboard(page, sidecarPath, { skip: 3, length: 2 }, 'review', 'Новое');
+    const sidecar = await createSignal(page, sidecarPath, { skip: 3, length: 2 }, 'review', 'Новое');
     const edit = sidecar.edits[0];
     const signal = sidecar.signals.find((candidate) => candidate.comment === 'Новое');
     expect(signal?.anchor.start_byte).toBe(edit?.anchor.start_byte);
@@ -624,6 +669,65 @@ test('недоступные записи открывают карточку в
     const sidecar = await waitSidecar(page, sidecarPath, (review) => review.edits.length === 0);
     expect(sidecar.signals).toHaveLength(1);
     await expect(page.getByRole('dialog', { name: 'Недоступная запись' })).toHaveCount(0);
+  } finally {
+    await session.app.close();
+  }
+});
+
+test('плотная рецензия остаётся читаемой при ширине 240–560 px', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-dense-review-');
+  await writeDenseBook(bookRoot);
+  const session = await launch(bookRoot);
+  try {
+    const { page } = session;
+    await openOwnBook(session);
+    await page.setViewportSize({ width: 1920, height: 900 });
+    const records = page.locator('.book__record');
+    await expect(records).toHaveCount(30);
+    const initialNames = await records.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')));
+
+    const first = records.first();
+    await expect(first.getByText('Было', { exact: true })).toBeVisible();
+    await expect(first.getByText('Стало', { exact: true })).toBeVisible();
+    await expect(page.locator('.book__record-status', { hasText: 'конфликтует' })).toHaveCount(2);
+    await expect(page.locator('.book__record-status', { hasText: 'недоступна' })).toHaveCount(1);
+    await expect(page.getByText('вставка', { exact: true })).toBeVisible();
+    await expect(page.getByText('удаление', { exact: true })).toBeVisible();
+    await expect(page.getByText('Предупреждение', { exact: true })).toBeVisible();
+
+    const reviewResizer = page.getByRole('separator', { name: 'Ширина рецензии' });
+    let currentWidth = 336;
+    for (const width of [336, 240, 560]) {
+      await reviewResizer.focus();
+      // Правая граница зеркальна: ArrowRight сужает правую колонку.
+      const key = width < currentWidth ? 'ArrowRight' : 'ArrowLeft';
+      for (let step = 0; step < Math.abs(width - currentWidth) / 16; step++) await page.keyboard.press(key);
+      currentWidth = width;
+      await expect(page.locator('.book__review')).toHaveCSS('width', `${width}px`);
+      await expect.poll(() => page.locator('.book__review').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await expect.poll(() => records.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')))).toEqual(initialNames);
+      await expect(first.locator('.book__record-excerpt').first()).toHaveCSS('-webkit-line-clamp', '3');
+    }
+
+    await first.focus();
+    const tooltip = page.locator('#gd-tooltip');
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText('длинныйтекст');
+    const tooltipBox = await tooltip.boundingBox();
+    expect(tooltipBox).not.toBeNull();
+    expect(tooltipBox!.x).toBeGreaterThanOrEqual(8);
+    expect(tooltipBox!.x + tooltipBox!.width).toBeLessThanOrEqual(1912);
+
+    const unavailable = page.locator('.book__record--unavailable').first();
+    await unavailable.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog', { name: 'Недоступная запись' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    const active = page.getByRole('button', { name: /^Правка:/ }).filter({ hasNot: page.locator('.book__record-status') }).first();
+    await active.click();
+    await expect(page.getByRole('dialog', { name: 'Правка' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Применить', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Отклонить', exact: true })).toBeVisible();
   } finally {
     await session.app.close();
   }
@@ -744,6 +848,10 @@ test('gutter: before preview preserves typing focus, selection flyout wins, butt
     await expect(preview).toHaveCount(0);
     await expect(page.locator('.book--zen')).toBeVisible();
     await page.keyboard.press('Escape');
+    await expect(page.locator('.book--zen')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.book--zen')).toBeVisible();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Alt+z' : 'Control+Alt+z');
     await expect(page.locator('.book--zen')).toHaveCount(0);
     await page.locator('.gd-edit-range').hover();
     await expect(preview).toContainText('о');
@@ -801,12 +909,10 @@ test('gutter follows wrapped Markdown and scrolling; deletion has its own focusa
       return Math.abs((markerBox?.y ?? -1000) - (rangeBox?.y ?? 0));
     }).toBeLessThan(5);
     await page.locator('.cm-content').press('ArrowLeft');
-    // Enter by an actual keyboard focus transition, not a synthetic focus event
-    // following Escape (which intentionally leaves previews dismissed).
-    await deletion.focus();
-    await page.keyboard.press('Tab');
-    await expect(deletion).not.toBeFocused();
-    await page.keyboard.press('Shift+Tab');
+    // The preceding gutter test covers sequential Tab navigation. Focus this
+    // deletion directly so macOS keyboard-navigation preferences cannot skip
+    // the button while this test verifies its own focus preview and action.
+    await deletion.evaluate((element: HTMLElement) => element.focus({ preventScroll: true }));
     await expect(deletion).toBeFocused();
     // Focus scroll can arrive after focusin; it must not erase its own preview.
     await page.locator('.cm-scroller').evaluate(element => { element.scrollTop += 1; });
@@ -816,10 +922,7 @@ test('gutter follows wrapped Markdown and scrolling; deletion has its own focusa
     await page.keyboard.press('Escape');
     await expect(page.getByRole('tooltip', { name: 'До правки' })).toHaveCount(0);
     const inlineDeletion = page.getByRole('button', { name: 'Удалённый текст', exact: true });
-    await inlineDeletion.focus();
-    await page.keyboard.press('Tab');
-    await expect(inlineDeletion).not.toBeFocused();
-    await page.keyboard.press('Shift+Tab');
+    await inlineDeletion.evaluate((element: HTMLElement) => element.focus({ preventScroll: true }));
     await expect(inlineDeletion).toBeFocused();
     await expect(page.getByRole('tooltip', { name: 'До правки' })).toContainText('DELETE');
     await page.keyboard.press('Escape');

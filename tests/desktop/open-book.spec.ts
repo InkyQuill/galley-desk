@@ -79,8 +79,8 @@ test('открывает папку без манифеста, создаёт с
     await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
 
     // Главы верхнего уровня открыты, вложенные не найдены (no recursive discovery).
-    await expect(session.page.getByRole('button', { name: 'Одна' })).toBeVisible();
-    await expect(session.page.getByRole('button', { name: 'Две' })).toBeVisible();
+    await expect(session.page.getByRole('button', { name: 'Одна', exact: true })).toBeVisible();
+    await expect(session.page.getByRole('button', { name: 'Две', exact: true })).toBeVisible();
     await expect(session.page.getByRole('button', { name: 'глубокая' })).toHaveCount(0);
 
     // Совместимый манифест создан на диске.
@@ -130,7 +130,7 @@ test('открывает главу: правка из sidecar, локальна
     // Первое открытие создаёт манифест с устойчивыми id глав.
     await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
     await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
-    await expect(session.page.getByRole('button', { name: 'Глава' })).toBeVisible();
+    await expect(session.page.getByRole('button', { name: 'Глава', exact: true })).toBeVisible();
     await closeApp(session);
 
     // Sidecar с настоящим makeAnchor: правка кот → кит.
@@ -162,7 +162,7 @@ test('открывает главу: правка из sidecar, локальна
     const reopened = await launch(bookRoot, {}, userData);
     try {
       await reopened.page.getByRole('button', { name: 'Открыть', exact: true }).click();
-      await reopened.page.getByRole('button', { name: 'Глава' }).click();
+      await reopened.page.getByRole('button', { name: 'Глава', exact: true }).click();
       await expect(reopened.page.locator('.book__text')).toContainText('кит спит.');
       // Исходный файл не изменён: правка живёт в sidecar.
       expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe(chapterText);
@@ -171,13 +171,17 @@ test('открывает главу: правка из sidecar, локальна
       // Курсор уводится с картинки: в live-режиме Galley прячет виджет под
       // курсором. Локальная картинка отображается через защищённую схему.
       await reopened.page.locator('.cm-content').click();
-      const image = reopened.page.locator('img.book__image[title="img.png"]');
+      // Подсказка изображения — общий Tooltip (Task 10), не нативный title;
+      // элемент ищем по alt (устойчивый идентификатор картинки в тексте).
+      const image = reopened.page.locator('img.book__image[alt="рисунок"]');
       await expect(image).toHaveCount(1);
       await expect(image).toHaveAttribute('src', new RegExp(`^bookres://${manifest.book_id}/img\\.png$`));
       expect(await image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBeGreaterThan(0);
+      await image.hover();
+      await expect(reopened.page.getByRole('tooltip')).toHaveText('img.png');
 
       // Исполнимые и внешние URL не превращаются в bookres-ссылки.
-      await expect(reopened.page.locator('img.book__image[title="file:///etc/passwd"]')).toHaveCount(0);
+      await expect(reopened.page.locator('img.book__image[alt="чужая"]')).toHaveCount(0);
       const traversal = await reopened.page.evaluate(async (bookId) => {
         const response = await fetch(`bookres://${bookId}/..%2F..%2Fetc%2Fpasswd`);
         return response.status;
@@ -214,8 +218,8 @@ test('восстанавливает главу и прокрутку в жив�
   try {
     await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
     await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
-    await expect(session.page.getByRole('button', { name: 'Глава 1' })).toBeVisible();
-    await session.page.getByRole('button', { name: 'Глава 2' }).click();
+    await expect(session.page.getByRole('button', { name: 'Глава 1', exact: true })).toBeVisible();
+    await session.page.getByRole('button', { name: 'Глава 2', exact: true }).click();
     await expect(scroller).toBeVisible();
     // Прокрутка к концу рендерит хвост виртуализованного документа.
     await scrollToEnd(scroller);
@@ -238,13 +242,22 @@ test('восстанавливает главу и прокрутку в жив�
 
     // Повторное открытие в том же окне возвращает главу и прокрутку.
     await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
-    await expect(session.page.getByRole('button', { name: 'Глава 2' })).toHaveClass(/book__chapter--active/);
+    await expect(session.page.locator('.book__chapter-row--active').getByRole('button', { name: 'Глава 2', exact: true })).toBeVisible();
     await expect
       .poll(() => scroller.evaluate((element) => element.scrollTop))
       .toBe(120);
     // Прокрутка к концу снова рендерит хвост: содержимое на месте.
     await scrollToEnd(scroller);
     await expect(scroller).toContainText('строка 200');
+    // Вернём проверяемую позицию перед завершением процесса: закрытие теперь
+    // корректно сохраняет последний viewport-anchor и иначе зафиксирует конец.
+    await scroller.evaluate((element) => { element.scrollTop = 120; });
+    await session.page.waitForTimeout(700);
+    const restartAnchorLine = await scroller.locator('.cm-line').evaluateAll((lines) => {
+      const top = document.querySelector('.book__text .cm-scroller')!.getBoundingClientRect().top;
+      return lines.find(line => line.getBoundingClientRect().bottom > top)?.textContent ?? null;
+    });
+    expect(restartAnchorLine).not.toBeNull();
 
     const settingsFile = JSON.parse(
       await readFile(path.join(session.userData, 'settings.json'), 'utf8'),
@@ -261,15 +274,203 @@ test('восстанавливает главу и прокрутку в жив�
     running.push(restarted.app);
     await expect(restarted.page.getByRole('button', { name: 'Открыть', exact: true })).toBeVisible();
     await restarted.page.getByRole('button', { name: 'Открыть', exact: true }).click();
-    await expect(restarted.page.getByRole('button', { name: 'Глава 2' })).toHaveClass(/book__chapter--active/);
+    await expect(restarted.page.locator('.book__chapter-row--active').getByRole('button', { name: 'Глава 2', exact: true })).toBeVisible();
     const restartedScroller = restarted.page.locator('.book__text .cm-scroller');
     await expect
-      .poll(() => restartedScroller.evaluate((element) => element.scrollTop))
-      .toBe(120);
+      .poll(() => restartedScroller.locator('.cm-line').evaluateAll((lines) => {
+        const top = document.querySelector('.book__text .cm-scroller')!.getBoundingClientRect().top;
+        return lines.find(line => line.getBoundingClientRect().bottom > top)?.textContent ?? null;
+      }))
+      .toBe(restartAnchorLine);
+    const restartedTop = await restartedScroller.evaluate((element) => element.scrollTop);
+    expect(Math.abs(restartedTop - 120)).toBeLessThanOrEqual(31);
     await scrollToEnd(restartedScroller);
     await expect(restartedScroller).toContainText('строка 200');
   } finally {
     await Promise.all(running.map((app) => app.close().catch(() => undefined)));
+  }
+});
+
+test('выбор той же папки диалогом восстанавливает главу и прокрутку так же, как открытие через «Недавние» (история №1)', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-dialog-restore-');
+  const lines = Array.from({ length: 200 }, (_, index) => `строка ${index + 1}`).join('\n');
+  const session = await launch(bookRoot, {
+    'Глава 1.md': `${lines}\n`,
+    'Глава 2.md': `${lines}\n`,
+  });
+  const scroller = session.page.locator('.book__text .cm-scroller');
+  const scrollToEnd = (locator: ReturnType<Page['locator']>): Promise<void> =>
+    locator.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+  try {
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.getByRole('button', { name: 'Глава 1', exact: true })).toBeVisible();
+    await session.page.getByRole('button', { name: 'Глава 2', exact: true }).click();
+    await expect(scroller).toBeVisible();
+    await scrollToEnd(scroller);
+    await expect(scroller).toContainText('строка 200');
+    await scroller.evaluate((element) => {
+      element.scrollTop = 120;
+    });
+    await session.page.waitForTimeout(700);
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
+    await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+
+    // Тот же путь снова выбирается через dialog (а не через кнопку «Открыть»
+    // списка недавних) — восстановление должно быть тем же самым, потому что
+    // сопоставление идёт по bookId, который main уже сохранил в recent.
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.locator('.book__chapter-row--active').getByRole('button', { name: 'Глава 2', exact: true })).toBeVisible();
+    await expect
+      .poll(() => scroller.evaluate((element) => element.scrollTop))
+      .toBe(120);
+  } finally {
+    await closeApp(session);
+  }
+});
+
+test('отмена диалога после уже сохранённой позиции не меняет экран недавних', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-dialog-cancel-');
+  const session = await launch(bookRoot, { 'Глава.md': 'текст\n' });
+  try {
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.getByRole('button', { name: 'Глава', exact: true })).toBeVisible();
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
+    await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+
+    // Пользователь снова жмёт «Открыть папку…», но отменяет диалог: список
+    // недавних остаётся как был, книга не открывается, восстановление не
+    // запускается.
+    await stubDialog(session.app, { canceled: true, filePaths: [] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.getByRole('heading', { name: 'Galley Desk' })).toBeVisible();
+    await expect(session.page.locator('.recent-list__item')).toHaveCount(1);
+  } finally {
+    await closeApp(session);
+  }
+});
+
+test('папка, переехавшая на новое место, восстанавливает позицию через диалог по bookId', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-dialog-moved-');
+  const movedRoot = `${bookRoot}-переехала`;
+  const lines = Array.from({ length: 200 }, (_, index) => `строка ${index + 1}`).join('\n');
+  const session = await launch(bookRoot, {
+    'Глава 1.md': `${lines}\n`,
+    'Глава 2.md': `${lines}\n`,
+  });
+  const scroller = session.page.locator('.book__text .cm-scroller');
+  try {
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await session.page.getByRole('button', { name: 'Глава 2', exact: true }).click();
+    await expect(scroller).toBeVisible();
+    await scroller.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await scroller.evaluate((element) => {
+      element.scrollTop = 80;
+    });
+    await session.page.waitForTimeout(700);
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
+    await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+
+    await rename(bookRoot, movedRoot);
+
+    // Диалог теперь указывает на новое расположение; главу и прокрутку
+    // находим по bookId, а не по (уже неверному) старому пути.
+    await stubDialog(session.app, { canceled: false, filePaths: [movedRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.locator('.book__chapter-row--active').getByRole('button', { name: 'Глава 2', exact: true })).toBeVisible();
+    await expect
+      .poll(() => scroller.evaluate((element) => element.scrollTop))
+      .toBe(80);
+  } finally {
+    if (existsSync(bookRoot)) await rm(bookRoot, { recursive: true, force: true }).catch(() => undefined);
+    await rm(movedRoot, { recursive: true, force: true }).catch(() => undefined);
+    await closeApp(session);
+  }
+});
+
+test('глава, исчезнувшая из оглавления, не восстанавливается через диалог — открывается первая доступная', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-dialog-missing-chapter-');
+  const session = await launch(bookRoot, {
+    'Глава 1.md': 'первая\n',
+    'Глава 2.md': 'вторая\n',
+  });
+  try {
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await session.page.getByRole('button', { name: 'Глава 2', exact: true }).click();
+    await expect(session.page.locator('.book__text')).toContainText('вторая');
+    await session.page.waitForTimeout(700);
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
+    await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+
+    // Последняя открытая глава (Глава 2) исчезает с диска — манифест её
+    // теперь помечает missing; восстановление обязано это заметить.
+    await rm(path.join(bookRoot, 'Глава 2.md'));
+
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.locator('.book__chapter-row--active').getByRole('button', { name: 'Глава 1', exact: true })).toBeVisible();
+    await expect(session.page.locator('.book__text')).toContainText('первая');
+  } finally {
+    await closeApp(session);
+  }
+});
+
+test('книга без доступных глав открывается без восстановления и без падения — что через диалог, что через «Недавние»', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-no-chapters-');
+  // Ни одного .md файла верхнего уровня — discover() даёт пустой список глав,
+  // манифест создаётся с chapters: [] (packages/book-storage/src/book.ts).
+  const session = await launch(bookRoot, { 'заметка.txt': 'не глава\n' });
+  try {
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+
+    // Окно книги открылось (заголовок виден), но глав для выбора нет и
+    // восстанавливать нечего — без падения и без ложной активной главы.
+    await expect(session.page.locator('.titlebar__title')).toHaveText(path.basename(bookRoot));
+    await expect(session.page.getByRole('button', { name: 'Меню книги' })).toBeVisible();
+    await expect(session.page.locator('.book__chapter')).toHaveCount(0);
+    await expect(session.page.locator('.book__chapter-row--active')).toHaveCount(0);
+    await expect(session.page.getByRole('alert')).toHaveCount(0);
+
+    const manifest = JSON.parse(await readFile(path.join(bookRoot, '.pocket-editor.json'), 'utf8')) as {
+      chapters: unknown[];
+    };
+    expect(manifest.chapters).toHaveLength(0);
+
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
+    await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+
+    // Тот же результат через «Недавние»: тоже без падения, без активной главы.
+    await session.page.getByRole('button', { name: 'Открыть', exact: true }).click();
+    await expect(session.page.locator('.titlebar__title')).toHaveText(path.basename(bookRoot));
+    await expect(session.page.locator('.book__chapter')).toHaveCount(0);
+    await expect(session.page.getByRole('alert')).toHaveCount(0);
+    await session.page.getByRole('button', { name: 'Меню книги' }).click();
+    await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
+    await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();
+
+    // И снова через диалог — тот же результат (dialog/Recent parity —
+    // главная мысль истории №1 — держится и на нулевом наборе глав).
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.locator('.titlebar__title')).toHaveText(path.basename(bookRoot));
+    await expect(session.page.locator('.book__chapter')).toHaveCount(0);
+    await expect(session.page.getByRole('alert')).toHaveCount(0);
+  } finally {
+    await closeApp(session);
   }
 });
 
@@ -280,7 +481,7 @@ test('недоступная папка помечается, забывание
   try {
     await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
     await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
-    await expect(session.page.getByRole('button', { name: 'Глава' })).toBeVisible();
+    await expect(session.page.getByRole('button', { name: 'Глава', exact: true })).toBeVisible();
     await session.page.getByRole('button', { name: 'Меню книги' }).click();
     await session.page.getByRole('button', { name: 'Закрыть книгу' }).click();
     await expect(session.page.getByRole('button', { name: 'Открыть папку…' })).toBeVisible();

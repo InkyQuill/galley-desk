@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -38,6 +38,27 @@ test('packaged Linux window has custom accessible chrome and native controls wor
   await page.screenshot({ path: testInfo.outputPath('window-frame.png') });
   await page.getByRole('button', { name: 'Восстановить окно' }).click();
   await expect(page.getByRole('button', { name: 'Развернуть окно' })).toBeVisible();
+
+  // Real X11 hit testing: dragging the free title area moves the native
+  // window, while the buttons above remained clickable without starting a drag.
+  const before = (await run('xdotool', ['getwindowgeometry', '--shell', windowId])).stdout;
+  const beforeX = Number(before.match(/^X=(\d+)$/m)?.[1]);
+  const beforeY = Number(before.match(/^Y=(\d+)$/m)?.[1]);
+  await run('xdotool', ['windowactivate', '--sync', windowId]);
+  await run('xdotool', [
+    'mousemove', '--sync', String(beforeX + 400), String(beforeY + 22), 'mousedown', '1', 'sleep', '0.2',
+    'mousemove_relative', '--sync', '20', '8', 'sleep', '0.1',
+    'mousemove_relative', '--sync', '20', '8', 'sleep', '0.1',
+    'mousemove_relative', '--sync', '20', '8', 'sleep', '0.1',
+    'mousemove_relative', '--sync', '20', '8', 'sleep', '0.2', 'mouseup', '1',
+  ]);
+  const after = (await run('xdotool', ['getwindowgeometry', '--shell', windowId])).stdout;
+  expect(Number(after.match(/^X=(\d+)$/m)?.[1])).toBeGreaterThan(beforeX);
+
+  // Double-clicking the same draggable gap uses the renderer's Linux
+  // maximize action, preserving the custom-frame behavior.
+  await run('xdotool', ['mousemove', '--window', windowId, '400', '22', 'click', '--repeat', '2', '--delay', '100', '1']);
+  await expect(page.getByRole('button', { name: 'Восстановить окно' })).toBeVisible();
 });
 
 test('compact welcome keeps every recent book reachable below the fixed title bar', async () => {
@@ -71,4 +92,66 @@ test('compact welcome keeps every recent book reachable below the fixed title ba
   await first.scrollIntoViewIfNeeded();
   await expect(first).toBeInViewport();
   expect((await titlebar.boundingBox())!.y).toBe(fixedTop);
+});
+
+test('open book uses one 44px title bar and keeps compact actions reachable', async () => {
+  profile = await mkdtemp(path.join(tmpdir(), 'desk-window-book-'));
+  const bookRoot = path.join(profile, 'book');
+  await mkdir(bookRoot);
+  await writeFile(path.join(bookRoot, 'chapter.md'), '# Chapter\n\nText');
+  await writeFile(path.join(bookRoot, '.pocket-editor.json'), JSON.stringify({
+    schema_version: 1,
+    book_id: '11111111-1111-4111-8111-111111111111',
+    title: 'Compact book',
+    chapters: [{ id: '22222222-2222-4222-8222-222222222222', path: 'chapter.md', title: 'Chapter' }],
+    ignored_files: [],
+  }));
+  await writeFile(path.join(profile, 'recent-books.json'), JSON.stringify([{
+    path: bookRoot,
+    bookId: '11111111-1111-4111-8111-111111111111',
+    title: 'Compact book',
+    missing: false,
+    lastOpenedAt: Date.now(),
+    lastChapterId: null,
+    anchor: null,
+    scrollTop: null,
+  }]));
+  const executable = process.env.GALLEY_PACKAGED_EXECUTABLE
+    ?? path.resolve('apps/desktop/out/galley-desk-linux-x64/galley-desk');
+  app = await launchPackaged(executable, profile);
+  const page = app.page;
+  await page.getByRole('button', { name: 'Открыть', exact: true }).click();
+  const windowId = (await run('xdotool', ['search', '--onlyvisible', '--pid', String(app.pid)])).stdout.trim().split('\n')[0]!;
+  await run('xdotool', ['windowsize', '--sync', windowId, '900', '700']);
+
+  await expect(page.locator('header.titlebar')).toHaveCount(1);
+  await expect(page.locator('.book__header')).toHaveCount(0);
+  await expect(page.locator('header.titlebar')).toHaveCSS('height', '44px');
+  await expect(page.getByRole('button', { name: 'Поиск по главе' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Меню книги' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Закрыть окно' })).toBeVisible();
+
+  // The entire action group is no-drag: double-clicking status or an
+  // Appearance form control must not bubble into titlebar maximize.
+  await expect(page.locator('.book__save-state')).toBeVisible();
+  await page.locator('.book__save-state').dblclick();
+  await expect(page.getByRole('button', { name: 'Развернуть окно' })).toBeVisible();
+  await page.getByRole('button', { name: 'Меню книги' }).click();
+  await expect(page.getByRole('button', { name: 'Режим Zen' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Оформление' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Диагностика' })).toBeVisible();
+  await page.getByRole('button', { name: 'Оформление' }).click();
+  await page.getByLabel('Размер интерфейса (10–24)').dblclick();
+  await expect(page.getByRole('button', { name: 'Развернуть окно' })).toBeVisible();
+  await page.getByRole('button', { name: 'Закрыть оформление' }).click();
+
+  // Compact Diagnostics returns keyboard focus to the persistent menu
+  // trigger, rather than the hidden direct diagnostics button.
+  const menu = page.getByRole('button', { name: 'Меню книги' });
+  await menu.click();
+  await page.getByRole('button', { name: 'Диагностика' }).click();
+  await expect(page.getByRole('dialog', { name: 'Диагностика' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Диагностика' })).toHaveCount(0);
+  await expect(menu).toBeFocused();
 });

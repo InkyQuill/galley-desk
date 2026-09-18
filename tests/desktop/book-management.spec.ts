@@ -3,6 +3,55 @@ import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir, homedir } from 'node:os';
 import path from 'node:path';
 
+test('chapter sorting previews the whole spine and preserves the active edit session', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'desk-reorder-book-'));
+  const userData = await mkdtemp(path.join(tmpdir(), 'desk-reorder-profile-'));
+  await writeFile(path.join(root, '10.md'), '# Ten\nBody ten\n');
+  await writeFile(path.join(root, '2.md'), '# Two\nBody two\n');
+  const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, GALLEY_DESK_USER_DATA: userData } });
+  try {
+    await app.evaluate(({ dialog }, root) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] }); }, root);
+    const page = await app.firstWindow();
+    await page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(page.locator('.cm-content')).toBeVisible();
+    const manifestPath = path.join(root, '.pocket-editor.json');
+    const initial = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const activePath = initial.chapters[0].path as string;
+    await page.locator('.cm-content').click();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
+    await page.keyboard.type('Draft ');
+    await expect.poll(async () => readFile(path.join(root, activePath.replace(/\.md$/, '.review.json')), 'utf8').catch(() => '')).toContain('Draft ');
+    const sourceBefore = await readFile(path.join(root, activePath));
+    const reviewBefore = await readFile(path.join(root, activePath.replace(/\.md$/, '.review.json')));
+    const toc = page.getByRole('navigation', { name: 'Оглавление' });
+    await toc.getByLabel('Фильтр глав').fill('2');
+    await toc.getByRole('button', { name: 'Сортировать главы' }).click();
+    const sort = page.getByRole('dialog', { name: 'Сортировать главы' });
+    await expect(sort).toContainText('Сортируется вся книга, включая главы, скрытые фильтром.');
+    await expect(sort.getByRole('listitem')).toHaveCount(2);
+    await sort.getByRole('button', { name: 'Отмена' }).click();
+    expect(await readFile(manifestPath, 'utf8')).toBe(JSON.stringify(initial, null, 2) + '\n');
+    await toc.getByRole('button', { name: 'Сортировать главы' }).click();
+    await page.getByRole('dialog', { name: 'Сортировать главы' }).getByRole('button', { name: 'Применить' }).click();
+    await expect.poll(async () => JSON.parse(await readFile(manifestPath, 'utf8')).chapters.map((chapter: {path:string}) => chapter.path)).toEqual(['2.md', '10.md']);
+    expect(await readFile(path.join(root, activePath))).toEqual(sourceBefore);
+    expect(await readFile(path.join(root, activePath.replace(/\.md$/, '.review.json')))).toEqual(reviewBefore);
+    await expect(page.locator('.book__chapter-title')).toContainText(activePath === '10.md' ? 'Ten' : 'Two');
+    await page.locator('.cm-content').click();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+    await expect(page.locator('.cm-content')).not.toContainText('Draft ');
+    await page.getByRole('button', { name: 'Меню книги', exact: true }).click();
+    await page.getByRole('button', { name: 'Закрыть книгу', exact: true }).click();
+    await page.locator('.recent-list__item').getByRole('button', { name: 'Открыть', exact: true }).click();
+    await expect.poll(async () => JSON.parse(await readFile(manifestPath, 'utf8')).chapters.map((chapter: {path:string}) => chapter.path)).toEqual(['2.md', '10.md']);
+  } finally {
+    await app.evaluate(({ app }) => app.exit(0)).catch(() => undefined);
+    await app.close().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+    await rm(userData, { recursive: true, force: true });
+  }
+});
+
 test('book management: rename, create, discover, cancel trash, remove/readd review and trash pair', async () => {
   const cache = path.join(homedir(), '.cache');
   await mkdir(cache, { recursive: true });
@@ -49,18 +98,18 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
     await page.locator('.cm-content').click();
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
     await page.keyboard.type('New ');
-    // Open management immediately after input; pending save must drain before removal.
-    const open = async () => {
+    // Open rename immediately after input; pending save must drain before management.
+    const openRename = async () => {
       await page
         .getByRole('button', { name: 'Меню книги', exact: true })
         .click();
       await page
-        .getByRole('button', { name: 'Управление книгой', exact: true })
+        .getByRole('button', { name: 'Переименовать книгу', exact: true })
         .click();
     };
-    await open();
+    await openRename();
     const panel = page.getByRole('dialog', {
-      name: 'Управление книгой',
+      name: 'Переименовать книгу',
       exact: true,
     });
     await panel
@@ -77,31 +126,30 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
           ).title,
       )
       .toBe('Renamed book');
-    await expect(page.locator('.book__title')).toHaveText('Renamed book');
     await expect(page.locator('.titlebar__title')).toHaveText('Renamed book');
     const review = await readFile(path.join(root, 'a.review.json'), 'utf8');
     const originalId = JSON.parse(review).chapter_id;
     expect(JSON.parse(review).signals).toHaveLength(1);
     expect(JSON.parse(review).edits).toHaveLength(1);
-    await panel
-      .getByRole('button', { name: 'Убрать главу из книги', exact: true })
-      .click();
-    await expect(panel.getByLabel('a.md', { exact: true })).toBeVisible();
+    await expect(panel).toHaveCount(0);
+    const toc = page.getByRole('navigation', { name: 'Оглавление' });
+    await toc.getByRole('button', { name: 'Действия главы: a' }).click();
+    await page.getByRole('button', { name: 'Убрать из оглавления', exact: true }).click();
+    await expect(toc.getByText('a.md', { exact: true })).toHaveCount(0);
     expect(await readFile(path.join(root, 'a.review.json'), 'utf8')).toBe(
       review,
     );
-    await panel.getByLabel('a.md', { exact: true }).check();
-    await panel
+    await toc.getByRole('button', { name: 'Найти главы в папке', exact: true }).click();
+    const discovery = page.getByRole('dialog', { name: 'Найти главы в папке' });
+    await discovery.getByLabel('a.md', { exact: true }).check();
+    await discovery
       .getByRole('button', { name: 'Добавить выбранные главы', exact: true })
       .click();
-    await expect(panel.getByLabel('a.md', { exact: true })).toHaveCount(0);
+    await expect(discovery).toHaveCount(0);
     expect(
       JSON.parse(await readFile(path.join(root, '.pocket-editor.json'), 'utf8'))
         .chapters[0].id,
     ).toBe(originalId);
-    await panel
-      .getByRole('button', { name: 'Закрыть управление книгой' })
-      .click();
     await expect(page.locator('.cm-content')).toContainText('New Alpha body.');
     await page.getByRole('button', { name: 'Меню книги', exact: true }).click();
     await page
@@ -116,7 +164,7 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
     expect(await readFile(path.join(root, 'a.review.json'), 'utf8')).toBe(
       review,
     );
-    await open();
+    const tocAfterReopen = page.getByRole('navigation', { name: 'Оглавление' });
     // Delay the actual exclusive creation so the first read necessarily sees ENOENT.
     await app.evaluate(async ({}, target) => {
       const fs = process.getBuiltinModule('node:fs/promises');
@@ -129,9 +177,11 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
         return originalOpen(...args);
       };
     }, path.join(root, 'b.md'));
-    await panel.getByLabel('Название новой главы').fill('Second');
-    await panel.getByLabel('Имя файла (.md)').fill('b.md');
-    await panel
+    await tocAfterReopen.getByRole('button', { name: 'Добавить главу', exact: true }).click();
+    const create = page.getByRole('dialog', { name: 'Новая глава' });
+    await create.getByLabel('Название новой главы').fill('Second');
+    await create.getByLabel('Имя файла (.md)').fill('b.md');
+    await create
       .getByRole('button', { name: 'Создать главу', exact: true })
       .click();
     await expect
@@ -141,9 +191,11 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
       }))
       .toBe('# Second\n');
     await writeFile(path.join(root, 'extra.md'), '# External extra\n');
-    await panel.getByRole('button', { name: 'Обновить список файлов' }).click();
-    await panel.getByLabel('extra.md', { exact: true }).check();
-    await panel
+    await tocAfterReopen.getByRole('button', { name: 'Найти главы в папке', exact: true }).click();
+    const discoveryAgain = page.getByRole('dialog', { name: 'Найти главы в папке' });
+    await discoveryAgain.getByRole('button', { name: 'Обновить список файлов' }).click();
+    await discoveryAgain.getByLabel('extra.md', { exact: true }).check();
+    await discoveryAgain
       .getByRole('button', { name: 'Добавить выбранные главы' })
       .click();
     await expect
@@ -153,11 +205,17 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
         ).chapters.map((c: { path: string }) => c.path),
       )
       .toEqual(['a.md', 'b.md', 'extra.md']);
-    await panel.getByRole('button', { name: 'Удалить файлы главы…' }).click();
-    await expect(panel.getByRole('alertdialog')).toContainText(
+    // The menu belongs to the non-active a.md row and must not switch chapters.
+    await tocAfterReopen.getByRole('button', { name: 'Действия главы: a' }).click();
+    await page.getByRole('button', { name: 'Переместить в корзину…' }).click();
+    const trash = page.getByRole('dialog', { name: 'Переместить главу в корзину?' });
+    await expect(trash).toContainText(
       'связанный файл рецензии',
     );
-    await panel.getByRole('button', { name: 'Отмена удаления' }).click();
+    await trash.getByRole('button', { name: 'Отмена удаления' }).click();
+    await expect(
+      tocAfterReopen.getByRole('button', { name: 'Действия главы: a' }),
+    ).toBeFocused();
     expect(await readFile(path.join(root, 'a.review.json'), 'utf8')).toBe(
       review,
     );
@@ -172,11 +230,12 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
         throw new Error('injected trash failure');
       };
     });
-    await panel.getByRole('button', { name: 'Удалить файлы главы…' }).click();
-    await panel
+    await tocAfterReopen.getByRole('button', { name: 'Действия главы: a' }).click();
+    await page.getByRole('button', { name: 'Переместить в корзину…' }).click();
+    await page.getByRole('dialog', { name: 'Переместить главу в корзину?' })
       .getByRole('button', { name: 'Переместить в корзину', exact: true })
       .click();
-    await expect(panel.getByRole('alert')).toContainText(
+    await expect(page.getByRole('dialog', { name: 'Переместить главу в корзину?' }).getByRole('alert')).toContainText(
       'Остались: a.md, a.review.json',
     );
     expect(
@@ -188,7 +247,7 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
         globalThis as unknown as { originalTrash: typeof shell.trashItem }
       ).originalTrash;
     });
-    await panel
+    await page.getByRole('dialog', { name: 'Переместить главу в корзину?' })
       .getByRole('button', { name: 'Переместить в корзину', exact: true })
       .click();
     await expect
@@ -200,21 +259,13 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
       .toEqual(['b.md', 'extra.md']);
     await expect(readFile(path.join(root, 'a.md'))).rejects.toThrow();
     await expect(readFile(path.join(root, 'a.review.json'))).rejects.toThrow();
-    const remaining = JSON.parse(
-      await readFile(path.join(root, '.pocket-editor.json'), 'utf8'),
-    );
-    const missingId = remaining.chapters.find(
-      (chapter: { path: string }) => chapter.path === 'extra.md',
-    ).id;
     await rm(path.join(root, 'extra.md'));
-    await panel.getByRole('button', { name: 'Обновить список файлов' }).click();
-    await panel.getByLabel('Глава для управления').selectOption(missingId);
-    await expect(
-      panel.getByRole('region', { name: 'Текущая глава' }),
-    ).toContainText('файл отсутствует');
-    await panel
-      .getByRole('button', { name: 'Убрать главу из книги', exact: true })
-      .click();
+    await tocAfterReopen.getByRole('button', { name: 'Найти главы в папке', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Найти главы в папке' }).getByRole('button', { name: 'Обновить список файлов' }).click();
+    await page.getByRole('dialog', { name: 'Найти главы в папке' }).getByRole('button', { name: 'Закрыть' }).click();
+    await expect(tocAfterReopen.getByText('файл отсутствует')).toBeVisible();
+    await tocAfterReopen.getByRole('button', { name: 'Действия главы: External extra' }).click();
+    await page.getByRole('button', { name: 'Убрать из оглавления', exact: true }).click();
     await expect
       .poll(async () =>
         JSON.parse(
@@ -224,9 +275,6 @@ test('book management: rename, create, discover, cancel trash, remove/readd revi
       .toEqual(['b.md']);
     await page.setViewportSize({ width: 620, height: 700 });
     await page.screenshot({ path: '/tmp/galley-management-compact.png' });
-    await panel
-      .getByRole('button', { name: 'Закрыть управление книгой' })
-      .click();
     await expect(page.locator('.book__chapter-title')).toHaveText('Second');
     await page.getByRole('button', { name: 'Меню книги', exact: true }).click();
     await page
@@ -293,37 +341,26 @@ for (const failure of ['trash', 'manifest-conflict'] as const) {
           );
       }, ids);
       await expect(page.locator('.cm-content')).toContainText('xxxxAlpha body');
-      await page
-        .getByRole('button', { name: 'Меню книги', exact: true })
-        .click();
-      await page
-        .getByRole('button', { name: 'Управление книгой', exact: true })
-        .click();
-      const panel = page.getByRole('dialog', {
-        name: 'Управление книгой',
-        exact: true,
-      });
+      const toc = page.getByRole('navigation', { name: 'Оглавление' });
+      await toc.getByRole('button', { name: 'Действия главы: a' }).click();
       if (failure === 'trash') {
-        await panel
-          .getByRole('button', { name: 'Удалить файлы главы…' })
-          .click();
+        await page.getByRole('button', { name: 'Переместить в корзину…' }).click();
+        const panel = page.getByRole('dialog', { name: 'Переместить главу в корзину?' });
         await panel
           .getByRole('button', { name: 'Переместить в корзину', exact: true })
           .click();
         await expect(panel.getByRole('alert')).toContainText('Остались:');
+        await panel.getByRole('button', { name: 'Закрыть' }).click();
       } else {
         await writeFile(
           manifestPath,
           JSON.stringify({ ...manifest, title: 'External' }),
         );
-        await panel
-          .getByRole('button', { name: 'Убрать главу из книги', exact: true })
-          .click();
+        await page.getByRole('button', { name: 'Убрать из оглавления', exact: true }).click();
+        const panel = page.getByRole('dialog', { name: 'Убрать главу из оглавления?' });
         await expect(panel.getByRole('alert')).toContainText('Манифест');
+        await panel.getByRole('button', { name: 'Закрыть' }).click();
       }
-      await panel
-        .getByRole('button', { name: 'Закрыть управление книгой' })
-        .click();
       await page.locator('.cm-content').click();
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
       await page.keyboard.type('y');

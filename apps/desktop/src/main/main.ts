@@ -1,7 +1,12 @@
 /// <reference types="@electron-forge/plugin-vite/forge-vite-env" />
-import { app, BrowserWindow, dialog, Menu, protocol, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, Menu, protocol, shell } from 'electron';
+import type { WebContents } from 'electron';
 import path from 'node:path';
+import { mkdir } from 'node:fs/promises';
 import { createBookService } from './book-service';
+import { createLogger } from './diagnostics/logger';
+import type { Logger } from './diagnostics/logger';
+import { safeError } from './diagnostics/safe-error';
 import { flushRenderer, resumeRenderer, isOwnRendererUrl, registerDeskIpc } from './ipc';
 import { BOOK_RESOURCE_SCHEME, parseBookResourceUrl, resolveBookImage } from './resources';
 import { buildMainWindowOptions, readWindowState, runWindowAction } from './window';
@@ -11,6 +16,17 @@ import { buildMainWindowOptions, readWindowState, runWindowAction } from './wind
 // и загружается собранный renderer из .vite/renderer/main_window.
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
+// forge.config.ts injects the short git revision at build time (see
+// vite.main.config.ts's `define`); a source archive without .git falls back
+// to 'unknown' -- never resolved at runtime by shelling out to git.
+declare const BUILD_REVISION: string;
+
+// Versions of the vendored editor/themes packages, pinned exactly in
+// package.json (never a semver range): kept here as a plain constant rather
+// than resolved at runtime so the packaged asar never needs to read another
+// package's package.json. Bump alongside the dependency version.
+const EDITOR_VERSION = '0.15.0';
+const THEMES_VERSION = '0.15.0';
 
 // Схема локальных картинок открытых книг: стандартный, «безопасный»
 // протокол с доступом к fetch API; его ответы минуют CSP страницы,
@@ -96,6 +112,66 @@ const createWindow = (): void => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // Created right after the userData override and the single-instance lock,
+  // before any service or window: every later failure (IPC, book service,
+  // renderer crash, uncaught exception) has somewhere to go. A logger that
+  // fails to initialize degrades to `unavailable` internally (see
+  // diagnostics/logger.ts) -- it never throws and never blocks the app.
+  const logsDirectory = path.join(app.getPath('userData'), 'logs');
+  const logger: Logger = createLogger(logsDirectory, {
+    appVersion: app.getVersion(),
+    build: typeof BUILD_REVISION === 'string' ? BUILD_REVISION : 'unknown',
+    electron: process.versions.electron,
+    chromium: process.versions.chrome,
+    editor: EDITOR_VERSION,
+    themes: THEMES_VERSION,
+    platform: process.platform,
+    arch: process.arch,
+  });
+  logger.write({ event: 'session-start', level: 'info', process: 'main' });
+
+  // Diagnostics panel (Task 3): the exact six fields the panel is allowed to
+  // show, computed once from the same trusted process/build info as the
+  // logger's own metadata above -- never from IPC. `logging` is added live
+  // in ipc.ts from `logger.status()` on every request, not baked in here.
+  const diagnosticsBase = {
+    appVersion: app.getVersion(),
+    build: typeof BUILD_REVISION === 'string' ? BUILD_REVISION : 'unknown',
+    platform: process.platform,
+    arch: process.arch,
+    electron: process.versions.electron,
+    editor: EDITOR_VERSION,
+    themes: THEMES_VERSION,
+  };
+
+  // Observes only -- never suppresses Node's normal fatal-crash behavior.
+  // A handler on 'uncaughtException' (not 'uncaughtExceptionMonitor') would
+  // prevent the default crash; this deliberately stays a monitor.
+  process.on('uncaughtExceptionMonitor', (error) => {
+    logger.fatal({ event: 'uncaught-main', level: 'error', process: 'main', ...safeError(error) });
+  });
+
+  // Tracks renderers whose OS process has already died (crashed/killed).
+  // Their `WebContents` object survives the crash -- it is not
+  // `destroyed()`, so quit's flush handshake below has no other way to
+  // know, up front, that no ack will ever arrive.
+  const crashedContents = new WeakSet<WebContents>();
+
+  // Only the closed enum reason/exit code is stored -- never a message, URL
+  // or any other detail carried on the event.
+  app.on('render-process-gone', (_event, webContents, details) => {
+    crashedContents.add(webContents);
+    logger.write({ event: 'renderer-gone', level: 'error', process: 'main', code: `${details.reason}(${details.exitCode})` });
+    // If this webContents ever starts loading again (e.g. a future
+    // reload-after-crash feature), it is no longer doomed -- clear the
+    // marker so quit's flush handshake above resumes waiting on it instead
+    // of silently skipping the save for a live renderer.
+    webContents.once('did-start-loading', () => crashedContents.delete(webContents));
+  });
+  app.on('child-process-gone', (_event, details) => {
+    logger.write({ event: 'child-gone', level: 'error', process: 'main', code: `${details.type}:${details.reason}(${details.exitCode})` });
+  });
+
   app.on('second-instance', () => {
     const [existingWindow] = BrowserWindow.getAllWindows();
     if (existingWindow) {
@@ -107,11 +183,39 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    // Frameless Linux chrome must not retain Electron's Alt-activated menu.
-    // macOS keeps the conventional application menu and keyboard roles.
-    if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
+    // Frameless Linux chrome must not retain Electron's Alt-activated menu;
+    // Diagnostics is reached there via the in-window entry point (titlebar
+    // button) instead -- see renderer/TitleBar.tsx. macOS keeps the
+    // conventional application menu (role-based, so Cmd+C/V/Q etc. keep
+    // working) plus a Help > Диагностика item wired to the same panel.
+    if (process.platform === 'darwin') {
+      const template: Electron.MenuItemConstructorOptions[] = [
+        { role: 'appMenu' },
+        { role: 'fileMenu' },
+        { role: 'editMenu' },
+        { role: 'viewMenu' },
+        { role: 'windowMenu' },
+        {
+          role: 'help',
+          submenu: [
+            {
+              label: 'Диагностика',
+              accelerator: 'CmdOrCtrl+Shift+D',
+              click: () => {
+                const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+                target?.webContents.send('desk:open-diagnostics');
+              },
+            },
+          ],
+        },
+      ];
+      Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+    } else {
+      Menu.setApplicationMenu(null);
+    }
     const service = createBookService({
       appData: app.getPath('userData'),
+      logger,
       trashItem: (target) => shell.trashItem(target),
       chooseDirectory: async () => {
         const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
@@ -153,6 +257,16 @@ if (!app.requestSingleInstanceLock()) {
 
     registerDeskIpc({
       service,
+      logger,
+      diagnostics: {
+        base: diagnosticsBase,
+        logsDirectory,
+        // Обёртки (не ссылки на метод): подмена shell.openPath/fs в тестах
+        // перехватывается, так как свойство читается в момент вызова.
+        ensureLogsDirectory: async (directory) => { await mkdir(directory, { recursive: true }); },
+        openPath: (directory) => shell.openPath(directory),
+        writeClipboardText: (text) => clipboard.writeText(text),
+      },
       // Обёртка (а не ссылка на метод): подмена shell.openExternal в тестах
       // перехватывается, так как свойство читается в момент вызова.
       openExternal: (url) => shell.openExternal(url),
@@ -182,11 +296,21 @@ if (!app.requestSingleInstanceLock()) {
       closing = (async () => {
         const windows = BrowserWindow.getAllWindows();
         try {
-          await Promise.all(windows.map(window => flushRenderer(window.webContents)));
+          // A window whose renderer has already crashed can never answer
+          // the flush handshake -- there is nothing left to save, and the
+          // crash path makes no promise about the book anyway (see the
+          // brief), so quit must not wait on (or be blocked by) a doomed
+          // round-trip to a dead renderer.
+          await Promise.all(
+            windows.map(window =>
+              crashedContents.has(window.webContents) ? Promise.resolve() : flushRenderer(window.webContents),
+            ),
+          );
           await service.closeAll();
         } catch (error) {
           for (const window of windows) resumeRenderer(window.webContents);
           console.error('[desk] close: code=SAVE_FAILED');
+          logger.write({ event: 'close-failed', level: 'error', process: 'main', code: 'SAVE_FAILED' });
           throw error;
         } finally {
           closing = null;
@@ -206,8 +330,13 @@ if (!app.requestSingleInstanceLock()) {
       event.preventDefault();
       if (quitting) return;
       quitting = true;
-      void prepareClose().then(() => {
+      void prepareClose().then(async () => {
         quitFlushed = true;
+        // The book is already safely flushed above; session-end and the
+        // diagnostics flush are best-effort and never delay quit past the
+        // 500ms cap -- the crash path makes no promise about the book at all.
+        logger.write({ event: 'session-end', level: 'info', process: 'main' });
+        await Promise.race([logger.flush(), new Promise<void>((resolve) => setTimeout(resolve, 500))]);
         app.quit();
       }, () => { quitting = false; });
     });

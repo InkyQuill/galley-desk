@@ -459,6 +459,7 @@ export type BookChange =
   | { type: 'rename'; title: string }
   | { type: 'create'; path: string; title: string }
   | { type: 'add'; paths: string[] }
+  | { type: 'reorder'; chapterIds: string[] }
   | { type: 'remove' | 'trash'; chapterId: string };
 
 /** filesMoved distinguishes partial trash from a refusal that changed no files. */
@@ -527,6 +528,16 @@ export function manageBook(book: BookHandle, change: BookChange, trashItem?: (ab
       let created: { name: string; bytes: Uint8Array } | undefined;
       const expectedReviews = new Map<string, Uint8Array | null>();
       if (change.type === 'rename') wire.title = change.title.trim();
+      else if (change.type === 'reorder') {
+        const ids = change.chapterIds;
+        const current = book.manifest.chapters.map(chapter => chapter.id);
+        const valid = ids.length === current.length && new Set(ids).size === ids.length
+          && ids.every(id => current.includes(id));
+        if (!valid) throw new BookManagementError('Некорректный порядок глав');
+        if (ids.every((id, index) => id === current[index])) return;
+        const byId = new Map(chapters.map(chapter => [chapter.id as string, chapter]));
+        wire.chapters = ids.map(id => byId.get(id)!);
+      }
       else if (change.type === 'create' || change.type === 'add') {
         const names = change.type === 'create' ? [change.path] : change.paths;
         if (!names.length || new Set(names).size !== names.length) throw new BookManagementError('Выберите разные файлы глав.');
