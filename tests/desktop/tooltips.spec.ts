@@ -147,6 +147,29 @@ test('Zen: фокус показывает подсказку сразу с от
   }
 });
 
+test('переключение общей подсказки снимает aria-describedby с предыдущего trigger', async () => {
+  const session = await launchWithBook({});
+  const { app, page } = session;
+  try {
+    await expect(page.getByRole('heading', { name: 'Galley Desk' })).toBeVisible();
+    const previous = page.getByRole('button', { name: 'Свернуть окно' });
+    const next = page.locator('.titlebar__diagnostics');
+    await previous.focus();
+    const tooltip = page.getByRole('tooltip');
+    await expect(tooltip).toBeVisible();
+    const tooltipId = await tooltip.getAttribute('id');
+    expect(tooltipId).toBeTruthy();
+    await expect(previous).toHaveAttribute('aria-describedby', tooltipId!);
+
+    await next.hover();
+    await expect(tooltip).toHaveText('Диагностика');
+    await expect(previous).not.toHaveAttribute('aria-describedby', /gd-tooltip/);
+    await expect(next).toHaveAttribute('aria-describedby', tooltipId!);
+  } finally {
+    await app.close();
+  }
+});
+
 test('подсказка наследует тему оформления и UI-шрифт настроек, а не фиксированный CSS', async () => {
   const session = await launchWithAppearance({ themeId: 'gruvbox-dark', uiFontFamily: 'Verdana' });
   const { app, page } = session;

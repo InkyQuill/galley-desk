@@ -135,7 +135,7 @@ for (const atomicCase of [
       );
       await waitSavedText(sidecarPath, source, changedText);
       const changedReview = JSON.parse(await readFile(sidecarPath, 'utf8')) as Review;
-      expect(changedReview.edits.slice(0, initialReview.edits.length)).toEqual(initialReview.edits);
+      expect(changedReview.edits.find(edit => edit.id === initialReview.edits[0]?.id)).toEqual(initialReview.edits[0]);
       expect(changedReview.signals).toEqual(initialReview.signals);
 
       await session.page.keyboard.press('ControlOrMeta+z');

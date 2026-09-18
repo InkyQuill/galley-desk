@@ -37,9 +37,12 @@ test('metadata display, protected body start, validation, save and title refresh
     const metadataButton = page.getByRole('button', { name: 'Метаданные главы', exact: true });
     const scroller = page.locator('.cm-scroller');
     await scroller.evaluate(element => { element.scrollTop = 240; });
+    await metadataButton.focus();
+    // macOS may scroll the editor while moving focus into the title bar. The
+    // metadata contract starts after its trigger owns focus: opening and
+    // closing the popover must preserve that resulting reading position.
     const scrollBefore = await scroller.evaluate(element => element.scrollTop);
     expect(scrollBefore).toBeGreaterThan(0);
-    await metadataButton.focus();
     await page.keyboard.press('Enter');
     await expect(page.getByRole('dialog', { name: 'Метаданные главы' })).toBeVisible();
     await expect(page.getByLabel('YAML метаданных')).toBeFocused();

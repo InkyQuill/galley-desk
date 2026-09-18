@@ -136,7 +136,7 @@ Escape закрывает меню, второй закрывает overlay»; c
 Дополнительно сохранение ширины переживает responsive unmount разделителя,
 повторяющие accessible name подсказки больше не добавляют `aria-describedby`, а
 платформенные клавиатурные сценарии используют `ControlOrMeta`. Linux follow-up
-gates: 461 unit; 102 native PASS, 5 ожидаемых skip без packaged executable;
+gates: 461 unit; 103 native PASS, 5 ожидаемых skip без packaged executable;
 typecheck/package/diff check PASS. [Историческое заключительное ревью](./evidence/workspace-ux/final-review/final-rereview.md)
 описывает состояние до этого follow-up. macOS CI проверяется после публикации
 исправлений; системный IME не проверен.

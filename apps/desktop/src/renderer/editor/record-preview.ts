@@ -91,21 +91,9 @@ export function recordPreview(): Extension {
       view.dom.addEventListener('focusout', this.focus);
       view.dom.addEventListener('mouseover', this.over);
       view.dom.addEventListener('mouseout', this.out);
-      view.dom.ownerDocument.addEventListener('keydown', this.keydown, true);
-      view.dom.ownerDocument.addEventListener('focusin', this.outsideFocus, true);
     }
     destroyed = false;
-    tabFocusIntent = false;
-    keydown = (event: KeyboardEvent): void => {
-      this.tabFocusIntent = event.key === 'Tab';
-    };
-    outsideFocus = (event: FocusEvent): void => {
-      if (!this.view.dom.contains(event.target as Node)) this.tabFocusIntent = false;
-    };
-    focus = (event: FocusEvent): void => {
-      const entering = event.type === 'focusin';
-      const keyboardIntent = entering && this.tabFocusIntent;
-      if (entering) this.tabFocusIntent = false;
+    focus = (): void => {
       // Never dispatch inside native focus(): CM is restoring its DOM selection.
       queueMicrotask(() => {
         if (this.destroyed) return;
@@ -113,9 +101,13 @@ export function recordPreview(): Extension {
         const marker = active?.closest('.gd-record-marker, .gd-deletion-placeholder');
         const effects: StateEffect<unknown>[] = [editorFocus.of(this.view.hasFocus)];
         // Browsers can run the focusout microtask before focusin, with body
-        // temporarily active. Keep Tab intent until the destination receives it.
-        if (keyboardIntent && active !== null && this.view.dom.contains(active)) effects.push(previewIntent.of(null));
-        if (marker && this.view.dom.contains(marker)) effects.push(previewTarget.of(marker.getAttribute('data-record-id')));
+        // temporarily active, so resolve the actual active marker here.
+        if (marker && this.view.dom.contains(marker)) {
+          // Focus itself is an explicit request for the accessible preview.
+          // This also covers programmatic focus on macOS when the system's
+          // keyboard-navigation preference skips buttons during native Tab.
+          effects.push(previewIntent.of(null), previewTarget.of(marker.getAttribute('data-record-id')));
+        }
         else if (!this.view.hasFocus) effects.push(previewTarget.of(null));
         this.view.dispatch({ effects });
       });
@@ -139,8 +131,6 @@ export function recordPreview(): Extension {
       this.view.dom.removeEventListener('focusout', this.focus);
       this.view.dom.removeEventListener('mouseover', this.over);
       this.view.dom.removeEventListener('mouseout', this.out);
-      this.view.dom.ownerDocument.removeEventListener('keydown', this.keydown, true);
-      this.view.dom.ownerDocument.removeEventListener('focusin', this.outsideFocus, true);
     }
   })];
 }

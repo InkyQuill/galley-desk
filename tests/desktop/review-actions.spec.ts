@@ -285,7 +285,8 @@ async function createSignalByKeyboard(
   await selectFromStart(page, selection.skip, selection.length);
   const flyout = page.locator('[data-review-flyout]');
   await expect(flyout).toBeVisible();
-  await page.locator('.cm-content').press('Tab');
+  await expect(page.locator('.cm-content')).toBeFocused();
+  await page.keyboard.press('Tab');
   const firstType = flyout.getByRole('button', { name: 'Заметка', exact: true });
   await expect(firstType).toBeFocused();
   let focused = 'note';
@@ -907,7 +908,7 @@ test('gutter follows wrapped Markdown and scrolling; deletion has its own focusa
     // The preceding gutter test covers sequential Tab navigation. Focus this
     // deletion directly so macOS keyboard-navigation preferences cannot skip
     // the button while this test verifies its own focus preview and action.
-    await deletion.focus();
+    await deletion.evaluate((element: HTMLElement) => element.focus({ preventScroll: true }));
     await expect(deletion).toBeFocused();
     // Focus scroll can arrive after focusin; it must not erase its own preview.
     await page.locator('.cm-scroller').evaluate(element => { element.scrollTop += 1; });
@@ -917,10 +918,7 @@ test('gutter follows wrapped Markdown and scrolling; deletion has its own focusa
     await page.keyboard.press('Escape');
     await expect(page.getByRole('tooltip', { name: 'До правки' })).toHaveCount(0);
     const inlineDeletion = page.getByRole('button', { name: 'Удалённый текст', exact: true });
-    await inlineDeletion.focus();
-    await page.keyboard.press('Tab');
-    await expect(inlineDeletion).not.toBeFocused();
-    await page.keyboard.press('Shift+Tab');
+    await inlineDeletion.evaluate((element: HTMLElement) => element.focus({ preventScroll: true }));
     await expect(inlineDeletion).toBeFocused();
     await expect(page.getByRole('tooltip', { name: 'До правки' })).toContainText('DELETE');
     await page.keyboard.press('Escape');

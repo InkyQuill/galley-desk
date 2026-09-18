@@ -73,6 +73,7 @@ function removeDescribedBy(target: HTMLElement): void {
 
 function setVisible(target: HTMLElement, content: ReactNode, shortcut: string | undefined, describe: boolean): void {
   clearPending();
+  if (activeTarget !== null && activeTarget !== target) removeDescribedBy(activeTarget);
   activeTarget = target;
   if (describe) addDescribedBy(target);
   else removeDescribedBy(target);
