@@ -41,6 +41,7 @@ test('metadata display, protected body start, validation, save and title refresh
     // macOS may scroll the editor while moving focus into the title bar. The
     // metadata contract starts after its trigger owns focus: opening and
     // closing the popover must preserve that resulting reading position.
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     const scrollBefore = await scroller.evaluate(element => element.scrollTop);
     expect(scrollBefore).toBeGreaterThan(0);
     await page.keyboard.press('Enter');

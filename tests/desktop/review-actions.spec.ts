@@ -274,28 +274,32 @@ async function selectFromStart(page: Page, skip: number, length: number): Promis
   for (let i = 0; i < length; i++) await page.keyboard.press('Shift+ArrowRight');
 }
 
-/** Клавиатурный путь выделение → flyout → попап: создаёт сигнал заданного типа. */
-async function createSignalByKeyboard(
+/** Создаёт сигнал; dedicated keyboard-сценарий входит во flyout через Tab. */
+async function createSignal(
   page: Page,
   sidecarPath: string,
   selection: { skip: number; length: number },
   type: string,
   comment: string,
+  keyboardEntry = false,
 ): Promise<Review> {
   await selectFromStart(page, selection.skip, selection.length);
   const flyout = page.locator('[data-review-flyout]');
   await expect(flyout).toBeVisible();
-  await expect(page.locator('.cm-content')).toBeFocused();
-  await page.keyboard.press('Tab');
-  const firstType = flyout.getByRole('button', { name: 'Заметка', exact: true });
-  await expect(firstType).toBeFocused();
-  let focused = 'note';
-  while (focused !== type) {
+  if (keyboardEntry) {
+    await expect(page.locator('.cm-content')).toBeFocused();
     await page.keyboard.press('Tab');
-    const labels = ['note', 'change_required', 'warning', 'review'];
-    focused = labels[(labels.indexOf(focused) + 1) % labels.length] as string;
+    await expect(flyout.getByRole('button', { name: 'Заметка', exact: true })).toBeFocused();
+    await page.keyboard.press('Enter');
+  } else {
+    const labels: Record<string, string> = {
+      note: 'Заметка',
+      change_required: 'Требуется правка',
+      warning: 'Предупреждение',
+      review: 'На проверку',
+    };
+    await flyout.getByRole('button', { name: labels[type], exact: true }).click();
   }
-  await page.keyboard.press('Enter');
   const textarea = page.getByRole('textbox', { name: 'Комментарий сигнала' });
   await expect(textarea).toBeFocused();
   if (comment !== '') await textarea.fill(comment);
@@ -435,7 +439,7 @@ test('клавиатурный путь выделение → flyout → поп
     // Flyout не переносит фокус: копирование и навигация остаются в редакторе.
     await expect(content).toBeFocused();
 
-    const sidecar = await createSignalByKeyboard(page, sidecarPath, { skip: 0, length: 3 }, 'note', 'Обсудить');
+    const sidecar = await createSignal(page, sidecarPath, { skip: 0, length: 3 }, 'note', 'Обсудить', true);
     const signal = sidecar.signals.find((candidate) => candidate.comment === 'Обсудить');
     expect(signal?.type).toBe('note');
     expect(signal?.selected_text).toBe('кот');
@@ -513,11 +517,11 @@ test('четыре типа сигналов получают свои цвет�
     }
 
     // Пустой комментарий допустим; правка существующего сигнала — отдельный тест.
-    await createSignalByKeyboard(page, sidecarPath, { skip: 0, length: 3 }, 'note', '');
+    await createSignal(page, sidecarPath, { skip: 0, length: 3 }, 'note', '');
     // Пересекающийся сигнал на том же диапазоне: оба маркера остаются видимы.
-    await createSignalByKeyboard(page, sidecarPath, { skip: 0, length: 3 }, 'change_required', 'Проверить');
-    await createSignalByKeyboard(page, sidecarPath, { skip: 4, length: 4 }, 'warning', 'Тон');
-    await createSignalByKeyboard(page, sidecarPath, { skip: 8, length: 1 }, 'review', '');
+    await createSignal(page, sidecarPath, { skip: 0, length: 3 }, 'change_required', 'Проверить');
+    await createSignal(page, sidecarPath, { skip: 4, length: 4 }, 'warning', 'Тон');
+    await createSignal(page, sidecarPath, { skip: 8, length: 1 }, 'review', '');
     await expect(page.getByRole('button', { name: 'Сигнал', exact: true })).toHaveCount(4);
     await expect(page.locator('.gd-signal-comment')).toHaveCount(2);
     await expect(page.locator('.book__review')).toContainText('Проверить');
@@ -557,7 +561,7 @@ test('изменение существующего сигнала заменя�
     await openOwnBook(session);
     const sidecarPath = path.join(bookRoot, SIDECAR_PATH);
 
-    const before = await createSignalByKeyboard(page, sidecarPath, { skip: 0, length: 3 }, 'note', 'Первый');
+    const before = await createSignal(page, sidecarPath, { skip: 0, length: 3 }, 'note', 'Первый');
     const signalId = before.signals[0]!.id;
 
     // Клик по молнии открывает тот же попап с типом и комментарием.
@@ -599,7 +603,7 @@ test('сигнал на добавленном тексте якорится к 
 
     // Сигнал внутри добавленного текста получает исходный якорь правки
     // (какой она ни приобрела после последовательного ввода).
-    const sidecar = await createSignalByKeyboard(page, sidecarPath, { skip: 3, length: 2 }, 'review', 'Новое');
+    const sidecar = await createSignal(page, sidecarPath, { skip: 3, length: 2 }, 'review', 'Новое');
     const edit = sidecar.edits[0];
     const signal = sidecar.signals.find((candidate) => candidate.comment === 'Новое');
     expect(signal?.anchor.start_byte).toBe(edit?.anchor.start_byte);
