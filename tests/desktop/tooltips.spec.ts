@@ -148,11 +148,11 @@ test('Zen: фокус показывает подсказку сразу с от
 });
 
 test('переключение общей подсказки снимает aria-describedby с предыдущего trigger', async () => {
-  const session = await launchWithBook({});
-  const { app, page } = session;
+  const session = await launchWithBook({ 'Глава.md': '# Глава\n\nТекст.\n' });
+  const { app, page, openByDialog } = session;
   try {
-    await expect(page.getByRole('heading', { name: 'Galley Desk' })).toBeVisible();
-    const previous = page.getByRole('button', { name: 'Свернуть окно' });
+    await openByDialog();
+    const previous = page.getByRole('button', { name: 'Режим Zen', exact: true });
     const next = page.locator('.titlebar__diagnostics');
     await previous.focus();
     const tooltip = page.getByRole('tooltip');
