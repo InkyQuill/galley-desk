@@ -865,19 +865,23 @@ export function BookWindow({
     [flyout],
   );
 
-  /** Выбор записи в панели: скролл только при известном якоре; иначе карточка. */
+  /** Выбор записи в панели: попап у геометрии reveal; null — карточка. */
   const selectRecord = useCallback(
     (record: RecordView) => {
       setPopup(null);
       setCardId(null);
       const anchored = record.from !== null && record.to !== null;
-      if (anchored && mode === 'text' && editorApi !== null && editorApi.reveal(record.id)) {
-        // Программный переход к записи не оставляет flyout: reveal выделяет
-        // диапазон (selection window успевает сработать) — гасим его здесь.
-        setFlyout(null);
-        const coords = editorApi.coordsAt(record.to as number);
-        setPopup({ kind: 'record', id: record.id, at: coords === null ? null : { x: coords.left, y: coords.top, bottom: coords.bottom } });
-        return;
+      if (anchored && mode === 'text' && editorApi !== null) {
+        const at = editorApi.reveal(record.id);
+        if (at !== null) {
+          // Программный переход к записи не оставляет flyout: reveal выделяет
+          // диапазон (selection window успевает сработать) — гасим его здесь.
+          setFlyout(null);
+          setPopup({ kind: 'record', id: record.id, at });
+          return;
+        }
+        // null — настоящая невозможность перехода (записи нет в редакторе):
+        // manuscript не трогаем, команду не выполняем, карточка в панели.
       }
       if (anchored && mode === 'comparison' && comparisonRef.current !== null) {
         const marker = comparisonRef.current.querySelector<HTMLElement>(`[data-record-id="${cssEscape(record.id)}"]`);

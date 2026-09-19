@@ -1273,6 +1273,97 @@ for (const to of [4, 5]) {
   });
 }
 
+test('переход к удалению из панели: placeholder в viewport, текст главы не гаснет, попап открыт', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-reveal-deletion-');
+  const START = 'УДАЛИТЬСТАРТ';
+  const MID = 'УДАЛИТЬСЕРЕДИНА';
+  const END = 'УДАЛИТЬКОНЕЦ';
+  const filler = ' Тихие слова вдоль реки.';
+  const head = Array.from({ length: 80 }, (_, i) => `Абзац ${String(i).padStart(3, '0')}:${filler.repeat(6)}`);
+  const tail = Array.from({ length: 80 }, (_, i) => `Хвост ${String(i).padStart(3, '0')}:${filler.repeat(6)}`);
+  const sourceText = [`${START} Альфа`, ...head, `кот ${MID} Омега`, 'текст-метка преемник', ...tail, `Финал ${END}`].join('\n');
+  const derivedText = [' Альфа', ...head, 'кит  Омега', 'вставленный текст-метка преемник', ...tail, 'Финал '].join('\n');
+  const delStartId = randomUUID();
+  const replId = randomUUID();
+  const insId = randomUUID();
+  const delMidId = randomUUID();
+  const delEndId = randomUUID();
+  const source = new TextEncoder().encode(sourceText);
+  const rangeOf = (needle: string) => {
+    const from = new TextEncoder().encode(sourceText.slice(0, sourceText.indexOf(needle))).length;
+    return { from, to: from + new TextEncoder().encode(needle).length };
+  };
+  const review: Review = { ...emptyReview(), edits: [
+    { id: delStartId, before: START, after: '', anchor: makeAnchor(source, rangeOf(START)) },
+    { id: replId, before: 'кот', after: 'кит', anchor: makeAnchor(source, rangeOf('кот')) },
+    { id: insId, before: 'текст-метка', after: 'вставленный текст-метка', anchor: makeAnchor(source, rangeOf('текст-метка')) },
+    { id: delMidId, before: MID, after: '', anchor: makeAnchor(source, rangeOf(MID)) },
+    { id: delEndId, before: END, after: '', anchor: makeAnchor(source, rangeOf(END)) },
+  ] };
+  await writeBook(bookRoot, review);
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const session = await launch(bookRoot);
+  try {
+    const page = session.page;
+    await openOwnBook(session);
+    const content = page.locator('.cm-content');
+    const scroller = page.locator('.cm-scroller');
+    const popup = page.getByRole('dialog', { name: 'Правка', exact: true });
+    await expect(page.locator('.book__record')).toHaveCount(5);
+    const docText = () => content.evaluate((element) => {
+      const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+      return view.state.doc.toString();
+    });
+
+    // Удаления: EOF → начало → середина; каждый следующий переход требует
+    // прокрутки к другому краю длинной главы.
+    for (const [name, id, neighbour] of [
+      ['Правка: УДАЛИТЬКОНЕЦ →', delEndId, 'Финал'],
+      ['Правка: УДАЛИТЬСТАРТ →', delStartId, 'Альфа'],
+      ['Правка: УДАЛИТЬСЕРЕДИНА →', delMidId, 'Омега'],
+    ] as const) {
+      await page.getByRole('button', { name }).click();
+      await expect(popup).toBeVisible();
+      // Документ не повреждён переходом: производный текст равен ожидаемому.
+      expect(await docText()).toBe(derivedText);
+      // .cm-content не «гаснет»: текст вокруг точки удаления остаётся в DOM.
+      const contentText = await content.evaluate((element) => element.textContent ?? '');
+      expect(contentText).toContain(neighbour);
+      const placeholder = content.locator(`[data-record-id="${id}"]`);
+      await expect(placeholder).toBeVisible();
+      await expect.poll(async () => {
+        const box = await placeholder.boundingBox();
+        const frame = await scroller.boundingBox();
+        if (box === null || frame === null) return false;
+        return box.y >= frame.y - 1 && box.y + box.height <= frame.y + frame.height + 1;
+      }).toBe(true);
+      const scrollTop = await scroller.evaluate((element) => element.scrollTop);
+      expect(Number.isFinite(scrollTop)).toBe(true);
+      await page.keyboard.press('Escape');
+      await expect(popup).toHaveCount(0);
+    }
+
+    // Замена и вставка продолжают работать: попап у непустого выделения.
+    for (const [name, expected] of [
+      ['Правка: кот → кит', 'и'],
+      ['Правка: текст-метка → вставленный текст-метка', 'вставленный'],
+    ] as const) {
+      await page.getByRole('button', { name }).click();
+      await expect(popup).toBeVisible();
+      expect(await docText()).toBe(derivedText);
+      const selection = await content.evaluate((element) => {
+        const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+        const main = view.state.selection.main;
+        return { empty: main.empty, text: view.state.sliceDoc(main.from, main.to) };
+      });
+      expect(selection.empty).toBe(false);
+      expect(selection.text).toContain(expected);
+      await page.keyboard.press('Escape');
+      await expect(popup).toHaveCount(0);
+    }
+  } finally { await session.app.close(); }
+});
+
 test('older snapshot cannot replace accepted marker positions, including after theme changes', async () => {
   const bookRoot = await makeTempDir('galley-e2e-stale-markers-');
   const id = randomUUID();

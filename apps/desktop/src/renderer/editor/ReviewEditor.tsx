@@ -44,8 +44,12 @@ export type ReviewEditorApi = {
   flushPending: () => Promise<void>;
   focus: () => void;
   dismissPreview: () => boolean;
-  /** Скроллит к записи и выделяет её диапазон; false, если якоря нет. */
-  reveal: (recordId: string) => boolean;
+  /**
+   * Скроллит к записи и возвращает её геометрию в viewport (null, если якоря
+   * нет). Диапазон from < to выделяется и центрируется; точка (удаление)
+   * центрируется без выделения — без фиктивного непустого диапазона.
+   */
+  reveal: (recordId: string) => { x: number; y: number; bottom: number } | null;
   /**
    * Скроллит к диапазону (поиск); false без view. `focus: false` (по
    * умолчанию для поиска) подсвечивает диапазон отдельной декорацией, не
@@ -89,6 +93,11 @@ type ReplacePlan = { kind: 'switch' | 'sync'; chapterId: string; text: string; a
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : 'Операция не выполнена';
+}
+
+function cssEscape(value: string): string {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(value);
+  return value.replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char}`);
 }
 
 export function ReviewEditor({
@@ -537,11 +546,48 @@ export function ReviewEditor({
       reveal: (recordId) => {
         const view = handleRef.current?.view ?? null;
         const record = view?.state.field(mappedVisualRecords).find((candidate) => candidate.id === recordId);
-        if (record === undefined || record.from === null || record.to === null || view === null) return false;
+        if (record === undefined || record.from === null || record.to === null || view === null) return null;
         const from = Math.max(0, Math.min(record.from, view.state.doc.length));
         const to = Math.max(0, Math.min(record.to, view.state.doc.length));
+        if (from === to) {
+          // Точка (удаление): центрируем строку записи без выделения —
+          // фиктивный непустой диапазон не создаётся. Якорь прокрутки ставится
+          // на текстовый символ той же строки рядом с точкой, а не на саму
+          // точку: координаты точки разрешаются в виджет-плейсхолдер, чей
+          // coordsAt читает layout в measure-цикле CM и роняет прокрутку
+          // вместе с попапом.
+          const line = view.state.doc.lineAt(from);
+          const points = new Set(
+            view.state
+              .field(mappedVisualRecords)
+              .filter((candidate) => candidate.from !== null && candidate.from === candidate.to)
+              .map((candidate) => candidate.from as number),
+          );
+          let anchor = -1;
+          for (let offset = 1; anchor === -1 && offset <= line.length + 1; offset++) {
+            for (const candidate of [from - offset, from + offset]) {
+              if (candidate >= line.from && candidate <= line.to && !points.has(candidate)) {
+                anchor = candidate;
+                break;
+              }
+            }
+          }
+          if (anchor === -1) anchor = from; // вырожденная строка из одних точек
+          view.dispatch({ effects: EditorView.scrollIntoView(anchor, { y: 'center' }) });
+          // Первый coordsAtPos сбрасывает отложенный measure: прокрутка
+          // применяется до снятия rect, поэтому попап встаёт по итоговому
+          // положению записи, а не по позиции до скролла.
+          const coords = view.coordsAtPos(from);
+          const marker = view.dom.querySelector<HTMLElement>(`[data-record-id="${cssEscape(recordId)}"]`);
+          if (marker !== null) {
+            const rect = marker.getBoundingClientRect();
+            return { x: rect.left, y: rect.top, bottom: rect.bottom };
+          }
+          return coords === null ? null : { x: coords.left, y: coords.top, bottom: coords.bottom };
+        }
         view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
-        return true;
+        const coords = view.coordsAtPos(to);
+        return coords === null ? null : { x: coords.left, y: coords.top, bottom: coords.bottom };
       },
       revealRange: (from, to, options) => {
         const view = handleRef.current?.view ?? null;
