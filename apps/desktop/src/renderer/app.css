@@ -74,10 +74,23 @@ body { margin: 0; background: Canvas; }
 .book__sidebar-overlay-close { position: absolute; z-index: 1; top: 8px; right: 8px; }
 .book__chapters, .book__review { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 14px 12px; overflow-y: auto; overflow-x: hidden; background: var(--app-panel); }
 .book__panel-title { margin: 0 8px 10px; color: var(--app-text-muted); font-size: .9em; font-weight: 500; }
-.book__chapters-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.book__chapters-heading, .book__panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.book__panel-heading { margin: 0 0 5px; }
+.book__panel-heading .book__panel-title { margin: 0 8px; }
 .book__chapter-tools { display: flex; gap: 3px; }
-.book__chapter-tools button, .book__chapter-menu-button { padding: 5px; }
-.book__chapter-tools svg, .book__chapter-menu-button svg { width: 17px; height: 17px; }
+.book__chapter-tools button, .book__chapter-menu-button, .book__panel-collapse { padding: 5px; }
+.book__chapter-tools svg, .book__chapter-menu-button svg, .book__panel-collapse svg { width: 17px; height: 17px; }
+/* Floating-триггеры свёрнутых панелей: абсолюты поверх .book__body — вне
+   grid-потока (колонки и ширина чтения не меняются). Нижние углы: верхние
+   заняты интерактивной разметкой (кнопка метаданных главы, поиск). Открытый
+   overlay (42) перекрывает свой триггер визуально, но тот остаётся в DOM
+   для синхронного возврата фокуса. */
+.book__panel-trigger { position: absolute; z-index: 30; bottom: 12px; background: var(--app-panel); box-shadow: var(--app-dialog-shadow); }
+.book__panel-trigger--chapters { left: 12px; }
+.book__panel-trigger--review { right: 12px; }
+/* Overlay-диалог закрывается собственной кнопкой «Закрыть панель» — дубли
+   заголовочной кнопки скрытия за диалогом не нужны. */
+.book__sidebar-overlay .book__panel-collapse { display: none; }
 .book__chapter-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; border-radius: 7px; }
 .book__chapter-row--active { background: var(--app-hover); }
 .book__chapters .book__chapter { display: block; min-width: 0; width: 100%; text-align: left; overflow: hidden; padding: 9px 4px 9px 10px; background: transparent; }
