@@ -22,12 +22,17 @@ body { margin: 0; background: Canvas; }
 /* Book identity (Task 6): центрируется в доступном пространстве титлбара;
    первая строка -- заголовок крупнее прежнего .88em + индикатор сохранения,
    вторая -- канонический путь книги. Текстовая identity наследует drag
-   область титлбара; no-drag -- только кнопка папки. */
-.titlebar__identity { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; overflow: hidden; }
+   область титлбара; no-drag -- только кнопка папки. Явный компактный
+   line-height обязателен: normal у Geist раздувает две строки до ~48px и
+   обрезает заголовок в 44px строке. */
+.titlebar__identity { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; overflow: hidden; line-height: 1.2; }
 .titlebar__identity-heading { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .titlebar__identity .titlebar__title { flex: 0 1 auto; font-size: 1.1em; font-weight: 600; }
-.titlebar__folder { -webkit-app-region: no-drag; display: inline-flex; align-items: center; gap: 5px; max-width: 100%; min-width: 0; padding: 1px 8px; border-radius: 6px; color: var(--app-text-muted); font-size: .78em; }
-.titlebar__folder svg { width: 13px; height: 13px; }
+/* Селекторы с .app-root перекрывают .app-root button { font: inherit;
+   padding: 7px 9px } и .app-root svg { 18px } -- иначе путь рендерится
+   в полный размер шрифта и конкурирует с заголовком. */
+.app-root .titlebar__folder { -webkit-app-region: no-drag; display: inline-flex; align-items: center; gap: 5px; max-width: 100%; min-width: 0; padding: 1px 8px; border-radius: 6px; color: var(--app-text-muted); font-size: .8em; }
+.app-root .titlebar__folder svg { width: 13px; height: 13px; }
 .titlebar__path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .titlebar__actions { -webkit-app-region: no-drag; display: flex; flex: none; min-width: 0; height: 100%; align-items: center; }
 .titlebar__diagnostics { -webkit-app-region: no-drag; width: 32px; height: 28px; padding: 0; border-radius: 6px; }
