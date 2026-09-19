@@ -1,9 +1,13 @@
-import { recordsInReadingOrder, visualRecord } from '../editor/visual-range';
-import { IconPencil, IconBolt } from '@tabler/icons-react';
-import { EDIT_MARKER_COLOR, useMarkerTheme, signalColor } from '../editor/markers';
+import { editKind, recordsInReadingOrder, visualRecord } from '../editor/visual-range';
+import type { EditKind } from '../editor/visual-range';
+import { IconPencil, IconBolt, IconPlus, IconMinus } from '@tabler/icons-react';
+import { EDIT_MARKER_COLOR, deletionColor, useMarkerTheme, signalColor } from '../editor/markers';
 // Правая панель рецензии: список правок и сигналов для перехода между ними.
 // Панель не содержит форм редактирования — выбор записи открывает тот же
 // попап (в BookWindow); у записи без якоря карточка раскрывается прямо здесь.
+// Вид правки (вставка/удаление/замена) задаёт одну иконку на карточку, а
+// видимые слова «Было»/«Стало» заменены компактными aria-hidden иконками
+// minus/plus: полный текст правки остаётся в aria-label/Tooltip.
 import type { Command, RecordView } from '../../shared/api';
 import { RecordPopup } from './RecordPopup';
 import { Tooltip } from '../ui/Tooltip';
@@ -29,6 +33,8 @@ function excerpt(value: string, emptyLabel: string) {
   return <span className={`book__record-excerpt${value.length === 0 ? ' book__record-excerpt--empty' : ''}`}>{value || emptyLabel}</span>;
 }
 
+const editKindIcons: Record<EditKind, typeof IconPencil> = { insertion: IconPlus, deletion: IconMinus, replacement: IconPencil };
+
 type Props = {
   readOnly?: boolean;
   records: RecordView[];
@@ -48,6 +54,8 @@ export function ReviewList({ records, cardRecordId, onSelect, onCommand, onCardC
         {recordsInReadingOrder(records).map((record) => {
           const status = statusLabel(record);
           const presentation = visualRecord(record);
+          const kind = record.kind === 'edit' ? editKind(record) : null;
+          const RecordIcon = kind === null ? IconBolt : editKindIcons[kind];
           return (
             <li key={record.id} style={{ display: 'grid', gap: '0.35rem' }}>
               <Tooltip content={recordLabel(record)} describe={false}>
@@ -58,12 +66,26 @@ export function ReviewList({ records, cardRecordId, onSelect, onCommand, onCardC
                   onClick={() => onSelect(record)}
                   aria-label={recordLabel(record)}
                 >
-                  {record.kind === 'edit' ? <IconPencil style={{ color: EDIT_MARKER_COLOR }} /> : <IconBolt style={{ color: signalColor(record.signalType ?? 'note', theme) }} />}
+                  <RecordIcon
+                    aria-hidden="true"
+                    size={18}
+                    style={{ color: kind === null ? signalColor(record.signalType ?? 'note', theme) : kind === 'deletion' ? deletionColor(theme) : EDIT_MARKER_COLOR }}
+                  />
                   <span className="book__record-summary">
-                    {record.kind === 'edit' ? (
+                    {kind !== null ? (
                       <>
-                        <span className="book__record-part"><span className="book__record-label">Было</span>{excerpt(presentation.before, 'вставка')}</span>
-                        <span className="book__record-part"><span className="book__record-label">Стало</span>{excerpt(presentation.after, 'удаление')}</span>
+                        {(kind === 'replacement' || kind === 'deletion') && (
+                          <span className="book__record-part">
+                            {kind === 'replacement' && <IconMinus aria-hidden="true" size={14} />}
+                            {excerpt(presentation.before, 'вставка')}
+                          </span>
+                        )}
+                        {(kind === 'replacement' || kind === 'insertion') && (
+                          <span className="book__record-part">
+                            {kind === 'replacement' && <IconPlus aria-hidden="true" size={14} />}
+                            {excerpt(presentation.after, 'удаление')}
+                          </span>
+                        )}
                       </>
                     ) : (
                       <>

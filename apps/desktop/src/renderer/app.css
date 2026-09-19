@@ -135,11 +135,13 @@ body { margin: 0; background: Canvas; }
 .book__records { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 2px; }
 .book__records > li { min-width: 0; }
 .book__record { width: 100%; min-width: 0; align-items: flex-start !important; justify-content: flex-start !important; text-align: left; }
-.book__record > svg { flex: none; margin-top: 2px; }
-.book__record-summary { display: grid; gap: 5px; min-width: 0; white-space: normal; }
-.book__record-part { display: grid; grid-template-columns: minmax(3.25rem, auto) minmax(0, 1fr); align-items: start; gap: 7px; min-width: 0; }
-.book__record-label, .book__record-signal-type { color: var(--app-text-muted); font-size: .8em; font-weight: 600; line-height: 1.35; }
-.book__record-signal-type { display: block; }
+/* Icon-cell: фиксированные 18 px у верхнего края строки, текст не обтекает. */
+.book__record > svg { flex: none; width: 18px; height: 18px; align-self: flex-start; margin-top: 2px; }
+.book__record-summary { display: grid; gap: 5px; min-width: 0; white-space: normal; line-height: 1.35; }
+/* Строки «Было»/«Стало»: компактная иконка + текст без колонки подписей. */
+.book__record-part { display: flex; align-items: flex-start; gap: 5px; min-width: 0; line-height: 1.35; }
+.book__record-part > svg { flex: none; margin-top: 2px; }
+.book__record-signal-type { display: block; color: var(--app-text-muted); font-size: .8em; font-weight: 600; line-height: 1.35; }
 .book__record-excerpt {
   display: -webkit-box;
   min-width: 0;
@@ -208,10 +210,19 @@ body { margin: 0; background: Canvas; }
 
 /* Review gutter shares the reading surface; only individual records are targets. */
 .review-editor .cm-gutters { background: transparent; border: 0; }
-.review-editor .gd-review-gutter { min-width: 32px; color: var(--app-text-muted); }
+/* Постоянная ширина: маркеры одной строки складываются в стек, а не расширяют
+   колонку. Развёрнутый стек переливается поверх reading surface (.cm-gutters
+   уже z-index 200 над текстом), поэтому overflow здесь видимый. */
+.review-editor .gd-review-gutter { width: 32px; min-width: 32px; overflow: visible; color: var(--app-text-muted); }
 .review-editor .gd-review-gutter .cm-gutterElement { position: relative; padding: 0; }
 .gd-gutter-records { position: relative; }
-.app-root .gd-gutter-records .gd-record-marker { position: absolute; width: 24px; height: 24px; padding: 3px; border-radius: 4px; }
+/* В покое маркеры одной строки перекрываются со сдвигом 3 px и обратным
+   z-index: каждый следующий чуть правее и под предыдущим. */
+.app-root .gd-gutter-records .gd-record-marker { position: absolute; width: 24px; height: 24px; padding: 3px; border-radius: 4px; left: calc(var(--gd-stack-index, 0) * 3px); z-index: calc(30 - var(--gd-stack-index, 0)); }
+/* Hover/фокус разворачивают стек поверх текста; ширина gutter и reflow
+   редактора не меняются, после ухода указателя/blur стек складывается. */
+.app-root .gd-gutter-records:hover .gd-record-marker,
+.app-root .gd-gutter-records:focus-within .gd-record-marker { left: calc(var(--gd-stack-index, 0) * 24px); z-index: calc(40 + var(--gd-stack-index, 0)); }
 .review-editor .cm-tooltip.gd-before-preview { font: var(--desk-ui-size)/1.5 var(--desk-ui-font); color: var(--app-text); background: var(--app-panel); border: 0; border-radius: 8px; padding: 12px 16px; box-shadow: var(--app-dialog-shadow); max-width: min(420px, 80vw); max-height: 200px; overflow: hidden; pointer-events: none; }
 .gd-before-preview strong { display: block; color: var(--app-text-muted); font-size: .85em; font-weight: 500; margin-bottom: 5px; }
 .gd-before-preview p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

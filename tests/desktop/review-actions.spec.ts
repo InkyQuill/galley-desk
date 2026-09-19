@@ -760,12 +760,25 @@ test('плотная рецензия остаётся читаемой при �
     const initialNames = await records.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')));
 
     const first = records.first();
-    await expect(first.getByText('Было', { exact: true })).toBeVisible();
-    await expect(first.getByText('Стало', { exact: true })).toBeVisible();
+    // Слова «Было/Стало» заменены иконками: в тексте строк их больше нет,
+    // а полный текст правки остаётся в aria-label (и Tooltip).
+    await expect(page.locator('.book__records')).not.toContainText('Было');
+    await expect(page.locator('.book__records')).not.toContainText('Стало');
+    // Первая активная запись dense-фикстуры — deletion (eds 0/1 конфликтуют
+    // и уходят в конец): minus-иконка и одна строка «Было».
+    expect(initialNames[0]).toContain('фрагмент-02');
+    await expect(first.locator('svg.tabler-icon-minus')).toHaveCount(1);
+    await expect(first.locator('svg.tabler-icon-pencil, svg.tabler-icon-plus')).toHaveCount(0);
+    await expect(first.locator('.book__record-part')).toHaveCount(1);
+    // Conflicting replacement: карандаш и обе строки с компактными минус/плюс.
+    const replacementRow = page.getByRole('button', { name: /^Правка: фрагмент-00/ }).first();
+    await expect(replacementRow.locator('svg.tabler-icon-pencil')).toHaveCount(1);
+    await expect(replacementRow.locator('svg.tabler-icon-minus')).toHaveCount(1);
+    await expect(replacementRow.locator('svg.tabler-icon-plus')).toHaveCount(1);
     await expect(page.locator('.book__record-status', { hasText: 'конфликтует' })).toHaveCount(2);
     await expect(page.locator('.book__record-status', { hasText: 'недоступна' })).toHaveCount(1);
+    // Обрезанная вставка показывает заполнитель пустой строки «Было».
     await expect(page.getByText('вставка', { exact: true })).toBeVisible();
-    await expect(page.getByText('удаление', { exact: true })).toBeVisible();
     await expect(page.getByText('Предупреждение', { exact: true })).toBeVisible();
 
     const reviewResizer = page.getByRole('separator', { name: 'Ширина рецензии' });
@@ -780,6 +793,7 @@ test('плотная рецензия остаётся читаемой при �
       await expect.poll(() => page.locator('.book__review').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       await expect.poll(() => records.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')))).toEqual(initialNames);
       await expect(first.locator('.book__record-excerpt').first()).toHaveCSS('-webkit-line-clamp', '3');
+      await page.screenshot({ path: test.info().outputPath(`dense-review-${width}.png`) });
     }
 
     await first.focus();
@@ -1460,5 +1474,133 @@ test('older snapshot cannot replace accepted marker positions, including after t
       return view.state.sliceDoc(from, to);
     });
     expect(selected).toBe('YbX');
+  } finally { await session.app.close(); }
+});
+
+test('виды правок в списке: иконки плюс/минус/карандаш вместо слов «Было/Стало», полный aria-label остаётся', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-edit-kinds-');
+  const sourceText = 'кот abc спит.\n';
+  const source = new TextEncoder().encode(sourceText);
+  const rangeOf = (needle: string) => {
+    const from = new TextEncoder().encode(sourceText.slice(0, sourceText.indexOf(needle))).length;
+    return { from, to: from + new TextEncoder().encode(needle).length };
+  };
+  const trimmedId = randomUUID();
+  const review: Review = { ...emptyReview(), edits: [
+    { id: randomUUID(), before: 'кот', after: 'кит', anchor: makeAnchor(source, rangeOf('кот')) },
+    { id: randomUUID(), before: 'спит', after: '', anchor: makeAnchor(source, rangeOf('спит')) },
+    // Общий префикс/суффикс: визуально '' → 'X', но классификация идёт по
+    // исходной записи — replacement (карандаш), а не ложная вставка (плюс).
+    { id: trimmedId, before: 'abc', after: 'abXc', anchor: makeAnchor(source, rangeOf('abc')) },
+  ] };
+  await writeBook(bookRoot, review);
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const session = await launch(bookRoot);
+  try {
+    const page = session.page;
+    await openOwnBook(session);
+    const replacement = page.getByRole('button', { name: 'Правка: кот → кит', exact: true });
+    const deletion = page.getByRole('button', { name: /^Правка: спит →/ });
+    const trimmed = page.getByRole('button', { name: 'Правка: abc → abXc', exact: true });
+    await expect(replacement).toHaveCount(1);
+    await expect(deletion).toHaveCount(1);
+    await expect(trimmed).toHaveCount(1);
+
+    // Иконка по виду правки: pencil/minus/plus, скрытые от ассистивных технологий.
+    await expect(replacement.locator('svg.tabler-icon-pencil')).toHaveCount(1);
+    await expect(replacement.locator('svg.tabler-icon-minus')).toHaveCount(1);
+    await expect(replacement.locator('svg.tabler-icon-plus')).toHaveCount(1);
+    await expect(replacement.locator('svg.tabler-icon-pencil')).toHaveAttribute('aria-hidden', 'true');
+    await expect(deletion.locator('svg.tabler-icon-minus')).toHaveCount(1);
+    await expect(deletion.locator('svg.tabler-icon-pencil, svg.tabler-icon-plus')).toHaveCount(0);
+
+    // Строки по виду правки: replacement — обе строки, deletion — только «Было»;
+    // визуальная обрезка видна в содержимом (кот→кит даёт 'о'→'и').
+    const replacementParts = replacement.locator('.book__record-part');
+    await expect(replacementParts).toHaveCount(2);
+    await expect(replacementParts.nth(0).locator('.book__record-excerpt')).toHaveText('о');
+    await expect(replacementParts.nth(1).locator('.book__record-excerpt')).toHaveText('и');
+    const deletionParts = deletion.locator('.book__record-part');
+    await expect(deletionParts).toHaveCount(1);
+    await expect(deletionParts.locator('.book__record-excerpt')).toHaveText('спит');
+    // Обрезанная replacement показывает заполнитель пустой строки «Было».
+    const trimmedParts = trimmed.locator('.book__record-part');
+    await expect(trimmedParts).toHaveCount(2);
+    await expect(trimmedParts.nth(0).locator('.book__record-excerpt')).toHaveText('вставка');
+    await expect(trimmedParts.nth(1).locator('.book__record-excerpt')).toHaveText('X');
+    // ...и её gutter-маркер остаётся карандашом «Правка», не плюсом.
+    const trimmedMarker = page.locator(`.gd-review-gutter [data-record-id="${trimmedId}"]`);
+    await expect(trimmedMarker).toHaveCount(1);
+    await expect(trimmedMarker).toHaveAttribute('aria-label', 'Правка');
+    await expect(trimmedMarker.locator('svg.tabler-icon-pencil')).toHaveCount(1);
+    await expect(trimmedMarker.locator('svg.tabler-icon-plus')).toHaveCount(0);
+
+    // Видимые слова «Было/Стало» убраны; удаление окрашено deletionColor.
+    await expect(page.locator('.book__records')).not.toContainText('Было');
+    await expect(page.locator('.book__records')).not.toContainText('Стало');
+    expect(await deletion.locator('svg').evaluate((element) => getComputedStyle(element).color)).toBe('rgb(164, 46, 46)');
+  } finally { await session.app.close(); }
+});
+
+test('стек маркеров одной строки: ширина gutter и текста неизменна, hover/Tab разворачивают, blur складывает', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-marker-stack-');
+  const sourceText = 'один два три четыре пять\n';
+  const source = new TextEncoder().encode(sourceText);
+  const rangeOf = (needle: string) => {
+    const from = new TextEncoder().encode(sourceText.slice(0, sourceText.indexOf(needle))).length;
+    return { from, to: from + new TextEncoder().encode(needle).length };
+  };
+  const review: Review = { ...emptyReview(), edits: [
+    { id: randomUUID(), before: 'два', after: 'дважды', anchor: makeAnchor(source, rangeOf('два')) },
+    { id: randomUUID(), before: 'три', after: '', anchor: makeAnchor(source, rangeOf('три')) },
+    { id: randomUUID(), before: 'четыре', after: 'четыре раза', anchor: makeAnchor(source, rangeOf('четыре')) },
+    { id: randomUUID(), before: 'пять', after: 'пятёрка', anchor: makeAnchor(source, rangeOf('пять')) },
+  ] };
+  await writeBook(bookRoot, review);
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const session = await launch(bookRoot);
+  try {
+    const page = session.page;
+    await openOwnBook(session);
+    const content = page.locator('.cm-content');
+    const markers = page.locator('.gd-review-gutter .gd-record-marker');
+    await expect(markers).toHaveCount(4);
+    const widths = () => page.evaluate(() => ({
+      gutter: document.querySelector('.gd-review-gutter')!.getBoundingClientRect().width,
+      content: document.querySelector('.cm-content')!.getBoundingClientRect().width,
+    }));
+    const lefts = () => page.evaluate(() => [...document.querySelectorAll('.gd-review-gutter .gd-record-marker')]
+      .map((button) => parseFloat(getComputedStyle(button as HTMLElement).left)));
+    const idle = await widths();
+    // Фиксированный gutter: стек не расширяет колонку под маркеры
+    // (было 4*24+8 = 104 px; допускаем суб-пиксельное округление хоста).
+    expect(idle.gutter).toBeCloseTo(32, 0);
+    await expect.poll(lefts).toEqual([0, 3, 6, 9]);
+
+    // Hover разворачивает стек горизонтально поверх текста, ширины прежние.
+    await markers.nth(0).hover();
+    await expect.poll(lefts).toEqual([0, 24, 48, 72]);
+    expect(await widths()).toEqual(idle);
+
+    // Каждая кнопка доступна указателем: клик открывает попап записи.
+    await markers.nth(2).click();
+    await expect(page.getByRole('dialog', { name: 'Правка' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Правка' })).toHaveCount(0);
+
+    // Уводим указатель: раскрытие держит только фокус (focus-within).
+    await page.mouse.move(600, 500);
+    await markers.nth(0).focus();
+    await expect(markers.nth(0)).toBeFocused();
+    for (let index = 1; index < 4; index++) {
+      await page.keyboard.press('Tab');
+      await expect(markers.nth(index)).toBeFocused();
+    }
+    await expect.poll(lefts).toEqual([0, 24, 48, 72]);
+
+    // После blur стек снова сложен, ширины не изменились: reflow редактора нет.
+    await content.focus();
+    await expect.poll(lefts).toEqual([0, 3, 6, 9]);
+    expect(await widths()).toEqual(idle);
   } finally { await session.app.close(); }
 });

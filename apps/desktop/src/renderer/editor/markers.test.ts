@@ -1,7 +1,7 @@
 import { EditorState } from '@codemirror/state';
 import { expect, test } from 'vitest';
 import type { RecordView } from '../../shared/api';
-import { buildDecorations, mappedVisualRecords, mappedRecords, setRecordMarkers } from './markers';
+import { buildDecorations, deletionColor, EDIT_MARKER_COLOR, mappedVisualRecords, mappedRecords, recordMarkerSpec, setRecordMarkers } from './markers';
 
 function record(id: string, from: number, to: number): RecordView {
   return { id, from, to, kind: 'edit', status: 'active', reason: '', before: 'before', after: 'after', comment: '', signalType: null };
@@ -80,4 +80,20 @@ test('gutter lookup preserves boundary/tie order and refreshes after pending map
   expect(recordsForGutterLine(rows(), 10, 14).map(r => r.id)).toEqual(['a', 'z', 'deleted']);
   state = state.update({ effects: setRecordMarkers.of([record('fresh', 0, 3)]) }).state;
   expect(recordsForGutterLine(rows(), 0, 3).map(r => r.id)).toEqual(['fresh']);
+});
+
+test('gutter marker semantics follow the original edit kind: plus/minus/pencil and deletion color', () => {
+  const light = 'light' as const;
+  // Вставка: plus + общий цвет правки, подпись «Правка».
+  expect(recordMarkerSpec({ ...record('i', 0, 0), before: '', after: 'новый' }, light))
+    .toMatchObject({ icon: 'plus', color: EDIT_MARKER_COLOR, label: 'Правка' });
+  // Удаление: minus + deletionColor и полный текст в подписи.
+  expect(recordMarkerSpec({ ...record('d', 0, 3), after: '' }, light))
+    .toMatchObject({ icon: 'minus', color: deletionColor(light), label: 'Удаление: before' });
+  // Замена: pencil + общий цвет правки.
+  expect(recordMarkerSpec(record('r', 0, 3), light))
+    .toMatchObject({ icon: 'pencil', color: EDIT_MARKER_COLOR, label: 'Правка' });
+  // Сигналы не классифицируются как deletion (их after === '' по умолчанию).
+  expect(recordMarkerSpec({ ...record('s', 0, 3), kind: 'signal', signalType: 'warning', comment: 'т' }, light))
+    .toMatchObject({ icon: 'bolt', label: 'Сигнал' });
 });
