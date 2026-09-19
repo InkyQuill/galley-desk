@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -131,11 +131,25 @@ test('open book uses one 44px title bar and keeps compact actions reachable', as
   await expect(page.getByRole('button', { name: 'Меню книги' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Закрыть окно' })).toBeVisible();
 
-  // The entire action group is no-drag: double-clicking status or an
-  // Appearance form control must not bubble into titlebar maximize.
+  // Book identity lives inside the single titlebar: title and save status on
+  // the first line, the canonical folder path on the second, and no second
+  // book heading anywhere in the chrome.
+  await expect(page.locator('.titlebar__identity')).toBeVisible();
+  await expect(page.locator('.titlebar__title')).toHaveText('Compact book');
   await expect(page.locator('.book__save-state')).toBeVisible();
-  await page.locator('.book__save-state').dblclick();
+  await expect(page.locator('.titlebar__path')).toHaveText(await realpath(bookRoot));
+  await expect(page.locator('header.titlebar').getByRole('heading')).toHaveCount(0);
+
+  // The textual identity stays the drag region: double-clicking the book
+  // title maximizes through the renderer's Linux action (the folder button
+  // next to the path is no-drag and is shell-stub-tested in open-book.spec.ts).
+  await page.locator('.titlebar__title').dblclick();
+  await expect(page.getByRole('button', { name: 'Восстановить окно' })).toBeVisible();
+  await page.getByRole('button', { name: 'Восстановить окно' }).click();
   await expect(page.getByRole('button', { name: 'Развернуть окно' })).toBeVisible();
+
+  // The action group remains no-drag: double-clicking an Appearance form
+  // control must not bubble into titlebar maximize.
   await page.getByRole('button', { name: 'Меню книги' }).click();
   await expect(page.getByRole('button', { name: 'Режим Zen' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Оформление' })).toBeVisible();

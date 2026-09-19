@@ -475,3 +475,70 @@ test('copy-diagnostic-info writes a plain-text summary to the clipboard, never t
   expect(text).not.toContain(h.diagnostics.logsDirectory);
   for (const value of Object.values(DIAGNOSTIC_BASE)) expect(text).toContain(String(value));
 });
+
+// --- desk:open-book-folder ---------------------------------------------------
+//
+// Открытие папки книги — ещё одно действие без пути от renderer: main сам
+// берёт корень из реестра открытых книг (service.getBookRoot) по opaque id и
+// вызывает инъецированный shell.openPath. Лишние аргументы вызывающей стороны
+// (например, путь) игнорируются целиком; неизвестный/пустой id — BOOK_MISSING;
+// непустая строка отказа shell видна вызывающему коду как IpcError.
+
+import { openBookFolderVia } from './ipc';
+
+function bookFolderHarness(openPath: (directory: string) => Promise<string>) {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
+  const trusted = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
+  const foreign = { sender, senderFrame: { parent: null, url: 'https://example.com/' } };
+  const getBookRoot = vi.fn((bookId: string) => (bookId === 'book-1' ? '/books/canonical' : undefined));
+  vi.mocked(ipcMain.handle).mockClear();
+  registerDeskIpc({
+    service: { subscribe: vi.fn(), getBookRoot } as unknown as BookService,
+    broadcast: vi.fn(), openExternal: vi.fn(), openPath,
+  });
+  const handler = vi.mocked(ipcMain.handle).mock.calls.find(([c]) => c === 'desk:open-book-folder')![1];
+  return { trusted, foreign, handler, getBookRoot, openPath };
+}
+
+test('open-book-folder resolves the root only from the service and ignores renderer-supplied paths', async () => {
+  const h = bookFolderHarness(vi.fn(async () => ''));
+  const result = await h.handler(h.trusted as never, 'book-1', '/etc/passwd', { path: '/etc/passwd' });
+  expect(result).toEqual({ ok: true, value: undefined });
+  expect(h.getBookRoot).toHaveBeenCalledTimes(1);
+  expect(h.getBookRoot).toHaveBeenCalledWith('book-1');
+  expect(h.openPath).toHaveBeenCalledTimes(1);
+  expect(h.openPath).toHaveBeenCalledWith('/books/canonical');
+  expect(h.openPath).not.toHaveBeenCalledWith('/etc/passwd');
+});
+
+test('open-book-folder rejects unknown and empty ids with BOOK_MISSING before touching the shell', async () => {
+  const h = bookFolderHarness(vi.fn(async () => ''));
+  for (const id of ['нет-такой-книги', '']) {
+    const result = await h.handler(h.trusted as never, id);
+    expect(result).toMatchObject({ ok: false, code: 'BOOK_MISSING' });
+  }
+  expect(h.openPath).not.toHaveBeenCalled();
+});
+
+test('open-book-folder surfaces a non-empty shell failure as a visible IpcError', async () => {
+  const h = bookFolderHarness(vi.fn(async () => 'No application is associated with this directory'));
+  const result = await h.handler(h.trusted as never, 'book-1');
+  expect(result).toMatchObject({ ok: false, code: 'SAVE_FAILED' });
+  expect(h.openPath).toHaveBeenCalledWith('/books/canonical');
+});
+
+test('openBookFolderVia rejects an untrusted sender like every desk channel', async () => {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false });
+  const foreign = { sender, senderFrame: { parent: null, url: 'https://example.com/' } };
+  const openPath = vi.fn(async () => '');
+  vi.mocked(ipcMain.handle).mockClear();
+  registerDeskIpc({
+    service: { subscribe: vi.fn(), getBookRoot: vi.fn(() => '/books/canonical') } as unknown as BookService,
+    broadcast: vi.fn(), openExternal: vi.fn(), openPath,
+  });
+  const handler = vi.mocked(ipcMain.handle).mock.calls.find(([c]) => c === 'desk:open-book-folder')![1];
+  await expect(handler(foreign as never, 'book-1')).rejects.toThrow('IPC rejected');
+  expect(openPath).not.toHaveBeenCalled();
+});

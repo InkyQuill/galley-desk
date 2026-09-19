@@ -809,6 +809,14 @@ export function BookWindow({
     onClose();
   };
 
+  // Папку книги открывает main (desk:open-book-folder): renderer передаёт
+  // только opaque id. Отказ shell не глотается — попадает в существующую
+  // видимую область ошибок книги.
+  const openBookFolder = useCallback((): void => {
+    setError(null);
+    window.desk.openBookFolder(book.bookId).catch((cause: unknown) => setError(errorText(cause)));
+  }, [book.bookId]);
+
   /** Смена вида закрывает всплывающие слои: flyout не бывает вне «Текста». */
   const switchMode = useCallback(async (next: ViewMode): Promise<void> => {
     const navigation = ++navigationRef.current;
@@ -985,13 +993,17 @@ export function BookWindow({
 
   return (
     <div className={zen ? 'book book--zen' : 'book'}>
-      <TitleBar title={book.title}>
+      <TitleBar
+        title={book.title}
+        subtitle={book.path}
+        status={saveState !== null && (
+          <Tooltip content={snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}>
+            <span role="status" className={`book__save-state book__save-state--${snapshot?.readOnlyReason ? 'readonly' : saveState}`}>{snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}</span>
+          </Tooltip>
+        )}
+        onOpenLocation={openBookFolder}
+      >
         <div className="book__toolbar" aria-label="Действия книги">
-          {saveState !== null && (
-            <Tooltip content={snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}>
-              <span role="status" className={`book__save-state book__save-state--${snapshot?.readOnlyReason ? 'readonly' : saveState}`}>{snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}</span>
-            </Tooltip>
-          )}
           <Tooltip content="Поиск по главе" shortcut="Ctrl+F">
             <button type="button" ref={searchButtonRef} aria-label="Поиск по главе" aria-expanded={searchOpen} onClick={() => setSearchOpen((open) => !open)}><IconSearch /></button>
           </Tooltip>

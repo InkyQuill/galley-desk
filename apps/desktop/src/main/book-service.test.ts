@@ -155,10 +155,26 @@ test('chooseBook без манифеста создаёт совместимый
 });
 
 test('отмена выбора папки возвращает null и ничего не открывает', async () => {
-  const harness = await makeService({ 'Глава.md': '# Одна\n' });
+  const harness = await makeService({ 'Глава.md': 'кот\n' });
   harness.setPicker(null);
   expect(await harness.chooseBook()).toBeNull();
   expect(await harness.recent()).toEqual([]);
+});
+
+test('все виды BookView несут один канонический путь корня; rename его не меняет', async () => {
+  const harness = await makeService({ 'Глава.md': 'кот\n' });
+  const chosen = (await harness.chooseBook())!;
+  expect(chosen.path).toBe(harness.bookRoot);
+
+  const discovery = await harness.discoverChapters(chosen.bookId);
+  expect(discovery.book.path).toBe(harness.bookRoot);
+
+  const renamed = await harness.manageBook(chosen.bookId, { type: 'rename', title: 'Другое имя' });
+  expect(renamed.path).toBe(harness.bookRoot);
+
+  await harness.closeBook(chosen.bookId);
+  const reopened = await harness.openRecent((await harness.recent())[0]!.path);
+  expect(reopened.path).toBe(harness.bookRoot);
 });
 
 test('команда text пишет только sidecar, инкрементирует ревизию и уведомляет слушателя', async () => {

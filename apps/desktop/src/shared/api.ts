@@ -8,7 +8,7 @@ export type RecordView = {id:string; kind:'edit'|'signal'; status:'active'|'unav
 export type Snapshot = {bookId:string; chapterId:string; revision:number; text:string; sourceText:string; title?:string;
   records:RecordView[]; chapterNote:string; readOnlyReason:string|null; recoveryConflict?:boolean; saveState:'saved'|'saving'|'error'|'external';
   canUndoInput:boolean; canRedoInput:boolean; canUndoApply:boolean; canRedoApply:boolean};
-export type BookView = {bookId:string; title:string; entries:Entry[]};
+export type BookView = {bookId:string; path:string; title:string; entries:Entry[]};
 export type Recent = {bookId:string; path:string; title:string; missing:boolean;
   lastChapterId?:string|null; lastAnchor?:number|null; lastScrollTop?:number|null};
 export type Command =
@@ -53,6 +53,10 @@ export interface DeskApi {
   openChapter(bookId:string,chapterId:string):Promise<Snapshot>;
   command(bookId:string,chapterId:string,expectedRevision:number,command:Command):Promise<Snapshot>;
   closeBook(bookId:string):Promise<void>;
+  /** main alone resolves the directory from the opaque id of an already-open
+   * book (service.getBookRoot) and calls shell.openPath on it; no path
+   * parameter exists to redirect this, extra renderer arguments are ignored. */
+  openBookFolder(bookId:string):Promise<void>;
   openExternal(url:string):Promise<void>;
   onSnapshot(listener:(snapshot:Snapshot)=>void):()=>void;
   resolveExternal(bookId:string,chapterId:string,choice:'open-external'|'export-local'):Promise<Snapshot>;
