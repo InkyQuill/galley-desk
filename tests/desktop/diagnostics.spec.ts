@@ -201,6 +201,34 @@ test('the diagnostics panel opens the same way from an open book, and Escape aga
   }
 });
 
+test('крестик of the diagnostics panel closes it with a real pointer click and returns focus to the trigger', async () => {
+  const { app, page } = await launchWelcome();
+  try {
+    const trigger = page.getByRole('button', { name: 'Диагностика' });
+    await trigger.click();
+    const dialog = page.getByRole('dialog', { name: 'Диагностика' });
+    await expect(dialog).toBeVisible();
+    const closeButton = dialog.getByRole('button', { name: 'Закрыть диагностику' });
+    // The panel is mounted inside the draggable titlebar, and
+    // -webkit-app-region is inherited: without an explicit no-drag the whole
+    // dialog computes as a drag region and real pointer presses on the
+    // крестик are swallowed by the drag hit-testing (Escape still works via
+    // the keyboard path). The computed-style guard pins that mechanism down,
+    // because Playwright's injected clicks bypass drag-region hit-testing
+    // entirely and would stay green even while every real user click fails.
+    await expect(dialog).toHaveCSS('-webkit-app-region', 'no-drag');
+    await expect(closeButton).toHaveCSS('-webkit-app-region', 'no-drag');
+    // The click must stay a REAL pointer click: a synthesized
+    // `.evaluate(el => el.click())` would bypass drag-region hit-testing and
+    // prove nothing about actual pointer input reaching the крестик.
+    await closeButton.click();
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+  } finally {
+    await forceStop(app);
+  }
+});
+
 test('the copy-info action is reachable and activatable by keyboard alone, and requires its own explicit press', async () => {
   const { app, page } = await launchWelcome();
   try {
