@@ -15,8 +15,9 @@ import { frontmatter } from '../../shared/metadata';
 //   равенство и не трогает документ. Курсор и IME-композиция не сбрасываются.
 // - Пользовательские транзакции уходят в main строго FIFO (CommandQueue);
 //   ack обновляет записи/статус сохранения, но никогда не подменяет документ.
-// - После сбоя команды локальный текст сохраняется, показывается ошибка,
-//   отправки блокируются до ресинхронизации (замена документа/смена главы).
+// - После сбоя команды локальный текст сохраняется, ошибка уходит родителю
+//   (onCommandError → общая область уведомлений книги), отправки блокируются
+//   до ресинхронизации (замена документа/смена главы).
 // - Undo/redo в «Тексте» маршрутизируются в сессию (undo-input/redo-input);
 //   вне редактора нативный undo полей не затрагивается.
 import { Compartment, EditorState, Prec } from '@codemirror/state';
@@ -73,6 +74,13 @@ type Props = {
   theme: 'light' | 'dark';
   previewBlocked?: boolean;
   onCommand: (c: Command) => Promise<Snapshot>;
+  /**
+   * Отказ команды из очереди: родителю уходит строка «локальный текст
+   * сохранён…» (BookWindow сводит её в тот же saveError — одна карточка с
+   * одним действием «Перечитать главу»), успешная синхронизация — null.
+   * Локального алерта внутри редактора больше нет (Task 8).
+   */
+  onCommandError?: (message: string | null) => void;
   /** Якорь выделения для повторного монтирования редактора; viewport хранится отдельно. */
   onSelectionChange?: (anchor: number) => void;
   /** Реальный scrollTop скроллера редактора — уходит в savePosition. */
@@ -105,6 +113,7 @@ export function ReviewEditor({
   theme,
   previewBlocked = false,
   onCommand,
+  onCommandError,
   onSelectionChange,
   onScrollChange,
   initialAnchor = null,
@@ -127,6 +136,8 @@ export function ReviewEditor({
   // смена главы не перепривязывает уже поставленные команды к новой главе.
   const onCommandRef = useRef(onCommand);
   onCommandRef.current = onCommand;
+  const onCommandErrorRef = useRef(onCommandError);
+  onCommandErrorRef.current = onCommandError;
   const onSelectionRef = useRef(onSelectionChange);
   onSelectionRef.current = onSelectionChange;
   const onScrollRef = useRef(onScrollChange);
@@ -146,11 +157,8 @@ export function ReviewEditor({
   const recordsRef = useRef({ chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records });
 
   const setDocRef = useRef<((value: { chapterId: string; text: string }) => void) | null>(null);
-  const setCommandErrorRef = useRef<((value: string | null) => void) | null>(null);
   const [doc, setDoc] = useState(() => ({ chapterId: snapshot.chapterId, text: snapshot.text }));
-  const [commandError, setCommandError] = useState<string | null>(null);
   setDocRef.current = setDoc;
-  setCommandErrorRef.current = setCommandError;
 
   const queueRef = useRef<CommandQueue<Snapshot, string> | null>(null);
   if (queueRef.current === null) {
@@ -169,7 +177,9 @@ export function ReviewEditor({
       onError: (error, _command, context) => {
         if (stateRef.current.chapterId !== context) return;
         // Локальный текст сохраняется; отправки блокируются до ресинхронизации.
-        setCommandErrorRef.current?.(`${errorText(error)} — локальный текст сохранён, перечитайте главу`);
+        // Сообщение уходит родителю (Task 8): он показывает его в общей
+        // области уведомлений вместо прежнего локального алерта здесь.
+        onCommandErrorRef.current?.(`${errorText(error)} — локальный текст сохранён, перечитайте главу`);
       },
     });
   }
@@ -294,7 +304,7 @@ export function ReviewEditor({
       state.mounted = true;
       recordsRef.current = { chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records };
       queue.unblock();
-      setCommandError(null);
+      onCommandErrorRef.current?.(null);
       groupsRef.current.reset();
       requestReplace('switch', snapshot.chapterId, snapshot.text, initialAnchor ?? 0);
       return;
@@ -319,7 +329,7 @@ export function ReviewEditor({
         return;
       }
       queue.unblock();
-      setCommandError(null);
+      onCommandErrorRef.current?.(null);
     }
     if (!queue.blocked) recordsRef.current = { chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records };
     // Авторитетный текст main расходится с локальным документом после команд,
@@ -709,11 +719,6 @@ export function ReviewEditor({
 
   return (
     <div className="review-editor" ref={hostRef} onClick={handleHostClick}>
-      {commandError !== null && (
-        <p className="app__error" role="alert">
-          {commandError}
-        </p>
-      )}
       <GalleyEditor
         ref={handleRef}
         theme={theme}

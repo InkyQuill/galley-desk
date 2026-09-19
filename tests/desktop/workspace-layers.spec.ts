@@ -111,6 +111,10 @@ test('workspace layers preserve drafts, own Escape and remain painted inside the
     await page.getByRole('dialog', { name: 'Заметка главы', exact: true }).getByRole('button', { name: 'Сохранить', exact: true }).click();
     await expect(page.locator('.chapter-note [role=alert]')).toBeVisible();
     const noteError = await page.locator('.chapter-note [role=alert]').innerText();
+    // Книжный уровень того же сбоя живёт в плавающем центре уведомлений (Task 8)
+    // отдельной карточкой — форма заметки остаётся локальной у своего действия.
+    const workNotice = page.locator('.notice-center .notice--error').filter({ hasText: 'Test note save failure' });
+    await expect(workNotice).toBeVisible();
     await page.getByRole('button', { name: 'Скрыть рецензию', exact: true }).click();
     await page.getByRole('button', { name: 'Показать рецензию', exact: true }).click();
     await expect(page.locator('.chapter-note [role=alert]')).toHaveText(noteError);
@@ -124,6 +128,9 @@ test('workspace layers preserve drafts, own Escape and remain painted inside the
     await page.keyboard.press('ControlOrMeta+Alt+z');
     await expect(page.locator('.chapter-note [role=alert]')).toHaveText(noteError);
     await expect(page.getByLabel('Текст заметки')).toHaveValue('Unsaved survives layout');
+    // Уведомление не исчезает по таймеру: после панельных циклов, смен ширины
+    // и Zen карточка книжного сбоя на месте — её снимет разрешение состояния.
+    await expect(workNotice).toBeVisible();
     expect(await readFile(path.join(root, '01.review.json'), 'utf8').catch(() => '')).not.toContain('Unsaved survives layout');
   } finally {
     await app.evaluate(({ app }) => app.exit(0)).catch(() => undefined);

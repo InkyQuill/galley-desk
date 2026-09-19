@@ -63,7 +63,7 @@ body { margin: 0; background: Canvas; }
 .recent-list__title { font-weight: 600; }
 .recent-list__path { font-size: .9em; overflow-wrap: anywhere; }
 .recent-list__actions { display: flex; gap: 8px; }
-.book { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.book { position: relative; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .book__toolbar { -webkit-app-region: no-drag; display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; min-width: 0; height: 100%; }
 .book__toolbar > button { flex: none; }
 .book__save-state { font-size: .9em; color: var(--app-text-muted); }
@@ -71,8 +71,34 @@ body { margin: 0; background: Canvas; }
 .book__save-state--saved::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--app-text-muted); margin: 0 10px; }
 .book__save-state--error { color: var(--app-error-text); }
 .book__save-state--external { color: var(--desk-warning); }
-.book__external-actions { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 14px; background: var(--app-panel); }
-.book__save-error { flex: none; }
+/* Плавающий нижний центр уведомлений книги (Task 8): book-level рабочие
+   ошибки собираются здесь вместо flow-полос над .book__body — раскладка
+   редактора не меняется. position: relative на .book — точка привязки.
+   pointer-events: none на контейнере и auto на карточках: вне карточек клики,
+   выделение и прокрутка проходят к редактору; z-index 46 — выше floating-
+   триггеров панелей (30) и sidebar-overlay (42), ниже меню главы и попапа
+   метаданных (50) и нативных <dialog> (top layer); геометрически с меню
+   книги (45) центр не пересекается. */
+.notice-center { position: absolute; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(640px, calc(100% - 32px)); z-index: 46; pointer-events: none; display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.notice { pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 10px; background: var(--app-panel); color: var(--app-text); box-shadow: var(--app-dialog-shadow); font: var(--desk-ui-size)/1.5 var(--desk-ui-font); overflow-wrap: anywhere; }
+.notice__icon { flex: none; margin-top: 2px; }
+.notice--error .notice__icon { color: var(--app-error-text); }
+.notice--warning .notice__icon { color: var(--desk-warning); }
+.notice--info .notice__icon { color: var(--app-text-muted); }
+.notice__body { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.notice__title { margin: 0; font-weight: 600; }
+.notice__message { min-width: 0; }
+.notice__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.notice__actions button { background: var(--app-panel-muted); }
+.notice__dismiss { flex: none; padding: 4px; }
+.notice__dismiss svg { width: 16px; height: 16px; }
+/* Узкие ширины: нижние углы заняты floating-триггерами свёрнутых панелей
+   (bottom 12px, высота ~32px) — при ширине, где карточка дотянулась бы до
+   углов (левый край < 48px), центр поднимается над их зоной, чтобы триггеры
+   остались доступны (план Step 7: 900px без перекрытия; проверено и на 700px). */
+@media (max-width: 759px) {
+  .notice-center { bottom: max(56px, env(safe-area-inset-bottom)); }
+}
 .book__body { position: relative; display: grid; grid-template-columns: var(--chapters-width, 315px) 6px minmax(0, 1fr) 6px var(--review-width, 336px); flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .book__body--chapters-collapsed { grid-template-columns: minmax(0, 1fr) 6px var(--review-width, 336px); }
 .book__body--review-collapsed { grid-template-columns: var(--chapters-width, 315px) 6px minmax(0, 1fr); }

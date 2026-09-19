@@ -32,6 +32,7 @@ import { SIDEBAR_BOUNDS } from '../../shared/layout';
 import { CENTER_MIN_WIDTH, RESIZER_WIDTH, fitLayout } from './layout';
 import { SidebarResizer } from './SidebarResizer';
 import { TitleBar } from '../TitleBar';
+import { NoticeCenter, Notice } from '../ui/Notice';
 
 type Props = {
   book: BookView;
@@ -201,6 +202,10 @@ export function BookWindow({
   // сохранения при внешнем изменении — см. handleCommand).
   const snapshotRef = useRef<Snapshot | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Сообщение очереди редактора (onCommandError) при неразрешённом внешнем
+  // изменении: показывается отдельной карточкой без «Перечитать главу» и не
+  // переключает чип титлбара (см. handleCommandError).
+  const [commandError, setCommandError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<ViewMode>('text');
   const modeRef = useRef(mode);
@@ -728,6 +733,30 @@ export function BookWindow({
   );
 
   /**
+   * Отказ команды из FIFO редактора (ReviewEditor.onCommandError): строка
+   * «локальный текст сохранён…» сводится в ту же рабочую область ошибок, где
+   * уже живёт saveError, поэтому сбой показывается одной карточкой с одним
+   * действием «Перечитать главу» — прежний дубль-алерт внутри редактора убран.
+   * null (успешная синхронизация очереди) снимает отдельное сообщение. При
+   * неразрешённом внешнем изменении отказ ввода (STALE_REVISION) — не сбой
+   * сохранения: то же маскирующее правило, что и в handleCommand, — строка
+   * показывается отдельной карточкой без «Перечитать главу» и не переводит
+   * чип титлбара в «Ошибка сохранения» (в остальных случаях transport уже
+   * положил отказ в saveError, и здесь она просто обновляется его строкой).
+   */
+  const handleCommandError = useCallback((message: string | null): void => {
+    if (message === null) {
+      setCommandError(null);
+      return;
+    }
+    if (snapshotRef.current?.saveState === 'external') {
+      setCommandError(message);
+      return;
+    }
+    setSaveError(message);
+  }, []);
+
+  /**
    * Маршрут команд записи: в «Тексте» команды идут через FIFO редактора
    * (порядок с вводом сохраняется), в остальных видах — напрямую в main.
    */
@@ -754,6 +783,7 @@ export function BookWindow({
         // Явное разрешение внешнего изменения — единственный (кроме
         // «Перечитать главу») путь принять внешнюю базу в редакторе.
         setSaveError(null);
+        setCommandError(null);
         setEditorEpoch((epoch) => epoch + 1);
       } catch (cause) {
         setSaveError(errorText(cause));
@@ -765,6 +795,7 @@ export function BookWindow({
   const rereadChapter = useCallback(() => {
     if (chapterId === null) return;
     setError(null);
+    setCommandError(null);
     window.desk
       .openChapter(book.bookId, chapterId)
       .then((loaded) => {
@@ -1047,19 +1078,43 @@ export function BookWindow({
           </div>
         </div>
       </TitleBar>
-      {saveError !== null && (
-        <p className="app__error book__save-error" role="alert">
-          {saveError} <button type="button" className="book__reread" onClick={rereadChapter}>Перечитать главу</button>
-        </p>
-      )}
-      {snapshot?.readOnlyReason && <p className="app__error" role="alert">{snapshot.readOnlyReason}</p>}
-      {snapshot !== null && snapshot.saveState === 'external' && (
-        <div className="book__external-actions" role="alert">
-          {snapshot.recoveryConflict && <span>Восстановление приостановлено. Локальная пара сохранена в журнале. Открытие внешней версии сохранит резервную копию; экспорт сохранит копию главы в новую папку и откроет внешнюю версию.</span>}
-          <button type="button" onClick={() => void resolveExternal('open-external')}>Открыть внешнюю версию</button>
-          <button type="button" onClick={() => void resolveExternal('export-local')}>{snapshot.recoveryConflict ? 'Экспортировать копию главы…' : 'Экспортировать черновик…'}</button>
-        </div>
-      )}
+      {/* Рабочие состояния книги — единым плавающим нижним центром (Task 8):
+          прежние flow-блоки над .book__body сдвигали редактор. Порядок в стеке:
+          инфраструктурные и фоновые состояния выше, активная работа с текстом
+          (внешнее изменение, отказ очереди, сбой сохранения) — у нижнего края.
+          Таймеров нет: карточку убирает разрешение состояния или явная кнопка. */}
+      <NoticeCenter>
+        {layoutError !== null && (
+          <Notice kind="error" actions={
+            <button type="button" onClick={onLayoutRetry}>Повторить сохранение ширины</button>
+          }>{layoutError}</Notice>
+        )}
+        {error !== null && (
+          <Notice kind="error" onDismiss={() => setError(null)}>{error}</Notice>
+        )}
+        {openWarning !== null && !openWarningDismissed && (
+          <Notice kind="info" actions={
+            <button type="button" onClick={() => setOpenWarningDismissed(true)}>Скрыть</button>
+          }>{openWarning}</Notice>
+        )}
+        {snapshot?.readOnlyReason && <Notice kind="warning">{snapshot.readOnlyReason}</Notice>}
+        {snapshot !== null && snapshot.saveState === 'external' && (
+          <Notice kind="warning" actions={
+            <>
+              <button type="button" onClick={() => void resolveExternal('open-external')}>Открыть внешнюю версию</button>
+              <button type="button" onClick={() => void resolveExternal('export-local')}>{snapshot.recoveryConflict ? 'Экспортировать копию главы…' : 'Экспортировать черновик…'}</button>
+            </>
+          }>
+            {snapshot.recoveryConflict && <span>Восстановление приостановлено. Локальная пара сохранена в журнале. Открытие внешней версии сохранит резервную копию; экспорт сохранит копию главы в новую папку и откроет внешнюю версию.</span>}
+          </Notice>
+        )}
+        {commandError !== null && <Notice kind="error">{commandError}</Notice>}
+        {saveError !== null && (
+          <Notice kind="error" actions={
+            <button type="button" onClick={rereadChapter}>Перечитать главу</button>
+          }>{saveError}</Notice>
+        )}
+      </NoticeCenter>
       {renameOpen && <RenameBookDialog title={book.title}
         onChange={async change => { await editorApi?.flushPending(); await refreshBook(await window.desk.manageBook(book.bookId, change)); }}
         onClose={() => { setRenameOpen(false); menuButtonRef.current?.focus(); }} />}
@@ -1067,22 +1122,6 @@ export function BookWindow({
         onChange={async change => { await editorApi?.flushPending(); await refreshBook(await window.desk.manageBook(book.bookId, change)); }}
         onRefresh={refreshBook}
         onClose={() => { setChapterAction(null); requestAnimationFrame(() => actionTriggerRef.current?.isConnected ? actionTriggerRef.current.focus() : (document.querySelector<HTMLButtonElement>('.book__chapter-row--active .book__chapter-menu-button, .book__chapter-menu-button, .book__chapter-tools button') ?? chaptersTriggerRef.current)?.focus()); }} />}
-      {openWarning !== null && !openWarningDismissed && (
-        <p className="app__error" role="alert">
-          {openWarning}
-          <button type="button" onClick={() => setOpenWarningDismissed(true)}>Скрыть</button>
-        </p>
-      )}
-      {error !== null && (
-        <p className="app__error" role="alert">
-          {error}
-        </p>
-      )}
-      {layoutError !== null && (
-        <p className="app__error book__layout-error" role="alert">
-          {layoutError} <button type="button" onClick={onLayoutRetry}>Повторить сохранение ширины</button>
-        </p>
-      )}
       <div
         ref={bodyRef}
         className={`book__body${chaptersCollapsed ? ' book__body--chapters-collapsed' : ''}${reviewCollapsed ? ' book__body--review-collapsed' : ''}`}
@@ -1183,6 +1222,7 @@ export function BookWindow({
                   snapshot={metadataEditing ? {...snapshot,readOnlyReason:'Изменение метаданных'} : snapshot}
                   theme={appearanceTheme.scheme}
                   onCommand={handleCommand}
+                  onCommandError={handleCommandError}
                   onSelectionChange={rememberAnchor}
                   onScrollChange={rememberScroll}
                   initialAnchor={anchorRef.current}

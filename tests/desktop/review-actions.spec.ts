@@ -332,6 +332,13 @@ test('заметка главы сохраняется в sidecar; при оши
     await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Заметка главы' }).getByRole('alert')).toBeVisible();
     await expect(note).toHaveValue('Глава требует вычитки и правки');
+
+    // Книжный уровень того же сбоя — плавающая карточка в центре уведомлений
+    // с единственным действием «Перечитать главу» (Task 8); алерт формы
+    // остаётся внутри диалога заметки, у своего действия.
+    const workNotice = page.locator('.notice-center .notice--error');
+    await expect(workNotice).toBeVisible();
+    await expect(workNotice.getByRole('button', { name: 'Перечитать главу' })).toHaveCount(1);
   } finally {
     await chmod(bookRoot, 0o755);
     await forceStop(session.app);
