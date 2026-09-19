@@ -572,7 +572,23 @@ export function ReviewEditor({
               }
             }
           }
-          if (anchor === -1) anchor = from; // вырожденная строка из одних точек
+          // Точка на пустой строке (или строке из одних точек): якорь ищется в
+          // ближайших соседних строках, от границы, обращённой к точке.
+          const fullText = view.state.doc;
+          for (let distance = 1; anchor === -1 && distance <= fullText.lines; distance++) {
+            for (const neighbourNumber of [line.number - distance, line.number + distance]) {
+              if (neighbourNumber < 1 || neighbourNumber > fullText.lines) continue;
+              const nearby = fullText.line(neighbourNumber);
+              for (let offset = 0; anchor === -1 && offset <= nearby.length; offset++) {
+                const candidate = nearby.from >= from ? nearby.from + offset : nearby.to - offset;
+                if (!points.has(candidate)) anchor = candidate;
+              }
+            }
+          }
+          // Якоря нет нигде: reveal возвращает null — запись раскрывается
+          // карточкой в панели. Прокрутка на саму точку недопустима: она
+          // разрешается в виджет-плейсхолдер и роняет measure-цикл CM.
+          if (anchor === -1) return null;
           view.dispatch({ effects: EditorView.scrollIntoView(anchor, { y: 'center' }) });
           // Первый coordsAtPos сбрасывает отложенный measure: прокрутка
           // применяется до снятия rect, поэтому попап встаёт по итоговому

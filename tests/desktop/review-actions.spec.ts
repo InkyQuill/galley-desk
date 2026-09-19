@@ -1364,6 +1364,67 @@ test('переход к удалению из панели: placeholder в viewp
   } finally { await session.app.close(); }
 });
 
+test('переход к удалению на пустой строке: попап у якоря, прокрутка не заклинивает', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-reveal-empty-line-');
+  const filler = ' Тихие слова вдоль реки.';
+  const head = Array.from({ length: 40 }, (_, i) => `Голова ${String(i).padStart(3, '0')}:${filler.repeat(6)}`);
+  const tail = Array.from({ length: 40 }, (_, i) => `Хвост ${String(i).padStart(3, '0')}:${filler.repeat(6)}`);
+  // Удаление «X» оставляет пустую строку: точка записи лежит между переносами.
+  const sourceText = [...head, 'Альфа', 'X', 'Омега', ...tail, 'УДАЛИТЬХВОСТ'].join('\n');
+  const derivedText = [...head, 'Альфа', '', 'Омега', ...tail, ''].join('\n');
+  const emptyLineId = randomUUID();
+  const tailId = randomUUID();
+  const source = new TextEncoder().encode(sourceText);
+  const rangeOf = (needle: string) => {
+    const from = new TextEncoder().encode(sourceText.slice(0, sourceText.indexOf(needle))).length;
+    return { from, to: from + new TextEncoder().encode(needle).length };
+  };
+  const review: Review = { ...emptyReview(), edits: [
+    { id: emptyLineId, before: 'X', after: '', anchor: makeAnchor(source, rangeOf('X')) },
+    { id: tailId, before: 'УДАЛИТЬХВОСТ', after: '', anchor: makeAnchor(source, rangeOf('УДАЛИТЬХВОСТ')) },
+  ] };
+  await writeBook(bookRoot, review);
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const session = await launch(bookRoot);
+  try {
+    const page = session.page;
+    await openOwnBook(session);
+    const content = page.locator('.cm-content');
+    const scroller = page.locator('.cm-scroller');
+    const popup = page.getByRole('dialog', { name: 'Правка', exact: true });
+    await expect(page.locator('.book__record')).toHaveCount(2);
+    const docText = () => content.evaluate((element) => {
+      const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+      return view.state.doc.toString();
+    });
+    const inViewport = async (id: string) => {
+      const box = await content.locator(`[data-record-id="${id}"]`).boundingBox();
+      const frame = await scroller.boundingBox();
+      if (box === null || frame === null) return false;
+      return box.y >= frame.y - 1 && box.y + box.height <= frame.y + frame.height + 1;
+    };
+
+    // Точка на пустой строке: попап открывается, текст и прокрутка живы.
+    await page.getByRole('button', { name: 'Правка: X →' }).click();
+    await expect(popup).toBeVisible();
+    expect(await docText()).toBe(derivedText);
+    expect(await content.evaluate((element) => element.textContent ?? '')).toContain('Омега');
+    await expect(content.locator(`[data-record-id="${emptyLineId}"]`)).toBeVisible();
+    await expect.poll(() => inViewport(emptyLineId)).toBe(true);
+    expect(Number.isFinite(await scroller.evaluate((element) => element.scrollTop))).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(popup).toHaveCount(0);
+
+    // Прокрутка не заклинила: следующая запись переезжает в другой край главы.
+    await page.getByRole('button', { name: 'Правка: УДАЛИТЬХВОСТ →' }).click();
+    await expect(popup).toBeVisible();
+    expect(await docText()).toBe(derivedText);
+    await expect.poll(() => inViewport(tailId)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(popup).toHaveCount(0);
+  } finally { await session.app.close(); }
+});
+
 test('older snapshot cannot replace accepted marker positions, including after theme changes', async () => {
   const bookRoot = await makeTempDir('galley-e2e-stale-markers-');
   const id = randomUUID();
