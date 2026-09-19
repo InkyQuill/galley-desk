@@ -240,6 +240,14 @@ body { margin: 0; background: Canvas; }
 .gd-record-popup textarea { width: 100%; min-height: 8rem; box-sizing: border-box; }
 .review-editor .cm-tooltip.gd-before-preview { pointer-events: auto; max-height: min(24rem, 60vh); overflow: auto; overflow-wrap: anywhere; }
 
+/* Flyout выбора типа сигнала у выделения в «Тексте»: inline остаётся только
+   позиция left/top из живой геометрии выделения, презентация живёт здесь.
+   Inline background кнопок убран: он сильнее общего hover-правила и гасил
+   отклик (:hover/:focus-visible ниже — через var(--app-hover)). */
+.review-flyout { position: fixed; z-index: 35; display: flex; gap: 4px; padding: 4px; border-radius: 8px; background: var(--app-panel); color: var(--app-text); border: none; box-shadow: var(--app-dialog-shadow); }
+.review-flyout__action { border-radius: 6px; cursor: pointer; padding: 0.15rem 0.5rem; transition: background-color 120ms ease; }
+.review-flyout__action:hover, .review-flyout__action:focus-visible { background: var(--app-hover); }
+
 .book__chapter-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .book__chapter small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .6; font-size: .8em; }
 

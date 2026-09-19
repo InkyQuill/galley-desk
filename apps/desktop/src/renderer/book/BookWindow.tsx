@@ -1187,7 +1187,10 @@ export function BookWindow({
           </div>
         )}
       </div>
-      {!readOnly && mode === 'text' && flyout !== null && (
+      {/* Панель действий живёт только при закрытом попапе: reveal() из панели
+          доставляет выделение отложенным кадром — без gate панель воскресла бы
+          поверх попапа записи (и вернулась бы при прокрутке под ним). */}
+      {!readOnly && popup === null && mode === 'text' && flyout !== null && (
         <SignalFlyout x={flyout.x} bottom={flyout.bottom} onPick={openDraft} registerFocus={registerFlyoutFocus} />
       )}
       {!readOnly && popup?.kind === 'draft' && (

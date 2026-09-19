@@ -548,6 +548,79 @@ test('четыре типа сигналов получают свои цвет�
   }
 });
 
+test('flyout привязан к живой геометрии: hover подсвечивает действие, прокрутка прячет и возвращает панель', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-flyout-scroll-');
+  const paragraphs = Array.from({ length: 120 }, (_, i) => `Абзац ${i}: строка для прокрутки главы.`);
+  const sourceText = `${paragraphs.join('\n\n')}\n`;
+  await writeBook(bookRoot, emptyReview());
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const session = await launch(bookRoot);
+  try {
+    const page = session.page;
+    await openOwnBook(session);
+    const sidecarPath = path.join(bookRoot, SIDECAR_PATH);
+    const mdPath = path.join(bookRoot, CHAPTER_PATH);
+    const mdBefore = await readFile(mdPath, 'utf8');
+    const sidecarBefore = await readFile(sidecarPath, 'utf8');
+    const content = page.locator('.cm-content');
+    const flyout = page.locator('[data-review-flyout]');
+    const scroller = page.locator('.cm-scroller');
+
+    await selectFromStart(page, 0, 6);
+    await expect(flyout).toBeVisible();
+    // Hover обязан подсвечивать действие: inline background: transparent
+    // сильнее общего hover-правила и гасит отклик.
+    const note = flyout.getByRole('button', { name: 'Заметка', exact: true });
+    const idle = await note.evaluate((element) => getComputedStyle(element).backgroundColor);
+    await note.hover();
+    await expect.soft.poll(async () => note.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(idle);
+
+    // Выделение покидает viewport → панель прячется.
+    await scroller.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await expect.soft(flyout).toHaveCount(0);
+
+    // Возврат прокрутки возвращает панель к тому же выделению.
+    await scroller.evaluate((element) => { element.scrollTop = 0; });
+    await expect(flyout).toBeVisible();
+    await expect.poll(async () => {
+      const box = await flyout.boundingBox();
+      const end = await content.evaluate((element) => {
+        const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+        return view.coordsAtPos(view.state.selection.main.to);
+      });
+      if (box === null || end === null) return false;
+      // Панель стоит сразу под концом выделения (top = bottom + 6).
+      return box.y >= end.bottom - 1 && box.y - end.bottom <= 40;
+    }).toBe(true);
+    // Само выделение round-trip прокрутки не тронул.
+    expect(await content.evaluate((element) => {
+      const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+      const { from, to } = view.state.selection.main;
+      return { from, to };
+    })).toEqual({ from: 0, to: 6 });
+    // И данные не тронуты: глава и sidecar байт в байт.
+    expect(await readFile(mdPath, 'utf8')).toBe(mdBefore);
+    expect(await readFile(sidecarPath, 'utf8')).toBe(sidecarBefore);
+
+    // Переход из панели рецензии открывает только попап записи: панель
+    // действий не воскресает поверх попапа, в том числе при прокрутке.
+    await createSignal(page, sidecarPath, { skip: 0, length: 6 }, 'note', 'Прокрутка');
+    await selectFromStart(page, 20, 6);
+    await expect(flyout).toBeVisible();
+    await page.getByRole('button', { name: 'Сигнал [note]: Прокрутка' }).click();
+    const popup = page.getByRole('dialog', { name: 'Сигнал' });
+    await expect(popup).toBeVisible();
+    await expect(flyout).toHaveCount(0);
+    await scroller.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await expect(popup).toBeVisible();
+    await expect(flyout).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(popup).toHaveCount(0);
+  } finally {
+    await session.app.close();
+  }
+});
+
 test('изменение существующего сигнала заменяет тип и комментарий, не дублируя запись', async () => {
   const bookRoot = await makeTempDir('galley-e2e-resignal-');
   await writeBook(bookRoot, emptyReview());

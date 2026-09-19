@@ -444,26 +444,43 @@ export function ReviewEditor({
     extensionsRef.current = [protectedFrontmatter(), readOnlyCompartment.current.of(readOnlyExtensions(readOnly)), Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers(), recordPreview(), searchHighlight()];
   }
 
-  // Выделение → окно flyout: непустой диапазон даёт координаты конца выделения,
-  // схлопнутое выделение закрывает flyout. Фокус не переносится.
-  const handleSelection = useCallback((selection: { anchor: number; head: number; from: number; to: number }): void => {
-    onSelectionRef.current?.(selection.anchor);
-    if (selection.from < selection.to) {
-      const view = handleRef.current?.view ?? null;
-      const pos = Math.min(selection.to, view?.state.doc.length ?? selection.to);
-      const coords = view !== null ? view.coordsAtPos(pos) : null;
-      if (coords !== null) {
+  // Выделение → окно flyout по живой геометрии. Helper читает актуальное
+  // выделение и его экранные координаты: непустое выделение внутри viewport
+  // публикует clamp-координаты конца выделения, пустое или вышедшее из
+  // viewport — null. Панель прячется и возвращается вместе с прокруткой;
+  // фокус не переносится.
+  const publishSelectionWindowRef = useRef<(view: EditorView) => void>(() => undefined);
+  publishSelectionWindowRef.current = (view: EditorView): void => {
+    if (!view.dom.isConnected) {
+      onSelectionWindowRef.current?.(null);
+      return;
+    }
+    const selection = view.state.selection.main;
+    if (!selection.empty) {
+      const coords = view.coordsAtPos(Math.min(selection.to, view.state.doc.length));
+      const scroller = view.scrollDOM.getBoundingClientRect();
+      if (coords !== null && coords.bottom >= scroller.top && coords.top <= scroller.bottom) {
         onSelectionWindowRef.current?.({
           from: selection.from,
           to: selection.to,
-          x: coords.left,
-          y: coords.top,
-          bottom: coords.bottom,
+          x: Math.max(8, Math.min(coords.left, window.innerWidth - 320)),
+          y: Math.max(0, Math.min(coords.top, window.innerHeight)),
+          bottom: Math.min(coords.bottom, window.innerHeight),
         });
         return;
       }
     }
     onSelectionWindowRef.current?.(null);
+  };
+
+  const handleSelection = useCallback((selection: { anchor: number; head: number; from: number; to: number }): void => {
+    onSelectionRef.current?.(selection.anchor);
+    const view = handleRef.current?.view ?? null;
+    if (view === null) {
+      onSelectionWindowRef.current?.(null);
+      return;
+    }
+    publishSelectionWindowRef.current(view);
   }, []);
 
   // Ссылки: http(s) уходят во внешний браузер через typed IPC (отказ
@@ -490,10 +507,20 @@ export function ReviewEditor({
   }, []);
 
   // Реальный scrollTop скроллера редактора (fraction Galley пересчитывать
-  // в пиксели нельзя без потери точности при восстановлении).
+  // в пиксели нельзя без потери точности при восстановлении). Прокрутка
+  // меняет экранные координаты выделения: одна публикация окна на кадр
+  // (rAF), чтобы не измерять layout несколько раз за кадр и мерить уже
+  // устоявшийся после прокрутки DOM.
+  const publishFrameRef = useRef(0);
   const handleScroll = useCallback((_fraction: number): void => {
     const scroller = hostRef.current?.querySelector('.cm-scroller');
     if (scroller) onScrollRef.current?.(scroller.scrollTop);
+    if (publishFrameRef.current !== 0) cancelAnimationFrame(publishFrameRef.current);
+    publishFrameRef.current = requestAnimationFrame(() => {
+      publishFrameRef.current = 0;
+      const view = handleRef.current?.view ?? null;
+      if (view !== null) publishSelectionWindowRef.current(view);
+    });
   }, []);
 
   // Императивный API для панели и попапов: объект стабилен, ссылки — через ref.
