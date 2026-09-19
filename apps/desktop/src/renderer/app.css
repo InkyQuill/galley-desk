@@ -75,11 +75,13 @@ body { margin: 0; background: Canvas; }
    ошибки собираются здесь вместо flow-полос над .book__body — раскладка
    редактора не меняется. position: relative на .book — точка привязки.
    pointer-events: none на контейнере и auto на карточках: вне карточек клики,
-   выделение и прокрутка проходят к редактору; z-index 46 — выше floating-
-   триггеров панелей (30) и sidebar-overlay (42), ниже меню главы и попапа
-   метаданных (50) и нативных <dialog> (top layer); геометрически с меню
-   книги (45) центр не пересекается. */
-.notice-center { position: absolute; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(640px, calc(100% - 32px)); z-index: 46; pointer-events: none; display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+   выделение и прокрутка проходят к редактору; z-index 43 — выше floating-
+   триггеров панелей (30) и sidebar-overlay (42), ниже панели оформления (44),
+   меню книги (45), меню главы и попапа метаданных (50) и нативных <dialog>
+   (top layer). Раньше центр был 46 и на низких окнах перекрывал открытую
+   панель оформления, перехватывая её клики; 43, а не равные 44: центр стоит
+   в DOM позже панели, и при равном z-index ничью выигрывает он. */
+.notice-center { position: absolute; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(640px, calc(100% - 32px)); z-index: 43; pointer-events: none; display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
 .notice { pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 10px; background: var(--app-panel); color: var(--app-text); box-shadow: var(--app-dialog-shadow); font: var(--desk-ui-size)/1.5 var(--desk-ui-font); overflow-wrap: anywhere; }
 .notice__icon { flex: none; margin-top: 2px; }
 .notice--error .notice__icon { color: var(--app-error-text); }

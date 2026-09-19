@@ -170,3 +170,41 @@ describe('assertIsolatedVirtualDisplay refusal branches', () => {
     expect(message).toContain('scripts/gui-test.sh');
   });
 });
+
+describe('platform-aware refusal message (macOS honesty)', () => {
+  /** Refuse on the given platform and return the message (pure logic, no ps read). */
+  const refusalMessage = (platform: NodeJS.Platform, env: NodeJS.ProcessEnv = { WAYLAND_DISPLAY: undefined }): string => {
+    try {
+      assertIsolatedVirtualDisplay(env, psMustNotBeRead, platform);
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+    return '';
+  };
+
+  it('on darwin, states Linux/Xvfb-only isolation instead of offering the unusable wrapper', () => {
+    const message = refusalMessage('darwin');
+    expect(message).toContain('implemented only for Linux/Xvfb');
+    expect(message).toContain('macOS GUI runs are unsupported by this harness');
+    expect(message).toContain('xvfb-run/openbox');
+    expect(message).toContain('ONLY if a human explicitly arranges it');
+    expect(message).toContain('not an escape hatch');
+    // The wrapper cannot work on a mac, so it is NOT offered as remediation.
+    expect(message).not.toContain('Canonical wrapper');
+    expect(message).not.toContain('--workers=1');
+  });
+
+  it('on linux, keeps the canonical wrapper remediation and no mac note', () => {
+    const message = refusalMessage('linux');
+    expect(message).toContain('Canonical wrapper');
+    expect(message).toContain('scripts/gui-test.sh npx playwright test tests/desktop/shell.spec.ts --workers=1');
+    expect(message).not.toContain('unsupported by this harness');
+  });
+
+  it('refusal logic is platform-independent: the same env refusals fire on darwin and linux', () => {
+    const waylandEnv = { DISPLAY: ':0', WAYLAND_DISPLAY: 'wayland-0' };
+    expect(refusalMessage('darwin', waylandEnv)).toMatch(/WAYLAND_DISPLAY is set/);
+    expect(refusalMessage('linux', waylandEnv)).toMatch(/WAYLAND_DISPLAY is set/);
+    expect(refusalMessage('darwin')).toMatch(/DISPLAY is not set or unparseable/);
+  });
+});
