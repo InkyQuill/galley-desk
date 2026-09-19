@@ -1,0 +1,124 @@
+[scenario] PASS titlebar identity shows book title — title="drafts"
+[scenario] PASS titlebar path is the copy root — path="/tmp/galley-found-bugs-scenario/aria-copy"
+[scenario] PASS titlebar open-folder routes the book root through main shell.openPath — called="/tmp/galley-found-bugs-scenario/aria-copy"
+[scenario] PASS word selected: "тротуаром" (zone 1)
+[scenario] PASS stack line ("тротуаром") holds at least 3 words — words=5
+[scenario] PASS chapter 1 one-line stack has 3 edits — edits=3
+[scenario] PASS word selected: "десятку" (zone 2)
+[scenario] PASS word selected: "которая" (zone 3)
+[scenario] PASS word selected: "карта" (zone 4)
+[scenario] PASS selection flyout hides while the selection is scrolled away — "карта"
+[scenario] PASS selection flyout returns anchored under the same selection
+[scenario] PASS word selected: "росли" (zone 5)
+[scenario] PASS word selected: "ожила" (zone 6)
+[scenario] PASS chapter 1 created 5–8 records — delta=5
+[scenario] PASS word selected: "настоящий" (zone 0)
+[scenario] PASS word selected: "отражению" (zone 2)
+[scenario] PASS word selected: "смешались" (zone 4)
+[scenario] PASS word selected: "телефон" (zone 5)
+[scenario] PASS word selected: "необычное" (zone 6)
+[scenario] PASS word selected: "прекрасно" (zone 3)
+[scenario] PASS word selected: "возникло" (zone 7)
+[scenario] PASS chapter-002 created 7 records — delta=7
+[scenario] PASS word selected: "собственный" (zone 0)
+[scenario] PASS word selected: "приложил" (zone 2)
+[scenario] PASS word selected: "внутри" (zone 4)
+[scenario] PASS word selected: "свободно" (zone 5)
+[scenario] PASS word selected: "легко" (zone 6)
+[scenario] PASS word selected: "богини" (zone 3)
+[scenario] PASS word selected: "потому" (zone 7)
+[scenario] PASS chapter-003 created 7 records — delta=7
+[scenario] PASS total records 20–30 across the copy — edits=18 signals=4
+[scenario] RECORDS edits=18 signals=4
+[scenario] PASS diagnostics крестик closes the dialog with a pointer click
+[scenario] PASS deletion navigation reveals placeholder inside the viewport — placeholders=3 inside=3
+[scenario] PASS theme galley-light applied (color-scheme=light)
+[scenario] PASS notice stack: two cards, bottom-center, over the editor without reflow — {"centered":true,"bottomGap":20,"aboveEditor":true,"cards":2}
+[scenario] shot titlebar-1280-light.png
+[scenario] shot search-1280-light.png
+[scenario] shot review-rows-1280-light.png
+[scenario] PASS collapsed panels keep the reading column at full body width
+[scenario] shot triggers-1280-light.png
+[scenario] shot stack-rest-1280-light.png
+[scenario] PASS marker stack expands on hover — idle=[0,3,0] expanded=[0,24,0]
+[scenario] shot stack-hover-1280-light.png
+[scenario] shot notice-1280-light.png
+[scenario] shot titlebar-1920-light.png
+[scenario] shot search-1920-light.png
+[scenario] shot review-rows-1920-light.png
+[scenario] PASS collapsed panels keep the reading column at full body width
+[scenario] shot triggers-1920-light.png
+[scenario] shot stack-rest-1920-light.png
+[scenario] PASS marker stack expands on hover — idle=[0,3,6] expanded=[0,24,48]
+[scenario] shot stack-hover-1920-light.png
+[scenario] shot notice-1920-light.png
+[scenario] shot titlebar-900-light.png
+[scenario] shot search-900-light.png
+[scenario] shot review-rows-900-light.png
+[scenario] shot triggers-900-light.png
+[scenario] shot stack-rest-900-light.png
+[scenario] PASS marker stack expands on hover — idle=[0,3,0] expanded=[0,24,0]
+[scenario] shot stack-hover-900-light.png
+[scenario] shot notice-900-light.png
+[scenario] cards@before: [{"title":null,"text":"Error invoking remote method 'desk:set-layout': Error: Scenario layout save failure","buttons":["Повторить сохранение ширины"]},{"title":null,"text":"","buttons":["Открыть внешнюю версию","Экспортировать черновик…"]},{"title":null,"text":"Операция не выполнена — локальный текст сохранён, перечитайте главу","buttons":["Перечитать главу"]}]
+[scenario] cards@after-chapter-retry: [{"title":null,"text":"Error invoking remote method 'desk:set-layout': Error: Scenario layout save failure","buttons":["Повторить сохранение ширины"]},{"title":null,"text":"","buttons":["Открыть внешнюю версию","Экспортировать черновик…"]}]
+[scenario] cards@after-layout-retry: [{"title":null,"text":"","buttons":["Открыть внешнюю версию","Экспортировать черновик…"]}]
+[scenario] cards@after-open-external: []
+[scenario] cards@final: []
+[scenario] PASS notice actions clear both work errors
+[scenario] PASS theme galley-dark applied (color-scheme=dark)
+[scenario] PASS notice stack: two cards, bottom-center, over the editor without reflow — {"centered":true,"bottomGap":20,"aboveEditor":true,"cards":2}
+[scenario] shot titlebar-1280-dark.png
+[scenario] shot search-1280-dark.png
+[scenario] shot review-rows-1280-dark.png
+[scenario] PASS collapsed panels keep the reading column at full body width
+[scenario] shot triggers-1280-dark.png
+[scenario] shot stack-rest-1280-dark.png
+[scenario] PASS marker stack expands on hover — idle=[0,3,0] expanded=[0,24,0]
+[scenario] shot stack-hover-1280-dark.png
+[scenario] shot notice-1280-dark.png
+[scenario] shot titlebar-1920-dark.png
+[scenario] shot search-1920-dark.png
+[scenario] shot review-rows-1920-dark.png
+[scenario] PASS collapsed panels keep the reading column at full body width
+[scenario] shot triggers-1920-dark.png
+[scenario] shot stack-rest-1920-dark.png
+[scenario] PASS marker stack expands on hover — idle=[0,3,6] expanded=[0,24,48]
+[scenario] shot stack-hover-1920-dark.png
+[scenario] shot notice-1920-dark.png
+[scenario] shot titlebar-900-dark.png
+[scenario] shot search-900-dark.png
+[scenario] shot review-rows-900-dark.png
+[scenario] shot triggers-900-dark.png
+[scenario] shot stack-rest-900-dark.png
+[scenario] PASS marker stack expands on hover — idle=[0,3,0] expanded=[0,24,0]
+[scenario] shot stack-hover-900-dark.png
+[scenario] shot notice-900-dark.png
+[scenario] cards@before: [{"title":null,"text":"Error invoking remote method 'desk:set-layout': Error: Scenario layout save failure","buttons":["Повторить сохранение ширины"]},{"title":null,"text":"","buttons":["Открыть внешнюю версию","Экспортировать черновик…"]},{"title":null,"text":"Операция не выполнена — локальный текст сохранён, перечитайте главу","buttons":["Перечитать главу"]}]
+[scenario] cards@after-chapter-retry: [{"title":null,"text":"Error invoking remote method 'desk:set-layout': Error: Scenario layout save failure","buttons":["Повторить сохранение ширины"]},{"title":null,"text":"","buttons":["Открыть внешнюю версию","Экспортировать черновик…"]}]
+[scenario] cards@after-layout-retry: [{"title":null,"text":"","buttons":["Открыть внешнюю версию","Экспортировать черновик…"]}]
+[scenario] cards@after-open-external: []
+[scenario] cards@final: []
+[scenario] PASS notice actions clear both work errors
+[scenario] shot stack-hover-1280-light-zoom125.png
+[scenario] PASS notice stack: two cards, bottom-center, over the editor without reflow — {"centered":true,"bottomGap":20,"aboveEditor":true,"cards":2}
+[scenario] shot notice-1280-light-zoom125.png
+[scenario] cards@before: [{"title":null,"text":"Error invoking remote method 'desk:set-layout': Error: Scenario layout save failure","buttons":["Повторить сохранение ширины"]},{"title":null,"text":"","buttons":["Открыть внешнюю версию","Экспортировать черновик…"]},{"title":null,"text":"Операция не выполнена — локальный текст сохранён, перечитайте главу","buttons":["Перечитать главу"]}]
+[scenario] cards@after-chapter-retry: [{"title":null,"text":"Error invoking remote method 'desk:set-layout': Error: Scenario layout save failure","buttons":["Повторить сохранение ширины"]},{"title":null,"text":"","buttons":["Открыть внешнюю версию","Экспортировать черновик…"]}]
+[scenario] cards@after-layout-retry: [{"title":null,"text":"","buttons":["Открыть внешнюю версию","Экспортировать черновик…"]}]
+[scenario] cards@after-open-external: []
+[scenario] cards@final: []
+[scenario] PASS notice actions clear both work errors
+[scenario] PASS zoom 125% verified at 1280 (light)
+[scenario] shot stack-hover-1280-dark-zoom125.png
+[scenario] PASS notice stack: two cards, bottom-center, over the editor without reflow — {"centered":true,"bottomGap":20,"aboveEditor":true,"cards":2}
+[scenario] shot notice-1280-dark-zoom125.png
+[scenario] cards@before: [{"title":null,"text":"Error invoking remote method 'desk:set-layout': Error: Scenario layout save failure","buttons":["Повторить сохранение ширины"]},{"title":null,"text":"","buttons":["Открыть внешнюю версию","Экспортировать черновик…"]},{"title":null,"text":"Операция не выполнена — локальный текст сохранён, перечитайте главу","buttons":["Перечитать главу"]}]
+[scenario] cards@after-chapter-retry: [{"title":null,"text":"Error invoking remote method 'desk:set-layout': Error: Scenario layout save failure","buttons":["Повторить сохранение ширины"]},{"title":null,"text":"","buttons":["Открыть внешнюю версию","Экспортировать черновик…"]}]
+[scenario] cards@after-layout-retry: [{"title":null,"text":"","buttons":["Открыть внешнюю версию","Экспортировать черновик…"]}]
+[scenario] cards@after-open-external: []
+[scenario] cards@final: []
+[scenario] PASS notice actions clear both work errors
+[scenario] PASS zoom 125% verified at 1280 (dark)
+[scenario] PASS theme galley-light applied (color-scheme=light)
+[scenario] SESSION-COMPLETE edits=18 signals=4 failures=0

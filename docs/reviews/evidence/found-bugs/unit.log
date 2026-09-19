@@ -1,0 +1,130 @@
+
+> test
+> vitest run
+
+
+ RUN  v5.0.1 /home/inky/Development/WritingTools/galley-desk/.worktrees/found-bugs-fixes
+
+ ✓ apps/desktop/src/renderer/editor/reading-position.test.ts (13 tests) 18ms
+stderr | apps/desktop/src/main/ipc.test.ts > a failed handler logs the cleaned exception with a generated requestId before mapping to a stable IpcError
+[desk] desk:close-book: code=SAVE_FAILED
+
+stderr | apps/desktop/src/main/ipc.test.ts > overlapping book closes share preparation and only a failed close resumes input
+[desk] desk:close-book: code=SAVE_FAILED
+[desk] desk:close-book: code=SAVE_FAILED
+
+stderr | apps/desktop/src/main/ipc.test.ts > report-diagnostic rejects an untrusted sender before the handler logs anything
+[desk] desk:report-diagnostic: отклонено — недоверенный senderFrame
+
+stderr | apps/desktop/src/main/ipc.test.ts > report-diagnostic never lets an unknown field or payload text reach the logger
+[desk] desk:report-diagnostic: code=SAVE_FAILED
+
+stderr | apps/desktop/src/main/ipc.test.ts > window controls accept only explicit actions from the trusted top frame
+[desk] desk:window-action: code=SAVE_FAILED
+
+stderr | apps/desktop/src/main/ipc.test.ts > window controls accept only explicit actions from the trusted top frame
+[desk] desk:window-action: отклонено — недоверенный senderFrame
+
+ ✓ packages/book-storage/src/journal.test.ts (11 tests) 23ms
+stderr | apps/desktop/src/main/ipc.test.ts > layout IPC preserves sender validation and rejects invalid widths in main
+[desk] desk:set-layout: code=SAVE_FAILED
+
+stderr | apps/desktop/src/main/ipc.test.ts > layout IPC preserves sender validation and rejects invalid widths in main
+[desk] desk:set-layout: отклонено — недоверенный senderFrame
+
+stderr | apps/desktop/src/main/ipc.test.ts > diagnostics channels fail explicitly (not by throwing at registration) when no diagnostics deps are configured
+[desk] desk:diagnostic-info: code=SAVE_FAILED
+
+stderr | apps/desktop/src/main/ipc.test.ts > open-logs-folder surfaces a directory-creation failure explicitly instead of failing silently
+[desk] desk:open-logs-folder: code=SAVE_FAILED
+
+stderr | apps/desktop/src/main/ipc.test.ts > open-logs-folder surfaces a shell.openPath failure instead of reporting success
+[desk] desk:open-logs-folder: code=SAVE_FAILED
+
+stderr | apps/desktop/src/main/ipc.test.ts > open-book-folder rejects unknown and empty ids with BOOK_MISSING before touching the shell
+[desk] desk:open-book-folder: code=BOOK_MISSING
+
+stderr | apps/desktop/src/main/ipc.test.ts > open-book-folder rejects unknown and empty ids with BOOK_MISSING before touching the shell
+[desk] desk:open-book-folder: code=BOOK_MISSING
+
+stderr | apps/desktop/src/main/ipc.test.ts > open-book-folder surfaces a non-empty shell failure as a visible IpcError
+[desk] desk:open-book-folder: code=SAVE_FAILED
+
+stderr | apps/desktop/src/main/ipc.test.ts > openBookFolderVia rejects an untrusted sender like every desk channel
+[desk] desk:open-book-folder: отклонено — недоверенный senderFrame
+
+ ✓ apps/desktop/src/main/ipc.test.ts (33 tests) 177ms
+ ✓ packages/book-storage/src/management.test.ts (14 tests) 87ms
+ ✓ apps/desktop/src/main/diagnostics/logger.test.ts (14 tests) 223ms
+ ✓ apps/desktop/src/shared/metadata.test.ts (8 tests) 14ms
+ ✓ apps/desktop/src/renderer/editor/transaction-adapter.test.ts (14 tests) 13ms
+ ✓ packages/book-storage/src/book.test.ts (37 tests) 146ms
+ ✓ packages/book-storage/src/session.test.ts (22 tests) 148ms
+ ✓ apps/desktop/src/main/settings.test.ts (11 tests) 13ms
+ ✓ apps/desktop/src/main/resources.test.ts (8 tests) 10ms
+ ✓ packages/pocket-format/src/documents.test.ts (28 tests) 13ms
+ ✓ apps/desktop/src/renderer/editor/markers.test.ts (8 tests) 11ms
+ ✓ packages/review-engine/src/deletion-composition.test.ts (14 tests) 22ms
+ ✓ packages/review-engine/src/apply.test.ts (13 tests) 14ms
+ ✓ packages/book-storage/src/save-queue.test.ts (4 tests) 4ms
+ ✓ apps/desktop/src/main/recent-books.test.ts (8 tests) 16ms
+stderr | apps/desktop/src/main/book-service.test.ts > audit: unresolved third revision must block new writes and preserve journal
+[desk] open-book: восстановление отложено, код=SAVE_FAILED (внешнее изменение)
+
+ ✓ apps/desktop/src/renderer/editor/frontmatter.test.ts (4 tests) 10ms
+stderr | apps/desktop/src/main/book-service.test.ts > recovery open-external preserves the exact local pair and journal before adopting external; reopen is clean
+[desk] open-book: восстановление отложено, код=SAVE_FAILED (внешнее изменение)
+
+ ✓ packages/pocket-format/src/discovery.test.ts (16 tests) 8ms
+stderr | apps/desktop/src/main/book-service.test.ts > recovery export-local preserves the exact local pair and journal before adopting external; reopen is clean
+[desk] open-book: восстановление отложено, код=SAVE_FAILED (внешнее изменение)
+
+ ✓ packages/pocket-format/src/anchors.test.ts (17 tests) 11ms
+ ✓ tests/desktop/gui-isolation.test.ts (11 tests) 10ms
+stderr | apps/desktop/src/main/book-service.test.ts > opening a book with a pending journal logs a structured recovery-result event without changing stderr output
+[desk] open-book: код результата восстановления=recovered
+
+stderr | apps/desktop/src/main/book-service.test.ts > opening a book with a pending journal whose source changed externally logs recovery-result=external-change
+[desk] open-book: восстановление отложено, код=SAVE_FAILED (внешнее изменение)
+
+ ✓ packages/review-engine/src/signals.test.ts (7 tests) 5ms
+ ✓ apps/desktop/src/main/diagnostics/safe-error.test.ts (11 tests) 7ms
+ ✓ packages/review-engine/src/edit.test.ts (18 tests) 12ms
+ ✓ apps/desktop/src/main/window.test.ts (4 tests) 4ms
+ ✓ packages/pocket-format/src/availability.test.ts (9 tests) 6ms
+ ✓ apps/desktop/src/renderer/book/layout.test.ts (5 tests) 3ms
+ ✓ apps/desktop/src/renderer/appearance/appearance.test.ts (6 tests) 5ms
+ ✓ packages/review-engine/src/history.test.ts (6 tests) 8ms
+stderr | apps/desktop/src/main/book-service.test.ts > a watcher recheck failure logs watcher-failed without surfacing to the caller
+[desk] watcher: code=SAVE_FAILED
+
+stderr | apps/desktop/src/main/book-service.test.ts > recovery cancel keeps pending journal and blocks mutations
+[desk] open-book: восстановление отложено, код=SAVE_FAILED (внешнее изменение)
+
+stderr | apps/desktop/src/main/book-service.test.ts > recovery export-failed keeps pending journal and blocks mutations
+[desk] open-book: восстановление отложено, код=SAVE_FAILED (внешнее изменение)
+
+stderr | apps/desktop/src/main/book-service.test.ts > recovery backup-failed keeps pending journal and blocks mutations
+[desk] open-book: восстановление отложено, код=SAVE_FAILED (внешнее изменение)
+
+stderr | apps/desktop/src/main/book-service.test.ts > deferred recovery picker cannot replace a newer session or reset its history
+[desk] open-book: восстановление отложено, код=SAVE_FAILED (внешнее изменение)
+
+ ✓ apps/desktop/src/renderer/editor/visual-range.test.ts (7 tests) 9ms
+ ✓ apps/desktop/src/renderer/editor/snapshot-change.test.ts (3 tests) 4ms
+ ✓ packages/review-engine/src/pieces.test.ts (7 tests) 5ms
+ ✓ apps/desktop/src/renderer/book/shortcuts.test.ts (16 tests) 4ms
+ ✓ apps/desktop/src/renderer/book/chapter-filter.test.ts (7 tests) 3ms
+ ✓ apps/desktop/src/renderer/search/search.test.ts (4 tests) 3ms
+ ✓ apps/desktop/src/renderer/book/chapter-order.test.ts (2 tests) 1ms
+ ✓ apps/desktop/src/main/book-service.test.ts (59 tests) 843ms
+
+ Test Files  37 passed (37)
+      Tests  479 passed (479)
+   Start at  20:15:02
+   Duration  1.15s (tests 41%, import 34%, transform 23%, worker 2%)
+
+    Isolate  37 workers spawned · ~67ms startup each (spawn + environment, per file)
+             at least ~287ms faster with isolate: false — reuses workers across files instead of one per file
+
+vitest_exit=0

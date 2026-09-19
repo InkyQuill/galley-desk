@@ -1,0 +1,9 @@
+[packaged-smoke] PASS packaged binary opens the real-book copy from recents — chapter=chapter-001-v2.md
+[packaged-smoke] PASS responsive: review panel collapses to a floating trigger at 900 px
+[packaged-smoke] PASS responsive: collapsed panel opens as a focused overlay
+[packaged-smoke] PASS deletion navigation reveals the placeholder inside the viewport
+[packaged-smoke] PASS diagnostics крестик closes the dialog on the packaged binary
+[packaged-smoke] PASS open book folder: no failure notice, window stays interactive — {"errors":0,"notices":0}
+[packaged-smoke] PASS window interactive after open-folder
+[packaged-smoke] COMPLETE failures=0
+PACKAGED_SMOKE_EXIT=0

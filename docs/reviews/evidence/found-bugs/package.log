@@ -1,0 +1,45 @@
+
+> package
+> npm run package --workspace @galley-desk/desktop
+
+
+> @galley-desk/desktop@0.1.0 package
+> electron-forge package
+
+❯ Checking your system
+❯ Checking package manager version
+✔ Found npm@11.13.0
+✔ Checking your system
+[?25h❯ Preparing to package application
+✔ Preparing to package application
+❯ Running packaging hooks
+❯ Running generateAssets hook
+✔ Running generateAssets hook
+❯ Running prePackage hook
+❯ [plugin-vite] Building production Vite bundles
+❯ Building main and preload targets...
+❯ Building renderer targets...
+❯ Building src/main/main.ts target
+❯ Building src/preload/index.ts target
+✔ Building src/preload/index.ts target
+✔ Building src/main/main.ts target
+✔ Building main and preload targets...
+✔ Built target main_window
+✔ Building renderer targets...
+✔ [plugin-vite] Building production Vite bundles
+✔ Running prePackage hook
+✔ Running packaging hooks
+❯ Packaging application
+› Determining targets...
+❯ Packaging for x64 on linux
+❯ Copying files
+❯ Preparing native dependencies
+❯ Finalizing package
+✔ Copying files
+✔ Preparing native dependencies
+✔ Finalizing package
+✔ Packaging for x64 on linux
+✔ Packaging application
+❯ Running postPackage hook
+✔ Running postPackage hook
+[?25hPACKAGE_EXIT=0
