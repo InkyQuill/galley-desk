@@ -4,8 +4,9 @@
 # Example: scripts/gui-test.sh npx playwright test tests/desktop/shell.spec.ts --workers=1
 #
 # Runs the given command inside its own Xvfb virtual display with a bare Openbox WM,
-# with XAUTHORITY / WAYLAND_DISPLAY / NO_COLOR / FORCE_COLOR unset, so GUI processes
-# can never touch the user's real desktop session.
+# with XAUTHORITY / WAYLAND_DISPLAY / XDG_SESSION_TYPE / NO_COLOR / FORCE_COLOR unset,
+# and ELECTRON_OZONE_PLATFORM_HINT=x11 pinned, so GUI processes can never reach the
+# user's real desktop session — not even via Electron's ozone Wayland fallback.
 set -euo pipefail
 
 if [ "$#" -eq 0 ]; then
@@ -14,7 +15,8 @@ if [ "$#" -eq 0 ]; then
   exit 2
 fi
 
-exec env -u XAUTHORITY -u WAYLAND_DISPLAY -u NO_COLOR -u FORCE_COLOR \
+exec env -u XAUTHORITY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE -u NO_COLOR -u FORCE_COLOR \
+  ELECTRON_OZONE_PLATFORM_HINT=x11 \
   GTK_MODULES=colorreload-gtk-module:appmenu-gtk-module \
   xvfb-run -a sh -c '
     openbox >/tmp/galley-test-openbox.log 2>&1 &

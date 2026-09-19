@@ -84,14 +84,79 @@ describe('assertIsolatedVirtualDisplay refusal branches', () => {
   it('refuses when no Xvfb process serves the requested display', () => {
     const readRealSession: PsArgsReader = () => REAL_SESSION_PS;
     expect(() =>
-      assertIsolatedVirtualDisplay({ DISPLAY: ':99', WAYLAND_DISPLAY: undefined }, readRealSession),
+      assertIsolatedVirtualDisplay(
+        {
+          DISPLAY: ':99',
+          WAYLAND_DISPLAY: undefined,
+          ELECTRON_OZONE_PLATFORM_HINT: 'x11',
+          XDG_SESSION_TYPE: undefined,
+        },
+        readRealSession,
+      ),
     ).toThrow(/no Xvfb process is currently serving :99/);
+  });
+
+  it('refuses when ELECTRON_OZONE_PLATFORM_HINT is not exactly x11 (ozone wayland escape)', () => {
+    // The user's real session value: 'auto' lets Electron connect to the default
+    // wayland-0 socket of the real compositor even under a correct Xvfb DISPLAY.
+    for (const hint of ['auto', 'wayland', undefined]) {
+      expect(() =>
+        assertIsolatedVirtualDisplay(
+          {
+            DISPLAY: ':99',
+            WAYLAND_DISPLAY: undefined,
+            ELECTRON_OZONE_PLATFORM_HINT: hint,
+            XDG_SESSION_TYPE: undefined,
+          },
+          psMustNotBeRead,
+        ),
+      ).toThrow(hint === undefined ? /ELECTRON_OZONE_PLATFORM_HINT must be exactly 'x11', found unset/ : new RegExp(`ELECTRON_OZONE_PLATFORM_HINT must be exactly 'x11', found «${hint}»`));
+    }
+    // The refusal explains the escape route.
+    let message = '';
+    try {
+      assertIsolatedVirtualDisplay(
+        {
+          DISPLAY: ':99',
+          WAYLAND_DISPLAY: undefined,
+          ELECTRON_OZONE_PLATFORM_HINT: 'auto',
+          XDG_SESSION_TYPE: undefined,
+        },
+        psMustNotBeRead,
+      );
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain('wayland-0');
+    expect(message).toContain('real');
+  });
+
+  it('refuses when XDG_SESSION_TYPE is wayland', () => {
+    expect(() =>
+      assertIsolatedVirtualDisplay(
+        {
+          DISPLAY: ':99',
+          WAYLAND_DISPLAY: undefined,
+          ELECTRON_OZONE_PLATFORM_HINT: 'x11',
+          XDG_SESSION_TYPE: 'wayland',
+        },
+        psMustNotBeRead,
+      ),
+    ).toThrow(/XDG_SESSION_TYPE is 'wayland'/);
   });
 
   it('allows a run inside the isolated virtual display and names the wrapper otherwise', () => {
     const readXvfb99: PsArgsReader = () => XVFB_99_PS;
     expect(() =>
-      assertIsolatedVirtualDisplay({ DISPLAY: ':99', WAYLAND_DISPLAY: undefined }, readXvfb99),
+      assertIsolatedVirtualDisplay(
+        {
+          DISPLAY: ':99',
+          WAYLAND_DISPLAY: undefined,
+          ELECTRON_OZONE_PLATFORM_HINT: 'x11',
+          XDG_SESSION_TYPE: 'x11',
+        },
+        readXvfb99,
+      ),
     ).not.toThrow();
 
     let message = '';

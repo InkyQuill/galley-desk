@@ -13,6 +13,13 @@ import type { FullConfig } from '@playwright/test';
  *  - `DISPLAY` is set and parseable;
  *  - `WAYLAND_DISPLAY` is unset (the canonical wrapper unsets it; the user's
  *    real Wayland session has it set);
+ *  - `ELECTRON_OZONE_PLATFORM_HINT` is exactly `'x11'` — with `auto` (the user's
+ *    session default) Electron tries Wayland FIRST and connects to the default
+ *    `$XDG_RUNTIME_DIR/wayland-0` socket, i.e. the user's real compositor, even
+ *    when `DISPLAY` points at Xvfb. This escape happens inside Electron's
+ *    platform selection and is invisible to the checks above;
+ *  - `XDG_SESSION_TYPE` is unset or not `'wayland'` (same ozone Wayland escape
+ *    path; the wrapper unsets it);
  *  - an actual `Xvfb` process is currently serving that exact display
  *    (the real desktop server is Xwayland/kwin; its command line never
  *    contains the `Xvfb` binary name, so the discriminator is safe).
@@ -94,6 +101,32 @@ export function assertIsolatedVirtualDisplay(
   if (typeof wayland === 'string' && wayland !== '') {
     throw isolationError(
       `WAYLAND_DISPLAY is set («${wayland}») — this is the user's real Wayland session, not an isolated Xvfb.`,
+    );
+  }
+
+  // Electron's ozone platform selection can escape a correct DISPLAY: with
+  // ELECTRON_OZONE_PLATFORM_HINT=auto (the user's session default) Electron 44
+  // tries Wayland FIRST and connects to the DEFAULT socket
+  // $XDG_RUNTIME_DIR/wayland-0 — the user's real compositor — even though
+  // DISPLAY points at Xvfb. Pinning the hint to 'x11' is therefore mandatory,
+  // not cosmetic; the canonical wrapper exports it.
+  const ozoneHint = env.ELECTRON_OZONE_PLATFORM_HINT;
+  if (ozoneHint !== 'x11') {
+    throw isolationError(
+      `ELECTRON_OZONE_PLATFORM_HINT must be exactly 'x11', found ` +
+        `${ozoneHint === undefined ? 'unset' : `«${ozoneHint}»`}. ` +
+        "With 'auto' Electron tries Wayland first and escapes to the user's real " +
+        'compositor via the default $XDG_RUNTIME_DIR/wayland-0 socket, even when ' +
+        'DISPLAY points at an isolated Xvfb.',
+    );
+  }
+
+  const sessionType = env.XDG_SESSION_TYPE;
+  if (sessionType === 'wayland') {
+    throw isolationError(
+      "XDG_SESSION_TYPE is 'wayland' — together with an unpinned ozone hint this " +
+        'lets Electron escape to the real compositor; the canonical wrapper unsets ' +
+        'XDG_SESSION_TYPE and pins ELECTRON_OZONE_PLATFORM_HINT=x11.',
     );
   }
 
