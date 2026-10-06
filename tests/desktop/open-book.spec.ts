@@ -166,7 +166,7 @@ test('открывает главу: правка из sidecar, локальна
       await expect(reopened.page.locator('.book__text')).toContainText('кит спит.');
       // Исходный файл не изменён: правка живёт в sidecar.
       expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe(chapterText);
-      await expect(reopened.page.getByRole('button', { name: 'Правка: кот спит → кит спит', exact: false })).toBeVisible();
+      await expect(reopened.page.getByRole('button', { name: 'Замена: кот спит → кит спит', exact: false })).toBeVisible();
 
       // Курсор уводится с картинки: в live-режиме Galley прячет виджет под
       // курсором. Локальная картинка отображается через защищённую схему.

@@ -1105,6 +1105,7 @@ export function BookWindow({
               <button type="button" onClick={() => void resolveExternal('export-local')}>{snapshot.recoveryConflict ? 'Экспортировать копию главы…' : 'Экспортировать черновик…'}</button>
             </>
           }>
+            <span>Файл главы изменён вне приложения. Выберите версию, с которой продолжить работу.</span>
             {snapshot.recoveryConflict && <span>Восстановление приостановлено. Локальная пара сохранена в журнале. Открытие внешней версии сохранит резервную копию; экспорт сохранит копию главы в новую папку и откроет внешнюю версию.</span>}
           </Notice>
         )}

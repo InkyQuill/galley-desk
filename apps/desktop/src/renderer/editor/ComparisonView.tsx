@@ -201,7 +201,7 @@ function RecordMarkerButton({
     : kind === 'deletion' ? deletionColor(theme) : EDIT_MARKER_COLOR;
   const label = kind === null
     ? `Сигнал [${record.signalType ?? 'note'}]${record.comment !== '' ? `: ${record.comment}` : ''}`
-    : kind === 'deletion' ? `Удаление: ${record.before}` : `Правка: ${record.before} → ${record.after}`;
+    : kind === 'deletion' ? `Удаление: ${record.before}` : kind === 'insertion' ? `Вставка: ${record.after}` : `Замена: ${record.before} → ${record.after}`;
   const Icon = kind === null
     ? IconBolt
     : kind === 'insertion' ? IconPlus : kind === 'deletion' ? IconMinus : IconPencil;
@@ -210,7 +210,7 @@ function RecordMarkerButton({
       <button
         type="button"
         data-record-id={record.id}
-        aria-label={kind === null ? 'Сигнал' : kind === 'deletion' ? `Удаление: ${record.before}` : 'Правка'}
+        aria-label={kind === null ? 'Сигнал' : kind === 'deletion' ? `Удаление: ${record.before}` : kind === 'insertion' ? 'Вставка' : 'Замена'}
         style={{
           border: 'none',
           background: 'transparent',

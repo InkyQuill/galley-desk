@@ -402,7 +402,7 @@ test('применение правки в «Сравнении» пишет о�
 
     await page.getByRole('button', { name: 'Сравнение', exact: true }).click();
     await expect(page.locator('.book__comparison')).toContainText('кит');
-    await page.getByRole('button', { name: 'Правка', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Замена', exact: true }).first().click();
     const applyButton = page.getByRole('button', { name: 'Применить', exact: true });
     await expect(applyButton).toBeVisible();
     await applyButton.click();
@@ -542,9 +542,9 @@ test('четыре типа сигналов получают свои цвет�
     // Удаление: zero-width маркер с доступным названием остаётся видимым.
     await selectFromStart(page, 4, 4);
     await page.keyboard.press('Backspace');
-    await expect(page.getByRole('button', { name: 'Удаление: спит' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Удаление: спит', exact: true })).toBeVisible();
     await page.keyboard.press('ControlOrMeta+z');
-    await expect(page.getByRole('button', { name: 'Удаление: спит' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Удаление: спит', exact: true })).toHaveCount(0);
 
     // «Исходник» немаркированный: ни маркеров, ни flyout.
     await page.getByRole('button', { name: 'Исходник', exact: true }).click();
@@ -738,7 +738,7 @@ test('недоступные записи открывают карточку в
     await expect(page.getByRole('button', { name: 'Правка', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Сигнал', exact: true })).toHaveCount(0);
 
-    await page.getByRole('button', { name: /^Правка: кот → кит — недоступна/ }).click();
+    await page.getByRole('button', { name: /^Замена: кот → кит — недоступна/ }).click();
     const card = page.getByRole('dialog', { name: 'Недоступная запись' });
     await expect(card).toBeVisible();
     await expect(card).toContainText('кот → кит');
@@ -778,7 +778,7 @@ test('плотная рецензия остаётся читаемой при �
     await expect(first.locator('svg.tabler-icon-pencil, svg.tabler-icon-plus')).toHaveCount(0);
     await expect(first.locator('.book__record-part')).toHaveCount(1);
     // Conflicting replacement: карандаш и обе строки с компактными минус/плюс.
-    const replacementRow = page.getByRole('button', { name: /^Правка: фрагмент-00/ }).first();
+    const replacementRow = page.getByRole('button', { name: /^Замена: фрагмент-00/ }).first();
     await expect(replacementRow.locator('svg.tabler-icon-pencil')).toHaveCount(1);
     await expect(replacementRow.locator('svg.tabler-icon-minus')).toHaveCount(1);
     await expect(replacementRow.locator('svg.tabler-icon-plus')).toHaveCount(1);
@@ -817,7 +817,7 @@ test('плотная рецензия остаётся читаемой при �
     await page.keyboard.press('Enter');
     await expect(page.getByRole('dialog', { name: 'Недоступная запись' })).toBeVisible();
     await page.keyboard.press('Escape');
-    const active = page.getByRole('button', { name: /^Правка:/ }).filter({ hasNot: page.locator('.book__record-status') }).first();
+    const active = page.getByRole('button', { name: /^Замена:/ }).filter({ hasNot: page.locator('.book__record-status') }).first();
     await active.click();
     await expect(page.getByRole('dialog', { name: 'Правка' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Применить', exact: true })).toBeVisible();
@@ -839,11 +839,11 @@ test('конфликтующие правки исключены из текст
 
     // Обе конфликтуют: производный текст равен исходнику, маркеров нет.
     await expect(content).toContainText('кот спит.');
-    await expect(page.getByRole('button', { name: /^Правка: .* — конфликтует/ })).toHaveCount(2);
+    await expect(page.getByRole('button', { name: /^Замена: .* — конфликтует/ })).toHaveCount(2);
     await expect(page.getByRole('button', { name: 'Правка', exact: true })).toHaveCount(0);
 
     // Карточка конфликтующей записи открывается в панели.
-    await page.getByRole('button', { name: /^Правка: кот → котик/ }).click();
+    await page.getByRole('button', { name: /^Замена: кот → котик/ }).click();
     const card = page.getByRole('dialog', { name: 'Недоступная запись' });
     await expect(card).toContainText('конфликтует');
     await card.getByRole('button', { name: 'Удалить', exact: true }).click();
@@ -869,7 +869,7 @@ test('стек применения очищается после обычной
 
     await page.getByRole('button', { name: 'Сравнение', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Отменить применение' })).toBeDisabled();
-    await page.getByRole('button', { name: 'Правка', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Замена', exact: true }).first().click();
     await page.getByRole('button', { name: 'Применить', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Отменить применение' })).toBeEnabled();
 
@@ -892,7 +892,7 @@ test('стек применения очищается после обычной
     const page = reopen.page;
     await openOwnBook(reopen);
     await page.getByRole('button', { name: 'Сравнение', exact: true }).click();
-    await page.getByRole('button', { name: 'Правка', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Замена', exact: true }).first().click();
     await page.getByRole('button', { name: 'Применить', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Отменить применение' })).toBeEnabled();
 
@@ -993,7 +993,7 @@ test('gutter follows wrapped Markdown and scrolling; deletion has its own focusa
     await openOwnBook(session);
     const deletion = page.getByRole('button', { name: 'Удаление: DELETE ', exact: true });
     // Navigate through the sidebar so CodeMirror materializes this wrapped row.
-    await page.getByRole('button', { name: /^Правка: DELETE / }).click();
+    await page.getByRole('button', { name: /^Удаление: DELETE / }).click();
     await page.keyboard.press('Escape');
     await expect(deletion).toBeVisible();
     const range = page.locator('.gd-edit-range').filter({ hasText: 'replacemen' });
@@ -1227,7 +1227,7 @@ test('delayed ACK maps highlighted support-prefix edit, gutter, preview and reve
     await expect(page.getByRole('tooltip', { name: 'До правки' })).toHaveCount(0);
     await page.keyboard.press('ArrowRight'); // caret reaches the actual X at 3
     await expect(page.getByRole('tooltip', { name: 'До правки' })).toContainText('Добавление');
-    await page.getByRole('button', { name: /^Правка: abc/ }).click();
+    await page.getByRole('button', { name: /^Замена: abc/ }).click();
     const selected = () => page.locator('.cm-content').evaluate((element) => {
       const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
       const selection = view.state.selection.main;
@@ -1240,7 +1240,7 @@ test('delayed ACK maps highlighted support-prefix edit, gutter, preview and reve
     await expect(marker).toHaveAttribute('data-record-pos', '1');
     await selectFromStart(page, 1, 0);
     await expect(page.getByRole('tooltip', { name: 'До правки' }).locator('p')).toHaveText('b');
-    await page.getByRole('button', { name: /^Правка: abc/ }).click();
+    await page.getByRole('button', { name: /^Замена: abc/ }).click();
     expect(await selected()).toEqual({ from: 1, to: 4, text: 'YbX' });
   } finally { await releaseReviewCommands(session.app); await session.app.close(); }
 });
@@ -1339,9 +1339,9 @@ test('переход к удалению из панели: placeholder в viewp
     // Удаления: EOF → начало → середина; каждый следующий переход требует
     // прокрутки к другому краю длинной главы.
     for (const [name, id, neighbour] of [
-      ['Правка: УДАЛИТЬКОНЕЦ →', delEndId, 'Финал'],
-      ['Правка: УДАЛИТЬСТАРТ →', delStartId, 'Альфа'],
-      ['Правка: УДАЛИТЬСЕРЕДИНА →', delMidId, 'Омега'],
+      ['Удаление: УДАЛИТЬКОНЕЦ →', delEndId, 'Финал'],
+      ['Удаление: УДАЛИТЬСТАРТ →', delStartId, 'Альфа'],
+      ['Удаление: УДАЛИТЬСЕРЕДИНА →', delMidId, 'Омега'],
     ] as const) {
       await page.getByRole('button', { name }).click();
       await expect(popup).toBeVisible();
@@ -1366,8 +1366,8 @@ test('переход к удалению из панели: placeholder в viewp
 
     // Замена и вставка продолжают работать: попап у непустого выделения.
     for (const [name, expected] of [
-      ['Правка: кот → кит', 'и'],
-      ['Правка: текст-метка → вставленный текст-метка', 'вставленный'],
+      ['Замена: кот → кит', 'и'],
+      ['Замена: текст-метка → вставленный текст-метка', 'вставленный'],
     ] as const) {
       await page.getByRole('button', { name }).click();
       await expect(popup).toBeVisible();
@@ -1426,7 +1426,7 @@ test('переход к удалению на пустой строке: поп�
     };
 
     // Точка на пустой строке: попап открывается, текст и прокрутка живы.
-    await page.getByRole('button', { name: 'Правка: X →' }).click();
+    await page.getByRole('button', { name: 'Удаление: X →' }).click();
     await expect(popup).toBeVisible();
     expect(await docText()).toBe(derivedText);
     expect(await content.evaluate((element) => element.textContent ?? '')).toContain('Омега');
@@ -1437,7 +1437,7 @@ test('переход к удалению на пустой строке: поп�
     await expect(popup).toHaveCount(0);
 
     // Прокрутка не заклинила: следующая запись переезжает в другой край главы.
-    await page.getByRole('button', { name: 'Правка: УДАЛИТЬХВОСТ →' }).click();
+    await page.getByRole('button', { name: 'Удаление: УДАЛИТЬХВОСТ →' }).click();
     await expect(popup).toBeVisible();
     expect(await docText()).toBe(derivedText);
     await expect.poll(() => inViewport(tailId)).toBe(true);
@@ -1474,7 +1474,7 @@ test('older snapshot cannot replace accepted marker positions, including after t
     await expect.poll(() => page.locator('.book').evaluate(element => getComputedStyle(element).colorScheme)).toBe(nextScheme);
     await page.getByRole('button', {name: 'Закрыть оформление'}).click();
     await expect(page.locator('.gd-edit-range')).toHaveText('YbX');
-    await page.getByRole('button', {name: /^Правка: abc/}).click();
+    await page.getByRole('button', {name: /^Замена: abc/}).click();
     const selected = await page.locator('.cm-content').evaluate(element => {
       const view = (element as HTMLElement & {cmTile: {root: {view: EditorView}}}).cmTile.root.view;
       const {from, to} = view.state.selection.main;
@@ -1506,9 +1506,9 @@ test('виды правок в списке: иконки плюс/минус/к
   try {
     const page = session.page;
     await openOwnBook(session);
-    const replacement = page.getByRole('button', { name: 'Правка: кот → кит', exact: true });
-    const deletion = page.getByRole('button', { name: /^Правка: спит →/ });
-    const trimmed = page.getByRole('button', { name: 'Правка: abc → abXc', exact: true });
+    const replacement = page.getByRole('button', { name: 'Замена: кот → кит', exact: true });
+    const deletion = page.getByRole('button', { name: /^Удаление: спит →/ });
+    const trimmed = page.getByRole('button', { name: 'Замена: abc → abXc', exact: true });
     await expect(replacement).toHaveCount(1);
     await expect(deletion).toHaveCount(1);
     await expect(trimmed).toHaveCount(1);

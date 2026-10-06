@@ -53,13 +53,7 @@ jobs:
           sudo chown root:root "$sandbox"
           sudo chmod 4755 "$sandbox"
       - name: Electron tests (Xvfb and Openbox)
-        run: |
-          xvfb-run --auto-servernum sh -c '
-            openbox > /tmp/galley-openbox.log 2>&1 &
-            wm_pid=$!
-            trap "kill $wm_pid 2>/dev/null || true" EXIT
-            npm run test:desktop
-          '
+        run: scripts/gui-test.sh npm run test:desktop -- --workers=1
         env:
           CI: true
           GALLEY_PACKAGED_EXECUTABLE: ${{ github.workspace }}/apps/desktop/out/galley-desk-linux-x64/galley-desk
@@ -92,19 +86,4 @@ jobs:
         run: npm test
       - name: Forge package
         run: npm run package
-      - name: Locate packaged macOS executable
-        run: |
-          executable="$PWD/apps/desktop/out/Galley Desk-darwin-$(node -p 'process.arch')/Galley Desk.app/Contents/MacOS/Galley Desk"
-          test -x "$executable"
-          echo "GALLEY_PACKAGED_EXECUTABLE=$executable" >> "$GITHUB_ENV"
-      - name: Electron tests
-        run: npm run test:desktop
-        env:
-          CI: true
-      - name: Save failed desktop test evidence
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: desktop-macos-failures
-          path: test-results/
-          if-no-files-found: ignore
+      # GUI tests are NOT RUN: this harness supports isolated Linux/Xvfb only.

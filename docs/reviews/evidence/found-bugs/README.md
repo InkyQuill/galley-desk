@@ -24,7 +24,7 @@
 |---|---|
 | `npm run typecheck` | PASS (лог `typecheck.log`) |
 | `npm test` (vitest) | PASS: 37 файлов, 479/479 (`unit.log`) |
-| `npm run test:contracts` | **NOT RUN** — пиннутый чекаут Pocket Editor недоступен: `.cache/contracts/pocket-editor` в worktree и в основном репозитории отсутствует; сиблинг `../pocket-editor` на `ad3f0909`, не содержит пиннутый объект `f4aa28e2c3f4035502ba4f51cd9b668a867b1527`, и пин недостижим ни из одной remote-ссылки (`git ls-remote origin | grep f4aa28e2` — пусто). Подставлять не-пиннутый чекаут запрещено политикой (`AGENTS.md`), поэтому проверка честно не выполнена |
+| `npm run test:contracts` | **NOT RUN** — пиннутый чекаут Pocket Editor недоступен: `.cache/contracts/pocket-editor` в worktree и в основном репозитории отсутствует; сиблинг `../pocket-editor` на `ad3f0909`, не содержит пиннутый объект `f4aa28e2c3f4035502ba4f51cd9b668a867b1527`, и пин недостижим ни из одной remote-ссылки (`git ls-remote origin \| grep f4aa28e2` — пусто). Подставлять не-пиннутый чекаут запрещено политикой (`AGENTS.md`), поэтому проверка честно не выполнена |
 | `npm run check:security` | PASS, exit 0; 6 известных находок (CSP low, open-external/auxclick/contextIsolation/sandbox medium-high) — разбор в `security.md`, без новых относительно базовых (`security.log`) |
 
 `git diff --check` — чисто.

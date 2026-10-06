@@ -18,9 +18,25 @@ fi
 exec env -u XAUTHORITY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE -u NO_COLOR -u FORCE_COLOR \
   ELECTRON_OZONE_PLATFORM_HINT=x11 \
   GTK_MODULES=colorreload-gtk-module:appmenu-gtk-module \
-  xvfb-run -a sh -c '
+  xvfb-run -a -s '-screen 0 1920x1080x24' sh -c '
     openbox >/tmp/galley-test-openbox.log 2>&1 &
     galley_wm_pid=$!
     trap "kill $galley_wm_pid 2>/dev/null || true" EXIT
+    galley_ready=0
+    for galley_attempt in $(seq 1 50); do
+      if ! kill -0 "$galley_wm_pid" 2>/dev/null; then
+        echo "Openbox exited before becoming ready" >&2
+        exit 1
+      fi
+      if xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q "window id # 0x[1-9a-fA-F]"; then
+        galley_ready=1
+        break
+      fi
+      sleep 0.1
+    done
+    if [ "$galley_ready" -ne 1 ]; then
+      echo "Openbox did not become ready within 5 seconds" >&2
+      exit 1
+    fi
     "$@"
   ' sh "$@"

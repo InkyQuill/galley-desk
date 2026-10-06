@@ -36,11 +36,11 @@ for (const sidecar of ['chapter.review.json', 'chapter.md.review.json']) {
       await expect(page.locator('.book__record--active')).toHaveCount(3);
       await expect(page.locator('.book__record--conflicting')).toHaveCount(2);
       await expect(page.locator('.book__record--unavailable')).toHaveCount(1);
-      await page.getByRole('button', { name: /^Правка: missing → stale — недоступна/ }).click();
+      await page.getByRole('button', { name: /^Замена: missing → stale — недоступна/ }).click();
       await expect(page.getByRole('dialog', { name: 'Недоступная запись' })).toBeVisible();
       await page.keyboard.press('Escape');
       await page.getByRole('button', { name: 'Сравнение', exact: true }).click();
-      await page.getByRole('button', { name: 'Правка: delta → DELTA', exact: true }).click();
+      await page.getByRole('button', { name: 'Замена: delta → DELTA', exact: true }).click();
       await page.getByRole('button', { name: 'Применить', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Отменить применение' })).toBeEnabled();
       expect(await readFile(path.join(root, 'chapter.md'))).not.toEqual(source);

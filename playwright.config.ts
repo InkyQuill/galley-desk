@@ -4,6 +4,7 @@ import { defineConfig } from '@playwright/test';
 // затем `npm run test:desktop` запускает оболочку через electron.launch.
 export default defineConfig({
   testDir: 'tests/desktop',
+  testMatch: '**/*.spec.ts',
   // AGENTS.md «Mandatory GUI test isolation»: refuse to run any GUI test
   // outside an isolated Xvfb virtual display, before anything can launch.
   globalSetup: './tests/desktop/gui-isolation.ts',

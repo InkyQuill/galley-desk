@@ -18,7 +18,10 @@ const signalLabels = { note: 'Заметка', change_required: 'Требует�
 export function recordLabel(record: RecordView): string {
   const suffix =
     record.status === 'active' ? '' : record.status === 'conflicting' ? ' — конфликтует' : ` — недоступна: ${record.reason}`;
-  if (record.kind === 'edit') return `Правка: ${record.before} → ${record.after}${suffix}`;
+  if (record.kind === 'edit') {
+    const labels = { insertion: 'Вставка', deletion: 'Удаление', replacement: 'Замена' };
+    return `${labels[editKind(record)]}: ${record.before} → ${record.after}${suffix}`;
+  }
   const comment = record.comment.length > 0 ? `: ${record.comment}` : '';
   return `Сигнал [${record.signalType ?? ''}]${comment}${suffix}`;
 }

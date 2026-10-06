@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript 5.9, React 19, Electron 44, CodeMirror 6 через `@inkyquill/galley-editor`, Tabler Icons, Vitest, Playwright Electron.
 
-**Spec:** `/home/inky/Yandex.Disk/Obsidian/Galley Desk/Баги.md`; дополнение пользователя от 2026-09-19 о плавающих ошибках; связанный базовый UX-контракт: `docs/superpowers/specs/2026-09-17-diagnostics-and-workspace-ux.md`.
+**Spec:** пользовательский внешний отчёт «Баги.md»; дополнение пользователя от 2026-09-19 о плавающих ошибках; связанный базовый UX-контракт: `docs/superpowers/specs/2026-09-17-diagnostics-and-workspace-ux.md`.
 
 ## Global Constraints
 
@@ -41,7 +41,7 @@
 **Interfaces:** `Diagnostics.requestClose(): void` остаётся единым путём закрытия; `close` native dialog вызывает родительский `onClose` и восстанавливает focus.
 
 - [ ] **Step 1: Зафиксировать RED именно для pointer-пути.** В `diagnostics.spec.ts` открыть окно, кликнуть `button[name="Закрыть диагностику"]` реальным Playwright click и проверить исчезновение dialog и возврат фокуса к trigger. Не заменять клик `.evaluate(element => element.click())`: такой вызов обошёл бы draggable hit-testing, из-за которого Esc работает, а указатель — нет.
-- [ ] **Step 2: Запустить `npx playwright test tests/desktop/diagnostics.spec.ts -g "крестик"` и подтвердить, что dialog остаётся открыт после pointer click.**
+- [ ] **Step 2: Запустить `scripts/gui-test.sh npx playwright test tests/desktop/diagnostics.spec.ts -g "крестик" --workers=1` и подтвердить, что dialog остаётся открыт после pointer click.**
 - [ ] **Step 3: Дать dialog и его интерактивным потомкам `-webkit-app-region: no-drag`.** Добавить класс `diagnostics__close` кнопке и CSS для `.diagnostics, .diagnostics button { -webkit-app-region: no-drag; }`; не менять `requestClose`, `onCancel` и `onClose`.
 - [ ] **Step 4: Проверить pointer, Enter и Escape.** Запустить весь `tests/desktop/diagnostics.spec.ts` и компактный diagnostics-сценарий из `tests/desktop/window-frame.spec.ts`.
 - [ ] **Step 5: Commit.** `git add apps/desktop/src/renderer/diagnostics/Diagnostics.tsx apps/desktop/src/renderer/app.css tests/desktop/diagnostics.spec.ts && git commit -m "fix(diagnostics): make dialog close control clickable"`.
@@ -85,7 +85,7 @@
 - [ ] **Step 4: Исправить line-height карточки.** `.book__record-summary`, `.book__record-part` и `.book__record-excerpt` получают согласованный `line-height: 1.35`; icon-cell имеет фиксированные 18 px и `align-self: start`, без текстовой колонки шириной 3.25rem. Проверить screenshot из журнала на 240/336/560 px.
 - [ ] **Step 5: Сделать gutter фиксированной ширины.** `gutterGeometry` больше не выставляет `columns * 24 + 8`; ширина `.gd-review-gutter` постоянна 32 px. Каждая кнопка получает CSS custom property `--gd-stack-index`; в покое маркеры перекрываются со сдвигом 3 px и обратным z-index, а при `:hover`/`:focus-within` контейнер разворачивает их горизонтально поверх reading surface (`left: calc(var(--gd-stack-index) * 24px)`, `z-index` выше текста) без изменения ширины gutter и без reflow редактора.
 - [ ] **Step 6: Добавить regression на строку с 4+ маркерами.** До/после hover измерить ширину `.gd-review-gutter` и `.cm-content`, убедиться, что они неизменны; каждая кнопка доступна pointer и последовательным Tab, а после ухода/blur стек снова сложен.
-- [ ] **Step 7: Прогнать unit и native тесты.** `npx vitest run apps/desktop/src/renderer/editor/visual-range.test.ts apps/desktop/src/renderer/editor/markers.test.ts`; `npx playwright test tests/desktop/review-actions.spec.ts tests/desktop/sidebar-layout.spec.ts`.
+- [ ] **Step 7: Прогнать unit и native тесты.** `npx vitest run apps/desktop/src/renderer/editor/visual-range.test.ts apps/desktop/src/renderer/editor/markers.test.ts`; `scripts/gui-test.sh npx playwright test tests/desktop/review-actions.spec.ts tests/desktop/sidebar-layout.spec.ts --workers=1`.
 - [ ] **Step 8: Commit.** `git add apps/desktop/src/renderer/editor apps/desktop/src/renderer/review/ReviewList.tsx apps/desktop/src/renderer/app.css tests/desktop/review-actions.spec.ts tests/desktop/sidebar-layout.spec.ts && git commit -m "feat(review): distinguish edit kinds and stack gutter markers"`.
 
 ### Task 5: Перенести переключатели панелей к самим панелям
@@ -125,7 +125,7 @@
 - [ ] **Step 1: Добавить geometry RED.** На 900 и 1280 px измерить расстояние между label/input, input/counter и counter/buttons: не менее 8 px; внутренний horizontal padding панели — 10–12 px; элементы не пересекаются и searchWidth не превышает contentWidth.
 - [ ] **Step 2: Ввести внутренние группы.** `.book__search` получает `padding-inline: 12px` и `gap: 8px`; counter + arrows + close объединить в `.book__search-actions` с `gap: 4px`, input остаётся `flex: 1 1 12rem; min-width: 8rem`. При узкой ширине разрешить wrap между input и actions, не внутри action group.
 - [ ] **Step 3: Проверить неизменность поведения.** Сразу подсвечивается 1/N, Enter/Shift+Enter и стрелки цикличны, Escape сначала очищает запрос и затем закрывает поиск с возвратом focus.
-- [ ] **Step 4: Запустить `npx playwright test tests/desktop/search-and-appearance.spec.ts` и сделать light/dark screenshot панели на 900 px.**
+- [ ] **Step 4: Запустить `scripts/gui-test.sh npx playwright test tests/desktop/search-and-appearance.spec.ts --workers=1` и сделать light/dark screenshot панели на 900 px.**
 - [ ] **Step 5: Commit.** `git add apps/desktop/src/renderer/search/ChapterSearch.tsx apps/desktop/src/renderer/app.css tests/desktop/search-and-appearance.spec.ts && git commit -m "fix(search): space the search controls consistently"`.
 
 ### Task 8: Собрать рабочие ошибки в плавающий нижний центр уведомлений
@@ -141,7 +141,7 @@
 - [ ] **Step 5: Оставить контекстные ошибки локальными.** Не переносить ошибки `MetadataPopover`, `ChapterDialogs`, `RenameBookDialog`, `ChapterNote`, `Diagnostics`, `RecentBooks` и `ErrorBoundary`: они относятся к конкретной форме/экрану и должны оставаться возле соответствующего действия. Зафиксировать это отдельными assertions, чтобы общий notice не дублировал form alert.
 - [ ] **Step 6: Проверить layering и input.** Notice не перехватывает click/selection/scroll за пределами собственной карточки; его кнопки работают мышью и клавиатурой. Native `<dialog>` и metadata popover остаются выше; Tooltip не обрезается. При двух одновременных состояниях карточки складываются вверх, имеют gap 8 px и не выходят за viewport.
 - [ ] **Step 7: Проверить темы, responsive и доступность.** Light/dark × 900/1280/1920 px × 100/125%; accessible snapshot содержит один alert на логическую ошибку. Ошибка длиннее одной строки переносится, действия не обрезаются; на 900 px карточка не перекрывает floating sidebar triggers.
-- [ ] **Step 8: Прогнать `npx playwright test tests/desktop/notifications.spec.ts tests/desktop/workspace-layers.spec.ts tests/desktop/review-actions.spec.ts` и `npm run typecheck`.**
+- [ ] **Step 8: Прогнать `scripts/gui-test.sh npx playwright test tests/desktop/notifications.spec.ts tests/desktop/workspace-layers.spec.ts tests/desktop/review-actions.spec.ts --workers=1` и `npm run typecheck`.**
 - [ ] **Step 9: Commit.** `git add apps/desktop/src/renderer/ui/Notice.tsx apps/desktop/src/renderer/book/BookWindow.tsx apps/desktop/src/renderer/editor/ReviewEditor.tsx apps/desktop/src/renderer/app.css tests/desktop/notifications.spec.ts tests/desktop/workspace-layers.spec.ts tests/desktop/review-actions.spec.ts && git commit -m "feat(ux): float styled work errors over the editor"`.
 
 ### Task 9: Интеграционная приёмка всей партии
@@ -151,7 +151,7 @@
 **Interfaces:** Итоговый evidence перечисляет bug 1–10, test/screenshot и PASS/FAIL; недоступную платформу помечает `NOT RUN`, а не `PASS`.
 
 - [ ] **Step 1: Прогнать статические проверки.** `npm run typecheck`, `npm test`, `npm run test:contracts`, `npm run check:security`.
-- [ ] **Step 2: Прогнать затронутые Electron suites одной командой.** `npx playwright test tests/desktop/diagnostics.spec.ts tests/desktop/review-actions.spec.ts tests/desktop/sidebar-layout.spec.ts tests/desktop/workspace-layers.spec.ts tests/desktop/window-frame.spec.ts tests/desktop/search-and-appearance.spec.ts tests/desktop/open-book.spec.ts tests/desktop/notifications.spec.ts`.
+- [ ] **Step 2: Прогнать затронутые Electron suites одной командой.** `scripts/gui-test.sh npx playwright test tests/desktop/diagnostics.spec.ts tests/desktop/review-actions.spec.ts tests/desktop/sidebar-layout.spec.ts tests/desktop/workspace-layers.spec.ts tests/desktop/window-frame.spec.ts tests/desktop/search-and-appearance.spec.ts tests/desktop/open-book.spec.ts tests/desktop/notifications.spec.ts --workers=1`.
 - [ ] **Step 3: Проверить временную копию реальной книги.** Не менее 20 глав и 20–30 записей: insertion/deletion/replacement, несколько маркеров одной строки, sidebar collapse/overlay, selection toolbar scroll-away/return, deletion navigation, search, open-folder и искусственно вызванный рабочий error notice. До и после сравнить SHA-256 всех Markdown/sidecar; изменения допустимы только в тестовой копии и только там, где сценарий сознательно создаёт запись.
 - [ ] **Step 4: Снять evidence.** Light/dark × 900/1280/1920 × 100/125%; отдельные кадры titlebar, search, compact review rows, collapsed sidebar triggers, marker stack в покое/hover и нижний error notice с действием. Записать host OS и отсутствующие платформы в `README.md`.
 - [ ] **Step 5: Собрать приложение.** `npm run package`; запустить packaged smoke и повторить close diagnostics, open book folder, deletion navigation и responsive sidebar на собранном бинарнике.
