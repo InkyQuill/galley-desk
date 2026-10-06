@@ -270,6 +270,10 @@ if (!app.requestSingleInstanceLock()) {
       // Обёртка (а не ссылка на метод): подмена shell.openExternal в тестах
       // перехватывается, так как свойство читается в момент вызова.
       openExternal: (url) => shell.openExternal(url),
+      // Открытие папки книги: та же обёртка shell.openPath, что и у
+      // диагностики; директорию выбирает main (service.getBookRoot), поэтому
+      // подмена shell.openPath в тестах перехватывается на моменте вызова.
+      openPath: (directory) => shell.openPath(directory),
       windowState: (contents) => {
         const window = BrowserWindow.fromWebContents(contents);
         if (window === null) throw new Error('Window missing');

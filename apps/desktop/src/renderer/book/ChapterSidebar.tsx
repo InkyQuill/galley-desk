@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { IconFilePlus, IconFolderSearch, IconDots, IconSortAscending } from '@tabler/icons-react';
+import { IconFilePlus, IconFolderSearch, IconDots, IconSortAscending, IconLayoutSidebarLeftCollapse } from '@tabler/icons-react';
 import type { BookView } from '../../shared/api';
 import { Tooltip } from '../ui/Tooltip';
 import { matchesChapter } from './chapter-filter';
@@ -16,9 +16,11 @@ export type ChapterSidebarProps = {
   disabled: boolean;
   onOpen(id: string): void;
   onAction(action: ChapterAction): void;
+  /** Скрыть панель оглавления (кнопка в заголовке панели). */
+  onCollapse(): void;
 };
 
-export function ChapterSidebar({ book, activeId, disabled, onOpen, onAction }: ChapterSidebarProps) {
+export function ChapterSidebar({ book, activeId, disabled, onOpen, onAction, onCollapse }: ChapterSidebarProps) {
   const [filter, setFilter] = useState('');
   const [menuId, setMenuId] = useState<string | null>(null);
   const dismissMenu = useCallback(() => setMenuId(null), []);
@@ -34,6 +36,7 @@ export function ChapterSidebar({ book, activeId, disabled, onOpen, onAction }: C
           <Tooltip content="Добавить главу"><button type="button" aria-label="Добавить главу" disabled={disabled} onClick={() => onAction({ kind: 'create' })}><IconFilePlus /></button></Tooltip>
           <Tooltip content="Сортировать главы"><button type="button" aria-label="Сортировать главы" disabled={disabled || book.entries.length === 0} onClick={() => onAction({ kind: 'sort', filterActive: filter.trim().length > 0 })}><IconSortAscending /></button></Tooltip>
           <Tooltip content="Найти главы в папке"><button type="button" aria-label="Найти главы в папке" disabled={disabled} onClick={() => onAction({ kind: 'discover' })}><IconFolderSearch /></button></Tooltip>
+          <Tooltip content="Скрыть оглавление"><button type="button" className="book__panel-collapse" aria-label="Скрыть оглавление" onClick={onCollapse}><IconLayoutSidebarLeftCollapse /></button></Tooltip>
         </div>
       </div>
       <input type="text" className="book__chapter-filter" aria-label="Фильтр глав" placeholder="Фильтр глав…" value={filter} onChange={event => setFilter(event.target.value)} />

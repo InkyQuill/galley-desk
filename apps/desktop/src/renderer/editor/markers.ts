@@ -20,12 +20,13 @@
 import { Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, gutter } from '@codemirror/view';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { IconBolt, IconPencil, IconTrash } from '@tabler/icons-react';
+import { IconBolt, IconMinus, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
 import { Range, StateEffect, StateField } from '@codemirror/state';
 import { useSyncExternalStore } from 'react';
 import type { DecorationSet } from '@codemirror/view';
 import type { Extension, Text } from '@codemirror/state';
-import { visualRecord, recordsInReadingOrder } from './visual-range';
+import { editKind, visualRecord, recordsInReadingOrder } from './visual-range';
+import type { EditKind } from './visual-range';
 import type { RecordView } from '../../shared/api';
 
 export const SIGNAL_TYPES = ['note', 'change_required', 'warning', 'review'] as const;
@@ -237,8 +238,34 @@ const recordMarkersField = StateField.define<DecorationSet>({
 
 // These strings come only from bundled Tabler components, never book content.
 const trash = renderToStaticMarkup(createElement(IconTrash, { size: 14, 'aria-hidden': true }));
-const pencil = renderToStaticMarkup(createElement(IconPencil, { size: 18, 'aria-hidden': true }));
-const bolt = renderToStaticMarkup(createElement(IconBolt, { size: 18, 'aria-hidden': true }));
+type MarkerIconName = 'bolt' | 'plus' | 'minus' | 'pencil';
+const markerIcons: Record<MarkerIconName, string> = {
+  bolt: renderToStaticMarkup(createElement(IconBolt, { size: 18, 'aria-hidden': true })),
+  plus: renderToStaticMarkup(createElement(IconPlus, { size: 18, 'aria-hidden': true })),
+  minus: renderToStaticMarkup(createElement(IconMinus, { size: 18, 'aria-hidden': true })),
+  pencil: renderToStaticMarkup(createElement(IconPencil, { size: 18, 'aria-hidden': true })),
+};
+const editKindIcons: Record<EditKind, Exclude<MarkerIconName, 'bolt'>> = {
+  insertion: 'plus', deletion: 'minus', replacement: 'pencil',
+};
+
+/**
+ * Иконка, цвет и подпись кнопки gutter для одной записи. Запись здесь —
+ * ИСХОДНАЯ (см. recordMarkers): вставка — plus, удаление — minus и
+ * deletionColor, замена — pencil и EDIT_MARKER_COLOR; подпись содержит
+ * полный текст правки.
+ */
+export function recordMarkerSpec(record: RecordView, theme: ThemeName): { icon: keyof typeof markerIcons; color: string; label: string } {
+  if (record.kind === 'signal') {
+    return { icon: 'bolt', color: signalColor(record.signalType ?? 'note', theme), label: 'Сигнал' };
+  }
+  const kind = editKind(record);
+  return {
+    icon: editKindIcons[kind],
+    color: kind === 'deletion' ? deletionColor(theme) : EDIT_MARKER_COLOR,
+    label: kind === 'deletion' ? `Удаление: ${record.before}` : 'Правка',
+  };
+}
 
 class RecordGutterMarker extends GutterMarker {
   constructor(readonly records: RecordView[], readonly theme: ThemeName) { super(); }
@@ -259,11 +286,10 @@ class RecordGutterMarker extends GutterMarker {
       button.className = 'gd-record-marker';
       button.dataset.recordId = record.id;
       button.dataset.recordPos = String(record.from);
-      const deletion = record.kind === 'edit' && record.after === '';
-      button.setAttribute('aria-label', record.kind === 'signal' ? 'Сигнал' : deletion ? `Удаление: ${record.before}` : 'Правка');
-      button.style.color = record.kind === 'signal' ? signalColor(record.signalType ?? 'note', this.theme) :
-        deletion ? deletionColor(this.theme) : EDIT_MARKER_COLOR;
-      button.innerHTML = record.kind === 'signal' ? bolt : pencil;
+      const spec = recordMarkerSpec(record, this.theme);
+      button.setAttribute('aria-label', spec.label);
+      button.style.color = spec.color;
+      button.innerHTML = markerIcons[spec.icon];
       group.appendChild(button);
     }
     return group;
@@ -294,16 +320,16 @@ const gutterGeometry = ViewPlugin.fromClass(class {
         });
       },
       write: (positions, view) => {
-        let columns = 1;
         for (const { button, pos, top, column } of positions) {
           if (pos !== null) button.dataset.recordPos = String(pos);
           button.style.top = `${top}px`;
-          button.style.left = `${column * 24}px`;
-          columns = Math.max(columns, column + 1);
+          // Стек одной визуальной строки: сдвиг и z-index считает CSS из
+          // --gd-stack-index (3 px в покое, разворот при hover/:focus-within),
+          // ширина gutter постоянна и не зависит от числа маркеров.
+          button.style.setProperty('--gd-stack-index', String(column));
         }
         const dom = view.dom.querySelector<HTMLElement>('.gd-review-gutter');
         if (dom) {
-          dom.style.width = `${columns * 24 + 8}px`;
           // CM hides decorative gutters by default; ours contains real controls.
           dom.parentElement?.removeAttribute('aria-hidden');
         }
@@ -338,7 +364,11 @@ export function recordMarkers(): Extension {
     class: 'gd-review-gutter',
     lineMarker: (view, line) => {
       const records = recordsForGutterLine(view.state.field(mappedVisualRecords), line.from, line.to);
-      return records.length ? new RecordGutterMarker(records, currentTheme()) : null;
+      if (records.length === 0) return null;
+      // Классификация по исходным записям: обрезка общего префикса/суффикса
+      // не должна превращать replacement в ложную insertion/deletion.
+      const originals = new Map(view.state.field(mappedRecords).map((record) => [record.id, record]));
+      return new RecordGutterMarker(records.map((record) => originals.get(record.id) ?? record), currentTheme());
     },
     lineMarkerChange: (update) => update.startState.field(mappedVisualRecords) !== update.state.field(mappedVisualRecords),
   }), gutterGeometry];

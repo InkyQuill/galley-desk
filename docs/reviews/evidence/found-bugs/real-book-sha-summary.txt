@@ -1,0 +1,3 @@
+source (original book): 54 files, before==after: yes
+copy added files: chapter-001-v2.review.json chapter-002-v2.review.json chapter-003-v2.review.json (18 edits + 4 signals = 22 records, all deliberate scenario actions)
+copy changed/removed pre-existing files: none; every pre-existing copy file byte-identical to the untouched source

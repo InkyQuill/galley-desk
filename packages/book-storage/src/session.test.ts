@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, expect, test } from 'vitest';
@@ -261,6 +261,27 @@ test('a failed note update is kept as a draft and checkExternal switches the ses
   expect(drafts[0]!.id).toBe(chapterId);
   expect(drafts[0]!.pair.review).toBe(encodeReview(noted));
   expect(drafts[0]!.pair.source).toEqual(BYTES);
+});
+
+test('an unchanged disk pair keeps a failed save in error with its pending draft', async () => {
+  const { book, chapterId, appData, root } = await makeBook();
+  const session = await ChapterSession.open(book, chapterId, appData);
+  const before = await readPair(book, chapterId);
+  await chmod(root, 0o555);
+  try {
+    await expect(session.edit([{ from: 4, to: 4, insert: '!' }], { anchor: 5, head: 5 })).rejects.toThrow();
+    const drafts = await readDrafts(appData);
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]?.pair.review).toContain('!');
+    expect(await session.checkExternal()).toBe(false);
+    expect(await session.checkExternal()).toBe(false);
+    expect(session.state).toBe('error');
+    expect(await readPair(book, chapterId)).toEqual(before);
+    expect(await readDrafts(appData)).toEqual(drafts);
+    await expect(session.flushPending()).rejects.toThrow();
+  } finally {
+    await chmod(root, 0o755);
+  }
 });
 
 test('a failing draft write keeps the model and the error state', async () => {

@@ -119,20 +119,110 @@ test('responsive layout has no horizontal overflow and collapsed panels open as 
     expect(await panelWidth(page, '.book__chapters')).toBe(315);
     await dragBy(page, 'Ширина оглавления', 32);
     await expect(page.locator('.book__chapters')).toHaveCSS('width', '347px');
-    await page.getByRole('button', { name: 'Рецензия', exact: true }).click();
+    await page.getByRole('button', { name: 'Показать рецензию', exact: true }).click();
     const overlay = page.getByRole('dialog', { name: 'Рецензия' });
     await expect(overlay).toBeVisible();
     await expect(overlay.getByRole('button', { name: 'Закрыть панель' })).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(overlay).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Рецензия', exact: true })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Показать рецензию', exact: true })).toBeFocused();
 
     await page.setViewportSize({ width: 700, height: 850 });
     await expect(page.locator('.book__chapters')).toHaveCount(0);
     await expect(page.locator('.book__review')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-    await page.getByRole('button', { name: 'Оглавление', exact: true }).click();
+    await page.getByRole('button', { name: 'Показать оглавление', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Оглавление' })).toBeVisible();
+  } finally {
+    await session.app.close();
+  }
+});
+
+test('panel toggles live in the panel headings and collapsed panels keep floating show triggers', async () => {
+  const bookRoot = await temp('galley-heading-toggles-book-');
+  const userData = await temp('galley-heading-toggles-user-');
+  await writeFile(path.join(bookRoot, 'Глава.md'), `# Глава\n\n${'текст '.repeat(400)}\n`, 'utf8');
+  const session = await launch(userData, bookRoot);
+  try {
+    const { page } = session;
+    await expect(page.locator('.cm-content')).toBeVisible();
+
+    // Wide layout: each toggle lives inside its own panel.
+    const chaptersHide = page.locator('.book__chapters-heading').getByRole('button', { name: 'Скрыть оглавление', exact: true });
+    await expect(chaptersHide).toBeVisible();
+    expect(await chaptersHide.evaluate(el => el.closest('nav.book__chapters') !== null)).toBe(true);
+    const reviewHeading = page.locator('.book__review .book__panel-heading');
+    await expect(reviewHeading.getByRole('heading', { name: 'Рецензия' })).toBeVisible();
+    const reviewHide = reviewHeading.getByRole('button', { name: 'Скрыть рецензию', exact: true });
+    await expect(reviewHide).toBeVisible();
+    expect(await reviewHide.evaluate(el => el.closest('aside.book__review') !== null)).toBe(true);
+    await expect(page.locator('.book__toolbar button[aria-label="Оглавление"]')).toHaveCount(0);
+    await expect(page.locator('.book__toolbar button[aria-label="Рецензия"]')).toHaveCount(0);
+
+    // Hiding a panel leaves a floating trigger at the same edge; the reading
+    // column keeps the full body width (the trigger is out of the grid flow).
+    const bodyWidth = await page.locator('.book__body').evaluate(el => el.getBoundingClientRect().width);
+    await chaptersHide.click();
+    await expect(page.locator('.book__chapters')).toHaveCount(0);
+    const showChapters = page.getByRole('button', { name: 'Показать оглавление', exact: true });
+    await expect(showChapters).toBeVisible();
+    const chaptersBox = (await showChapters.boundingBox())!;
+    expect(chaptersBox.x).toBeLessThanOrEqual(24);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+    await reviewHide.click();
+    await expect(page.locator('.book__review')).toHaveCount(0);
+    const showReview = page.getByRole('button', { name: 'Показать рецензию', exact: true });
+    await expect(showReview).toBeVisible();
+    const reviewBox = (await showReview.boundingBox())!;
+    const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+    expect(reviewBox.x + reviewBox.width).toBeGreaterThanOrEqual(clientWidth - 24);
+    expect(await page.locator('.book__content').evaluate(el => el.getBoundingClientRect().width)).toBeCloseTo(bodyWidth, 0);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+    // Clicking a floating trigger restores the panel and moves focus to its heading action.
+    await showChapters.click();
+    await expect(page.locator('.book__chapters')).toHaveCount(1);
+    await expect(chaptersHide).toBeFocused();
+    await expect(showChapters).toHaveCount(0);
+    await showReview.click();
+    await expect(page.locator('.book__review')).toHaveCount(1);
+    await expect(reviewHide).toBeFocused();
+    await expect(showReview).toHaveCount(0);
+
+    // Narrow layout: width-collapsed panels open as overlays from their
+    // floating triggers; Escape closes and returns focus to the trigger.
+    // At 900 px only the review panel loses its column (chapters still fits).
+    await page.setViewportSize({ width: 900, height: 700 });
+    await expect(page.locator('.book__review')).toHaveCount(0);
+    await expect(page.locator('.book__chapters')).toHaveCount(1);
+    await expect(showReview).toBeVisible();
+    await showReview.click();
+    const overlay = page.getByRole('dialog', { name: 'Рецензия' });
+    await expect(overlay).toBeVisible();
+    await expect(overlay.getByRole('button', { name: 'Закрыть панель' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(overlay).toHaveCount(0);
+    await expect(showReview).toBeFocused();
+    await page.setViewportSize({ width: 700, height: 700 });
+    await expect(page.locator('.book__chapters')).toHaveCount(0);
+    await expect(page.locator('.book__review')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await expect(showChapters).toBeVisible();
+    await showChapters.click();
+    const tocOverlay = page.getByRole('dialog', { name: 'Оглавление' });
+    await expect(tocOverlay).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(tocOverlay).toHaveCount(0);
+    await expect(showChapters).toBeFocused();
+
+    // Zen hides the collapsed panels together with their floating triggers.
+    await page.keyboard.press('ControlOrMeta+Alt+z');
+    await expect(showChapters).toHaveCount(0);
+    await expect(showReview).toHaveCount(0);
+    await page.keyboard.press('ControlOrMeta+Alt+z');
+    await expect(showChapters).toBeVisible();
+    await expect(showReview).toBeVisible();
   } finally {
     await session.app.close();
   }

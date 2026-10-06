@@ -338,6 +338,9 @@ export type DeskIpcDeps = {
   broadcast: SnapshotBroadcaster;
   /** Внешнее открытие ссылок (main передаёт shell.openExternal); инъекция — для тестов. */
   openExternal: (url: string) => Promise<void>;
+  /** Открытие папки средствами shell (main передаёт shell.openPath; инъекция —
+   * для тестов). Директорию выбирает только main: из service.getBookRoot. */
+  openPath?: (directory: string) => Promise<string>;
   windowState?: (contents: WebContents) => WindowState;
   windowAction?: (contents: WebContents, action: WindowAction) => WindowState;
   /** Диагностический журнал; опционален (сбой создания логгера не блокирует IPC). */
@@ -475,6 +478,13 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
     return pending;
   });
   handle('desk:open-external', (_event, args) => openExternalVia(deps.openExternal, args[0]));
+  // Папку книги открывает только main: корень берётся из реестра открытых
+  // книг по opaque id (service.getBookRoot), лишние аргументы renderer —
+  // игнорируются (см. openBookFolderVia), path от renderer не принимается.
+  handle('desk:open-book-folder', (_event, args) => {
+    if (deps.openPath === undefined) throw new IpcError('SAVE_FAILED', 'Папка книги недоступна');
+    return openBookFolderVia(service.getBookRoot, deps.openPath, args);
+  });
   // Successful per-keystroke typing is never logged: only a report the
   // renderer explicitly sends (unhandled error/rejection, boundary catch)
   // reaches this channel, and a flood of such reports beyond the rate limit
@@ -548,6 +558,25 @@ export async function openExternalVia(
     throw new IpcError('SAVE_FAILED', EXTERNAL_LINK_REJECTED_MESSAGE);
   }
   await openExternal(url);
+}
+
+/**
+ * Открывает папку уже открытой книги: корень берётся ТОЛЬКО из реестра
+ * сервиса по opaque id (service.getBookRoot) — путь от renderer не
+ * принимается, лишние аргументы вызова игнорируются целиком и никогда не
+ * доходят до shell. Неизвестный/пустой id — BOOK_MISSING; непустая строка
+ * отказа shell (shell.openPath отвечает '' при успехе) превращается в
+ * видимый IpcError, а не глотается.
+ */
+export async function openBookFolderVia(
+  getBookRoot: (bookId: string) => string | undefined,
+  openPath: (directory: string) => Promise<string>,
+  args: unknown[],
+): Promise<void> {
+  const root = getBookRoot(asStringArg(args[0]));
+  if (root === undefined) throw new IpcError('BOOK_MISSING', 'Книга не открыта');
+  const failure = await openPath(root);
+  if (failure !== '') throw new IpcError('SAVE_FAILED', 'Не удалось открыть папку книги');
 }
 
 // Forge Vite plugin defines these at build time (dev server URL in dev).

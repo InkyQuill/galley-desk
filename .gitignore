@@ -16,3 +16,4 @@ out/
 # Playwright artifacts
 playwright-report/
 test-results/
+.worktrees/

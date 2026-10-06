@@ -31,19 +31,12 @@ export function SignalFlyout({ x, bottom, onPick, registerFocus }: Props) {
       data-review-flyout="true"
       role="toolbar"
       aria-label="Тип сигнала"
+      className="review-flyout"
+      // Inline остаётся только живая позиция из геометрии выделения;
+      // презентация панели и кнопок — в app.css (.review-flyout*).
       style={{
-        position: 'fixed',
         left: Math.max(8, Math.min(x, window.innerWidth - 320)),
         top: Math.min(bottom + 6, window.innerHeight - 48),
-        zIndex: 35,
-        display: 'flex',
-        gap: 4,
-        padding: 4,
-        borderRadius: 8,
-        background: 'var(--app-panel)',
-        color: 'var(--app-text)',
-        border: 'none',
-        boxShadow: 'var(--app-dialog-shadow)',
       }}
     >
       {SIGNAL_TYPES.map((type) => (
@@ -51,16 +44,12 @@ export function SignalFlyout({ x, bottom, onPick, registerFocus }: Props) {
           <button
             aria-label={signalLabels[type]}
             type="button"
+            className="review-flyout__action"
             // preventDefault на mousedown сохраняет выделение и фокус редактора.
             onMouseDown={(event) => event.preventDefault()}
-            style={{
-              color: signalColor(type, theme),
-              borderColor: signalColor(type, theme),
-              background: 'transparent',
-              borderRadius: 6,
-              cursor: 'pointer',
-              padding: '0.15rem 0.5rem',
-            }}
+            // Цвет пары — данные сигнала (ReviewColors); фон и hover-отклик
+            // живут в CSS: inline background глушит общее hover-правило.
+            style={{ color: signalColor(type, theme), borderColor: signalColor(type, theme) }}
             onClick={() => onPick(type)}
           >
             {(() => { const Icon = signalIcons[type]; return <Icon size={20} aria-hidden="true" />; })()}

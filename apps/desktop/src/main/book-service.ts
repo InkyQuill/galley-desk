@@ -405,7 +405,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
         missing: !(await isFile(path.join(handle.root, chapter.path))),
       })),
     );
-    return { bookId: handle.id, title: handle.manifest.title, entries };
+    return { bookId: handle.id, path: handle.root, title: handle.manifest.title, entries };
   }
 
   async function openFolder(folder: string): Promise<BookView> {

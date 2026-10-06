@@ -29,12 +29,12 @@ test('workspace layers preserve drafts, own Escape and remain painted inside the
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Заметка главы', exact: true }).click();
     await page.getByLabel('Текст заметки').fill('Unsaved survives layout');
-    await page.getByRole('button', { name: 'Рецензия', exact: true }).click();
-    await page.getByRole('button', { name: 'Рецензия', exact: true }).click();
+    await page.getByRole('button', { name: 'Скрыть рецензию', exact: true }).click();
+    await page.getByRole('button', { name: 'Показать рецензию', exact: true }).click();
     await expect(page.getByLabel('Текст заметки')).toHaveValue('Unsaved survives layout');
     await page.setViewportSize({ width: 900, height: 700 });
     await expect(page.locator('.book__review')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Рецензия', exact: true }).click();
+    await page.getByRole('button', { name: 'Показать рецензию', exact: true }).click();
     await page.evaluate(() => {
       const state = globalThis as typeof globalThis & { maxChapterNotes?: number; chapterNoteObserver?: MutationObserver };
       state.maxChapterNotes = document.querySelectorAll('.chapter-note').length;
@@ -54,7 +54,7 @@ test('workspace layers preserve drafts, own Escape and remain painted inside the
     await expect(page.getByLabel('Текст заметки')).toHaveValue('Unsaved survives layout');
     await page.setViewportSize({ width: 900, height: 700 });
     await expect(page.locator('.book__review')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Рецензия', exact: true }).click();
+    await page.getByRole('button', { name: 'Показать рецензию', exact: true }).click();
     await page.getByLabel('Текст заметки').press('Escape');
     await expect(page.locator('.book__sidebar-overlay')).toBeVisible();
     await page.keyboard.press('Escape');
@@ -85,16 +85,16 @@ test('workspace layers preserve drafts, own Escape and remain painted inside the
       await page.keyboard.press('Escape');
     }
     await page.setViewportSize({ width: 700, height: 600 });
-    await page.getByRole('button', { name: 'Оглавление', exact: true }).click();
+    await page.getByRole('button', { name: 'Показать оглавление', exact: true }).click();
     await page.locator('.book__chapter-menu-button').first().click();
     await page.keyboard.press('Escape');
     await expect(page.locator('.book__sidebar-overlay')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.locator('.book__sidebar-overlay')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Оглавление', exact: true }).click();
+    await page.getByRole('button', { name: 'Показать оглавление', exact: true }).click();
     await page.getByRole('button', { name: 'Добавить главу', exact: true }).click();
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('button', { name: 'Оглавление', exact: true })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Показать оглавление', exact: true })).toBeFocused();
     await expect(page.locator('.book__search')).toBeVisible();
     await page.getByRole('button', { name: 'Меню книги', exact: true }).click();
     await page.locator('.book__menu-diagnostics').click();
@@ -111,12 +111,16 @@ test('workspace layers preserve drafts, own Escape and remain painted inside the
     await page.getByRole('dialog', { name: 'Заметка главы', exact: true }).getByRole('button', { name: 'Сохранить', exact: true }).click();
     await expect(page.locator('.chapter-note [role=alert]')).toBeVisible();
     const noteError = await page.locator('.chapter-note [role=alert]').innerText();
-    await page.getByRole('button', { name: 'Рецензия', exact: true }).click();
-    await page.getByRole('button', { name: 'Рецензия', exact: true }).click();
+    // Книжный уровень того же сбоя живёт в плавающем центре уведомлений (Task 8)
+    // отдельной карточкой — форма заметки остаётся локальной у своего действия.
+    const workNotice = page.locator('.notice-center .notice--error').filter({ hasText: 'Test note save failure' });
+    await expect(workNotice).toBeVisible();
+    await page.getByRole('button', { name: 'Скрыть рецензию', exact: true }).click();
+    await page.getByRole('button', { name: 'Показать рецензию', exact: true }).click();
     await expect(page.locator('.chapter-note [role=alert]')).toHaveText(noteError);
     await page.setViewportSize({ width: 900, height: 700 });
     await expect(page.locator('.book__review')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Рецензия', exact: true }).click();
+    await page.getByRole('button', { name: 'Показать рецензию', exact: true }).click();
     await expect(page.locator('.chapter-note [role=alert]')).toHaveText(noteError);
     await page.setViewportSize({ width: 1280, height: 900 });
     await expect(page.locator('.chapter-note [role=alert]')).toHaveText(noteError);
@@ -124,6 +128,9 @@ test('workspace layers preserve drafts, own Escape and remain painted inside the
     await page.keyboard.press('ControlOrMeta+Alt+z');
     await expect(page.locator('.chapter-note [role=alert]')).toHaveText(noteError);
     await expect(page.getByLabel('Текст заметки')).toHaveValue('Unsaved survives layout');
+    // Уведомление не исчезает по таймеру: после панельных циклов, смен ширины
+    // и Zen карточка книжного сбоя на месте — её снимет разрешение состояния.
+    await expect(workNotice).toBeVisible();
     expect(await readFile(path.join(root, '01.review.json'), 'utf8').catch(() => '')).not.toContain('Unsaved survives layout');
   } finally {
     await app.evaluate(({ app }) => app.exit(0)).catch(() => undefined);
@@ -143,7 +150,7 @@ test('second Escape closes the chapter overlay after its menu restores trigger f
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 700, height: 600 });
     await page.getByRole('button', { name: 'Открыть папку…' }).click();
-    await page.getByRole('button', { name: 'Оглавление', exact: true }).click();
+    await page.getByRole('button', { name: 'Показать оглавление', exact: true }).click();
     await page.locator('.book__chapter-menu-button').click();
     await page.keyboard.press('Escape');
     await expect(page.locator('.book__sidebar-overlay')).toBeVisible();
@@ -176,7 +183,7 @@ test('large review tooltip wraps long tokens and clips multiline previews at 125
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.setZoomFactor(1.25));
     await page.getByRole('button', { name: 'Открыть папку…' }).click();
     await expect(page.locator('.cm-content')).toBeVisible();
-    if (await page.locator('.book__review').count() === 0) await page.getByRole('button', { name: 'Рецензия', exact: true }).click();
+    if (await page.locator('.book__review').count() === 0) await page.getByRole('button', { name: 'Показать рецензию', exact: true }).click();
     const record = page.locator('.book__record').first();
     await record.focus();
     const tooltip = page.locator('#gd-tooltip');

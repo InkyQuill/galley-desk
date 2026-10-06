@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
-import { IconCopy, IconInfoCircle, IconMinus, IconSquare, IconX } from '@tabler/icons-react';
+import { IconCopy, IconFolderOpen, IconInfoCircle, IconMinus, IconSquare, IconX } from '@tabler/icons-react';
 import type { WindowAction, WindowState } from '../shared/api';
 import { Diagnostics } from './diagnostics/Diagnostics';
 import { Tooltip } from './ui/Tooltip';
@@ -11,9 +11,21 @@ const iconUrl = new URL('../../assets/branding/galley-desk-icon.svg', import.met
 // Hosting Diagnostics here keeps the real panel reachable from both owners.
 // It also answers the main-process app menu's "Диагностика" item (macOS,
 // see main.ts) via onOpenDiagnosticsRequest.
-export type TitleBarProps = { title: string; children?: ReactNode };
+export type TitleBarProps = {
+  title: string;
+  /** Канонический путь книги: мелкая вторая строка identity (у экрана
+   * недавних его нет — welcome передаёт только title). */
+  subtitle?: string;
+  /** Индикатор сохранения: первый элемент строки заголовка книги
+   * (role=status остаётся; never hidden -- см. UX-контракт тайтлбара). */
+  status?: ReactNode;
+  /** Открыть папку книги: main сам выбирает директорию по opaque id
+   * (desk:open-book-folder); кнопка рядом с путём, no-drag. */
+  onOpenLocation?: () => void;
+  children?: ReactNode;
+};
 
-export function TitleBar({ title, children }: TitleBarProps) {
+export function TitleBar({ title, subtitle, status, onOpenLocation, children }: TitleBarProps) {
   const [state, setState] = useState<WindowState | null>(null);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const diagnosticsButtonRef = useRef<HTMLButtonElement>(null);
@@ -62,10 +74,38 @@ export function TitleBar({ title, children }: TitleBarProps) {
     if (state !== null && state.platform !== 'darwin' && noDrag === null) act('toggle-maximize');
   };
 
+  // Режим книги: identity (заголовок + статус сохранения + путь) заменяет
+  // одиночный title; текстовая identity остаётся drag-областью, no-drag —
+  // только кнопка папки. У экрана недавних identity нет (welcome передаёт
+  // только title), поэтому прежний span сохраняется как есть.
+  const bookIdentity = subtitle !== undefined || status !== undefined || onOpenLocation !== undefined;
+
   return (
     <header className={`titlebar${state?.platform === 'darwin' ? ' titlebar--mac' : ''}`} onDoubleClick={toggleOnDoubleClick}>
       <img className="titlebar__icon" src={iconUrl} alt="Galley Desk" />
-      <span className="titlebar__title">{title}</span>
+      {bookIdentity ? (
+        <div className="titlebar__identity">
+          <div className="titlebar__identity-heading">
+            <span className="titlebar__title">{title}</span>
+            {status}
+          </div>
+          {subtitle !== undefined && (
+            <Tooltip content={subtitle}>
+              <button
+                type="button"
+                className="titlebar__folder"
+                aria-label="Открыть папку книги"
+                onClick={() => onOpenLocation?.()}
+              >
+                <IconFolderOpen />
+                <span className="titlebar__path">{subtitle}</span>
+              </button>
+            </Tooltip>
+          )}
+        </div>
+      ) : (
+        <span className="titlebar__title">{title}</span>
+      )}
       {children !== undefined && <div className="titlebar__actions">{children}</div>}
       <Tooltip content="Диагностика">
         <button

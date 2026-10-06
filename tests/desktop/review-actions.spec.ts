@@ -332,6 +332,13 @@ test('заметка главы сохраняется в sidecar; при оши
     await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Заметка главы' }).getByRole('alert')).toBeVisible();
     await expect(note).toHaveValue('Глава требует вычитки и правки');
+
+    // Книжный уровень того же сбоя — плавающая карточка в центре уведомлений
+    // с единственным действием «Перечитать главу» (Task 8); алерт формы
+    // остаётся внутри диалога заметки, у своего действия.
+    const workNotice = page.locator('.notice-center .notice--error');
+    await expect(workNotice).toBeVisible();
+    await expect(workNotice.getByRole('button', { name: 'Перечитать главу' })).toHaveCount(1);
   } finally {
     await chmod(bookRoot, 0o755);
     await forceStop(session.app);
@@ -395,7 +402,7 @@ test('применение правки в «Сравнении» пишет о�
 
     await page.getByRole('button', { name: 'Сравнение', exact: true }).click();
     await expect(page.locator('.book__comparison')).toContainText('кит');
-    await page.getByRole('button', { name: 'Правка', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Замена', exact: true }).first().click();
     const applyButton = page.getByRole('button', { name: 'Применить', exact: true });
     await expect(applyButton).toBeVisible();
     await applyButton.click();
@@ -535,14 +542,87 @@ test('четыре типа сигналов получают свои цвет�
     // Удаление: zero-width маркер с доступным названием остаётся видимым.
     await selectFromStart(page, 4, 4);
     await page.keyboard.press('Backspace');
-    await expect(page.getByRole('button', { name: 'Удаление: спит' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Удаление: спит', exact: true })).toBeVisible();
     await page.keyboard.press('ControlOrMeta+z');
-    await expect(page.getByRole('button', { name: 'Удаление: спит' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Удаление: спит', exact: true })).toHaveCount(0);
 
     // «Исходник» немаркированный: ни маркеров, ни flyout.
     await page.getByRole('button', { name: 'Исходник', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Сигнал', exact: true })).toHaveCount(0);
     await expect(page.locator('.book__source')).toHaveText(SOURCE_TEXT);
+  } finally {
+    await session.app.close();
+  }
+});
+
+test('flyout привязан к живой геометрии: hover подсвечивает действие, прокрутка прячет и возвращает панель', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-flyout-scroll-');
+  const paragraphs = Array.from({ length: 120 }, (_, i) => `Абзац ${i}: строка для прокрутки главы.`);
+  const sourceText = `${paragraphs.join('\n\n')}\n`;
+  await writeBook(bookRoot, emptyReview());
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const session = await launch(bookRoot);
+  try {
+    const page = session.page;
+    await openOwnBook(session);
+    const sidecarPath = path.join(bookRoot, SIDECAR_PATH);
+    const mdPath = path.join(bookRoot, CHAPTER_PATH);
+    const mdBefore = await readFile(mdPath, 'utf8');
+    const sidecarBefore = await readFile(sidecarPath, 'utf8');
+    const content = page.locator('.cm-content');
+    const flyout = page.locator('[data-review-flyout]');
+    const scroller = page.locator('.cm-scroller');
+
+    await selectFromStart(page, 0, 6);
+    await expect(flyout).toBeVisible();
+    // Hover обязан подсвечивать действие: inline background: transparent
+    // сильнее общего hover-правила и гасит отклик.
+    const note = flyout.getByRole('button', { name: 'Заметка', exact: true });
+    const idle = await note.evaluate((element) => getComputedStyle(element).backgroundColor);
+    await note.hover();
+    await expect.soft.poll(async () => note.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(idle);
+
+    // Выделение покидает viewport → панель прячется.
+    await scroller.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await expect.soft(flyout).toHaveCount(0);
+
+    // Возврат прокрутки возвращает панель к тому же выделению.
+    await scroller.evaluate((element) => { element.scrollTop = 0; });
+    await expect(flyout).toBeVisible();
+    await expect.poll(async () => {
+      const box = await flyout.boundingBox();
+      const end = await content.evaluate((element) => {
+        const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+        return view.coordsAtPos(view.state.selection.main.to);
+      });
+      if (box === null || end === null) return false;
+      // Панель стоит сразу под концом выделения (top = bottom + 6).
+      return box.y >= end.bottom - 1 && box.y - end.bottom <= 40;
+    }).toBe(true);
+    // Само выделение round-trip прокрутки не тронул.
+    expect(await content.evaluate((element) => {
+      const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+      const { from, to } = view.state.selection.main;
+      return { from, to };
+    })).toEqual({ from: 0, to: 6 });
+    // И данные не тронуты: глава и sidecar байт в байт.
+    expect(await readFile(mdPath, 'utf8')).toBe(mdBefore);
+    expect(await readFile(sidecarPath, 'utf8')).toBe(sidecarBefore);
+
+    // Переход из панели рецензии открывает только попап записи: панель
+    // действий не воскресает поверх попапа, в том числе при прокрутке.
+    await createSignal(page, sidecarPath, { skip: 0, length: 6 }, 'note', 'Прокрутка');
+    await selectFromStart(page, 20, 6);
+    await expect(flyout).toBeVisible();
+    await page.getByRole('button', { name: 'Сигнал [note]: Прокрутка' }).click();
+    const popup = page.getByRole('dialog', { name: 'Сигнал' });
+    await expect(popup).toBeVisible();
+    await expect(flyout).toHaveCount(0);
+    await scroller.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await expect(popup).toBeVisible();
+    await expect(flyout).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(popup).toHaveCount(0);
   } finally {
     await session.app.close();
   }
@@ -658,7 +738,7 @@ test('недоступные записи открывают карточку в
     await expect(page.getByRole('button', { name: 'Правка', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Сигнал', exact: true })).toHaveCount(0);
 
-    await page.getByRole('button', { name: /^Правка: кот → кит — недоступна/ }).click();
+    await page.getByRole('button', { name: /^Замена: кот → кит — недоступна/ }).click();
     const card = page.getByRole('dialog', { name: 'Недоступная запись' });
     await expect(card).toBeVisible();
     await expect(card).toContainText('кот → кит');
@@ -687,12 +767,25 @@ test('плотная рецензия остаётся читаемой при �
     const initialNames = await records.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')));
 
     const first = records.first();
-    await expect(first.getByText('Было', { exact: true })).toBeVisible();
-    await expect(first.getByText('Стало', { exact: true })).toBeVisible();
+    // Слова «Было/Стало» заменены иконками: в тексте строк их больше нет,
+    // а полный текст правки остаётся в aria-label (и Tooltip).
+    await expect(page.locator('.book__records')).not.toContainText('Было');
+    await expect(page.locator('.book__records')).not.toContainText('Стало');
+    // Первая активная запись dense-фикстуры — deletion (eds 0/1 конфликтуют
+    // и уходят в конец): minus-иконка и одна строка «Было».
+    expect(initialNames[0]).toContain('фрагмент-02');
+    await expect(first.locator('svg.tabler-icon-minus')).toHaveCount(1);
+    await expect(first.locator('svg.tabler-icon-pencil, svg.tabler-icon-plus')).toHaveCount(0);
+    await expect(first.locator('.book__record-part')).toHaveCount(1);
+    // Conflicting replacement: карандаш и обе строки с компактными минус/плюс.
+    const replacementRow = page.getByRole('button', { name: /^Замена: фрагмент-00/ }).first();
+    await expect(replacementRow.locator('svg.tabler-icon-pencil')).toHaveCount(1);
+    await expect(replacementRow.locator('svg.tabler-icon-minus')).toHaveCount(1);
+    await expect(replacementRow.locator('svg.tabler-icon-plus')).toHaveCount(1);
     await expect(page.locator('.book__record-status', { hasText: 'конфликтует' })).toHaveCount(2);
     await expect(page.locator('.book__record-status', { hasText: 'недоступна' })).toHaveCount(1);
+    // Обрезанная вставка показывает заполнитель пустой строки «Было».
     await expect(page.getByText('вставка', { exact: true })).toBeVisible();
-    await expect(page.getByText('удаление', { exact: true })).toBeVisible();
     await expect(page.getByText('Предупреждение', { exact: true })).toBeVisible();
 
     const reviewResizer = page.getByRole('separator', { name: 'Ширина рецензии' });
@@ -707,6 +800,7 @@ test('плотная рецензия остаётся читаемой при �
       await expect.poll(() => page.locator('.book__review').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       await expect.poll(() => records.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')))).toEqual(initialNames);
       await expect(first.locator('.book__record-excerpt').first()).toHaveCSS('-webkit-line-clamp', '3');
+      await page.screenshot({ path: test.info().outputPath(`dense-review-${width}.png`) });
     }
 
     await first.focus();
@@ -723,7 +817,7 @@ test('плотная рецензия остаётся читаемой при �
     await page.keyboard.press('Enter');
     await expect(page.getByRole('dialog', { name: 'Недоступная запись' })).toBeVisible();
     await page.keyboard.press('Escape');
-    const active = page.getByRole('button', { name: /^Правка:/ }).filter({ hasNot: page.locator('.book__record-status') }).first();
+    const active = page.getByRole('button', { name: /^Замена:/ }).filter({ hasNot: page.locator('.book__record-status') }).first();
     await active.click();
     await expect(page.getByRole('dialog', { name: 'Правка' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Применить', exact: true })).toBeVisible();
@@ -745,11 +839,11 @@ test('конфликтующие правки исключены из текст
 
     // Обе конфликтуют: производный текст равен исходнику, маркеров нет.
     await expect(content).toContainText('кот спит.');
-    await expect(page.getByRole('button', { name: /^Правка: .* — конфликтует/ })).toHaveCount(2);
+    await expect(page.getByRole('button', { name: /^Замена: .* — конфликтует/ })).toHaveCount(2);
     await expect(page.getByRole('button', { name: 'Правка', exact: true })).toHaveCount(0);
 
     // Карточка конфликтующей записи открывается в панели.
-    await page.getByRole('button', { name: /^Правка: кот → котик/ }).click();
+    await page.getByRole('button', { name: /^Замена: кот → котик/ }).click();
     const card = page.getByRole('dialog', { name: 'Недоступная запись' });
     await expect(card).toContainText('конфликтует');
     await card.getByRole('button', { name: 'Удалить', exact: true }).click();
@@ -775,7 +869,7 @@ test('стек применения очищается после обычной
 
     await page.getByRole('button', { name: 'Сравнение', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Отменить применение' })).toBeDisabled();
-    await page.getByRole('button', { name: 'Правка', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Замена', exact: true }).first().click();
     await page.getByRole('button', { name: 'Применить', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Отменить применение' })).toBeEnabled();
 
@@ -798,7 +892,7 @@ test('стек применения очищается после обычной
     const page = reopen.page;
     await openOwnBook(reopen);
     await page.getByRole('button', { name: 'Сравнение', exact: true }).click();
-    await page.getByRole('button', { name: 'Правка', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Замена', exact: true }).first().click();
     await page.getByRole('button', { name: 'Применить', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Отменить применение' })).toBeEnabled();
 
@@ -899,7 +993,7 @@ test('gutter follows wrapped Markdown and scrolling; deletion has its own focusa
     await openOwnBook(session);
     const deletion = page.getByRole('button', { name: 'Удаление: DELETE ', exact: true });
     // Navigate through the sidebar so CodeMirror materializes this wrapped row.
-    await page.getByRole('button', { name: /^Правка: DELETE / }).click();
+    await page.getByRole('button', { name: /^Удаление: DELETE / }).click();
     await page.keyboard.press('Escape');
     await expect(deletion).toBeVisible();
     const range = page.locator('.gd-edit-range').filter({ hasText: 'replacemen' });
@@ -1133,7 +1227,7 @@ test('delayed ACK maps highlighted support-prefix edit, gutter, preview and reve
     await expect(page.getByRole('tooltip', { name: 'До правки' })).toHaveCount(0);
     await page.keyboard.press('ArrowRight'); // caret reaches the actual X at 3
     await expect(page.getByRole('tooltip', { name: 'До правки' })).toContainText('Добавление');
-    await page.getByRole('button', { name: /^Правка: abc/ }).click();
+    await page.getByRole('button', { name: /^Замена: abc/ }).click();
     const selected = () => page.locator('.cm-content').evaluate((element) => {
       const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
       const selection = view.state.selection.main;
@@ -1146,7 +1240,7 @@ test('delayed ACK maps highlighted support-prefix edit, gutter, preview and reve
     await expect(marker).toHaveAttribute('data-record-pos', '1');
     await selectFromStart(page, 1, 0);
     await expect(page.getByRole('tooltip', { name: 'До правки' }).locator('p')).toHaveText('b');
-    await page.getByRole('button', { name: /^Правка: abc/ }).click();
+    await page.getByRole('button', { name: /^Замена: abc/ }).click();
     expect(await selected()).toEqual({ from: 1, to: 4, text: 'YbX' });
   } finally { await releaseReviewCommands(session.app); await session.app.close(); }
 });
@@ -1200,6 +1294,158 @@ for (const to of [4, 5]) {
   });
 }
 
+test('переход к удалению из панели: placeholder в viewport, текст главы не гаснет, попап открыт', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-reveal-deletion-');
+  const START = 'УДАЛИТЬСТАРТ';
+  const MID = 'УДАЛИТЬСЕРЕДИНА';
+  const END = 'УДАЛИТЬКОНЕЦ';
+  const filler = ' Тихие слова вдоль реки.';
+  const head = Array.from({ length: 80 }, (_, i) => `Абзац ${String(i).padStart(3, '0')}:${filler.repeat(6)}`);
+  const tail = Array.from({ length: 80 }, (_, i) => `Хвост ${String(i).padStart(3, '0')}:${filler.repeat(6)}`);
+  const sourceText = [`${START} Альфа`, ...head, `кот ${MID} Омега`, 'текст-метка преемник', ...tail, `Финал ${END}`].join('\n');
+  const derivedText = [' Альфа', ...head, 'кит  Омега', 'вставленный текст-метка преемник', ...tail, 'Финал '].join('\n');
+  const delStartId = randomUUID();
+  const replId = randomUUID();
+  const insId = randomUUID();
+  const delMidId = randomUUID();
+  const delEndId = randomUUID();
+  const source = new TextEncoder().encode(sourceText);
+  const rangeOf = (needle: string) => {
+    const from = new TextEncoder().encode(sourceText.slice(0, sourceText.indexOf(needle))).length;
+    return { from, to: from + new TextEncoder().encode(needle).length };
+  };
+  const review: Review = { ...emptyReview(), edits: [
+    { id: delStartId, before: START, after: '', anchor: makeAnchor(source, rangeOf(START)) },
+    { id: replId, before: 'кот', after: 'кит', anchor: makeAnchor(source, rangeOf('кот')) },
+    { id: insId, before: 'текст-метка', after: 'вставленный текст-метка', anchor: makeAnchor(source, rangeOf('текст-метка')) },
+    { id: delMidId, before: MID, after: '', anchor: makeAnchor(source, rangeOf(MID)) },
+    { id: delEndId, before: END, after: '', anchor: makeAnchor(source, rangeOf(END)) },
+  ] };
+  await writeBook(bookRoot, review);
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const session = await launch(bookRoot);
+  try {
+    const page = session.page;
+    await openOwnBook(session);
+    const content = page.locator('.cm-content');
+    const scroller = page.locator('.cm-scroller');
+    const popup = page.getByRole('dialog', { name: 'Правка', exact: true });
+    await expect(page.locator('.book__record')).toHaveCount(5);
+    const docText = () => content.evaluate((element) => {
+      const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+      return view.state.doc.toString();
+    });
+
+    // Удаления: EOF → начало → середина; каждый следующий переход требует
+    // прокрутки к другому краю длинной главы.
+    for (const [name, id, neighbour] of [
+      ['Удаление: УДАЛИТЬКОНЕЦ →', delEndId, 'Финал'],
+      ['Удаление: УДАЛИТЬСТАРТ →', delStartId, 'Альфа'],
+      ['Удаление: УДАЛИТЬСЕРЕДИНА →', delMidId, 'Омега'],
+    ] as const) {
+      await page.getByRole('button', { name }).click();
+      await expect(popup).toBeVisible();
+      // Документ не повреждён переходом: производный текст равен ожидаемому.
+      expect(await docText()).toBe(derivedText);
+      // .cm-content не «гаснет»: текст вокруг точки удаления остаётся в DOM.
+      const contentText = await content.evaluate((element) => element.textContent ?? '');
+      expect(contentText).toContain(neighbour);
+      const placeholder = content.locator(`[data-record-id="${id}"]`);
+      await expect(placeholder).toBeVisible();
+      await expect.poll(async () => {
+        const box = await placeholder.boundingBox();
+        const frame = await scroller.boundingBox();
+        if (box === null || frame === null) return false;
+        return box.y >= frame.y - 1 && box.y + box.height <= frame.y + frame.height + 1;
+      }).toBe(true);
+      const scrollTop = await scroller.evaluate((element) => element.scrollTop);
+      expect(Number.isFinite(scrollTop)).toBe(true);
+      await page.keyboard.press('Escape');
+      await expect(popup).toHaveCount(0);
+    }
+
+    // Замена и вставка продолжают работать: попап у непустого выделения.
+    for (const [name, expected] of [
+      ['Замена: кот → кит', 'и'],
+      ['Замена: текст-метка → вставленный текст-метка', 'вставленный'],
+    ] as const) {
+      await page.getByRole('button', { name }).click();
+      await expect(popup).toBeVisible();
+      expect(await docText()).toBe(derivedText);
+      const selection = await content.evaluate((element) => {
+        const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+        const main = view.state.selection.main;
+        return { empty: main.empty, text: view.state.sliceDoc(main.from, main.to) };
+      });
+      expect(selection.empty).toBe(false);
+      expect(selection.text).toContain(expected);
+      await page.keyboard.press('Escape');
+      await expect(popup).toHaveCount(0);
+    }
+  } finally { await session.app.close(); }
+});
+
+test('переход к удалению на пустой строке: попап у якоря, прокрутка не заклинивает', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-reveal-empty-line-');
+  const filler = ' Тихие слова вдоль реки.';
+  const head = Array.from({ length: 40 }, (_, i) => `Голова ${String(i).padStart(3, '0')}:${filler.repeat(6)}`);
+  const tail = Array.from({ length: 40 }, (_, i) => `Хвост ${String(i).padStart(3, '0')}:${filler.repeat(6)}`);
+  // Удаление «X» оставляет пустую строку: точка записи лежит между переносами.
+  const sourceText = [...head, 'Альфа', 'X', 'Омега', ...tail, 'УДАЛИТЬХВОСТ'].join('\n');
+  const derivedText = [...head, 'Альфа', '', 'Омега', ...tail, ''].join('\n');
+  const emptyLineId = randomUUID();
+  const tailId = randomUUID();
+  const source = new TextEncoder().encode(sourceText);
+  const rangeOf = (needle: string) => {
+    const from = new TextEncoder().encode(sourceText.slice(0, sourceText.indexOf(needle))).length;
+    return { from, to: from + new TextEncoder().encode(needle).length };
+  };
+  const review: Review = { ...emptyReview(), edits: [
+    { id: emptyLineId, before: 'X', after: '', anchor: makeAnchor(source, rangeOf('X')) },
+    { id: tailId, before: 'УДАЛИТЬХВОСТ', after: '', anchor: makeAnchor(source, rangeOf('УДАЛИТЬХВОСТ')) },
+  ] };
+  await writeBook(bookRoot, review);
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const session = await launch(bookRoot);
+  try {
+    const page = session.page;
+    await openOwnBook(session);
+    const content = page.locator('.cm-content');
+    const scroller = page.locator('.cm-scroller');
+    const popup = page.getByRole('dialog', { name: 'Правка', exact: true });
+    await expect(page.locator('.book__record')).toHaveCount(2);
+    const docText = () => content.evaluate((element) => {
+      const view = (element as HTMLElement & { cmTile: { root: { view: EditorView } } }).cmTile.root.view;
+      return view.state.doc.toString();
+    });
+    const inViewport = async (id: string) => {
+      const box = await content.locator(`[data-record-id="${id}"]`).boundingBox();
+      const frame = await scroller.boundingBox();
+      if (box === null || frame === null) return false;
+      return box.y >= frame.y - 1 && box.y + box.height <= frame.y + frame.height + 1;
+    };
+
+    // Точка на пустой строке: попап открывается, текст и прокрутка живы.
+    await page.getByRole('button', { name: 'Удаление: X →' }).click();
+    await expect(popup).toBeVisible();
+    expect(await docText()).toBe(derivedText);
+    expect(await content.evaluate((element) => element.textContent ?? '')).toContain('Омега');
+    await expect(content.locator(`[data-record-id="${emptyLineId}"]`)).toBeVisible();
+    await expect.poll(() => inViewport(emptyLineId)).toBe(true);
+    expect(Number.isFinite(await scroller.evaluate((element) => element.scrollTop))).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(popup).toHaveCount(0);
+
+    // Прокрутка не заклинила: следующая запись переезжает в другой край главы.
+    await page.getByRole('button', { name: 'Удаление: УДАЛИТЬХВОСТ →' }).click();
+    await expect(popup).toBeVisible();
+    expect(await docText()).toBe(derivedText);
+    await expect.poll(() => inViewport(tailId)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(popup).toHaveCount(0);
+  } finally { await session.app.close(); }
+});
+
 test('older snapshot cannot replace accepted marker positions, including after theme changes', async () => {
   const bookRoot = await makeTempDir('galley-e2e-stale-markers-');
   const id = randomUUID();
@@ -1228,12 +1474,140 @@ test('older snapshot cannot replace accepted marker positions, including after t
     await expect.poll(() => page.locator('.book').evaluate(element => getComputedStyle(element).colorScheme)).toBe(nextScheme);
     await page.getByRole('button', {name: 'Закрыть оформление'}).click();
     await expect(page.locator('.gd-edit-range')).toHaveText('YbX');
-    await page.getByRole('button', {name: /^Правка: abc/}).click();
+    await page.getByRole('button', {name: /^Замена: abc/}).click();
     const selected = await page.locator('.cm-content').evaluate(element => {
       const view = (element as HTMLElement & {cmTile: {root: {view: EditorView}}}).cmTile.root.view;
       const {from, to} = view.state.selection.main;
       return view.state.sliceDoc(from, to);
     });
     expect(selected).toBe('YbX');
+  } finally { await session.app.close(); }
+});
+
+test('виды правок в списке: иконки плюс/минус/карандаш вместо слов «Было/Стало», полный aria-label остаётся', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-edit-kinds-');
+  const sourceText = 'кот abc спит.\n';
+  const source = new TextEncoder().encode(sourceText);
+  const rangeOf = (needle: string) => {
+    const from = new TextEncoder().encode(sourceText.slice(0, sourceText.indexOf(needle))).length;
+    return { from, to: from + new TextEncoder().encode(needle).length };
+  };
+  const trimmedId = randomUUID();
+  const review: Review = { ...emptyReview(), edits: [
+    { id: randomUUID(), before: 'кот', after: 'кит', anchor: makeAnchor(source, rangeOf('кот')) },
+    { id: randomUUID(), before: 'спит', after: '', anchor: makeAnchor(source, rangeOf('спит')) },
+    // Общий префикс/суффикс: визуально '' → 'X', но классификация идёт по
+    // исходной записи — replacement (карандаш), а не ложная вставка (плюс).
+    { id: trimmedId, before: 'abc', after: 'abXc', anchor: makeAnchor(source, rangeOf('abc')) },
+  ] };
+  await writeBook(bookRoot, review);
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const session = await launch(bookRoot);
+  try {
+    const page = session.page;
+    await openOwnBook(session);
+    const replacement = page.getByRole('button', { name: 'Замена: кот → кит', exact: true });
+    const deletion = page.getByRole('button', { name: /^Удаление: спит →/ });
+    const trimmed = page.getByRole('button', { name: 'Замена: abc → abXc', exact: true });
+    await expect(replacement).toHaveCount(1);
+    await expect(deletion).toHaveCount(1);
+    await expect(trimmed).toHaveCount(1);
+
+    // Иконка по виду правки: pencil/minus/plus, скрытые от ассистивных технологий.
+    await expect(replacement.locator('svg.tabler-icon-pencil')).toHaveCount(1);
+    await expect(replacement.locator('svg.tabler-icon-minus')).toHaveCount(1);
+    await expect(replacement.locator('svg.tabler-icon-plus')).toHaveCount(1);
+    await expect(replacement.locator('svg.tabler-icon-pencil')).toHaveAttribute('aria-hidden', 'true');
+    await expect(deletion.locator('svg.tabler-icon-minus')).toHaveCount(1);
+    await expect(deletion.locator('svg.tabler-icon-pencil, svg.tabler-icon-plus')).toHaveCount(0);
+
+    // Строки по виду правки: replacement — обе строки, deletion — только «Было»;
+    // визуальная обрезка видна в содержимом (кот→кит даёт 'о'→'и').
+    const replacementParts = replacement.locator('.book__record-part');
+    await expect(replacementParts).toHaveCount(2);
+    await expect(replacementParts.nth(0).locator('.book__record-excerpt')).toHaveText('о');
+    await expect(replacementParts.nth(1).locator('.book__record-excerpt')).toHaveText('и');
+    const deletionParts = deletion.locator('.book__record-part');
+    await expect(deletionParts).toHaveCount(1);
+    await expect(deletionParts.locator('.book__record-excerpt')).toHaveText('спит');
+    // Обрезанная replacement показывает заполнитель пустой строки «Было».
+    const trimmedParts = trimmed.locator('.book__record-part');
+    await expect(trimmedParts).toHaveCount(2);
+    await expect(trimmedParts.nth(0).locator('.book__record-excerpt')).toHaveText('вставка');
+    await expect(trimmedParts.nth(1).locator('.book__record-excerpt')).toHaveText('X');
+    // ...и её gutter-маркер остаётся карандашом «Правка», не плюсом.
+    const trimmedMarker = page.locator(`.gd-review-gutter [data-record-id="${trimmedId}"]`);
+    await expect(trimmedMarker).toHaveCount(1);
+    await expect(trimmedMarker).toHaveAttribute('aria-label', 'Правка');
+    await expect(trimmedMarker.locator('svg.tabler-icon-pencil')).toHaveCount(1);
+    await expect(trimmedMarker.locator('svg.tabler-icon-plus')).toHaveCount(0);
+
+    // Видимые слова «Было/Стало» убраны; удаление окрашено deletionColor.
+    await expect(page.locator('.book__records')).not.toContainText('Было');
+    await expect(page.locator('.book__records')).not.toContainText('Стало');
+    expect(await deletion.locator('svg').evaluate((element) => getComputedStyle(element).color)).toBe('rgb(164, 46, 46)');
+  } finally { await session.app.close(); }
+});
+
+test('стек маркеров одной строки: ширина gutter и текста неизменна, hover/Tab разворачивают, blur складывает', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-marker-stack-');
+  const sourceText = 'один два три четыре пять\n';
+  const source = new TextEncoder().encode(sourceText);
+  const rangeOf = (needle: string) => {
+    const from = new TextEncoder().encode(sourceText.slice(0, sourceText.indexOf(needle))).length;
+    return { from, to: from + new TextEncoder().encode(needle).length };
+  };
+  const review: Review = { ...emptyReview(), edits: [
+    { id: randomUUID(), before: 'два', after: 'дважды', anchor: makeAnchor(source, rangeOf('два')) },
+    { id: randomUUID(), before: 'три', after: '', anchor: makeAnchor(source, rangeOf('три')) },
+    { id: randomUUID(), before: 'четыре', after: 'четыре раза', anchor: makeAnchor(source, rangeOf('четыре')) },
+    { id: randomUUID(), before: 'пять', after: 'пятёрка', anchor: makeAnchor(source, rangeOf('пять')) },
+  ] };
+  await writeBook(bookRoot, review);
+  await writeFile(path.join(bookRoot, CHAPTER_PATH), sourceText);
+  const session = await launch(bookRoot);
+  try {
+    const page = session.page;
+    await openOwnBook(session);
+    const content = page.locator('.cm-content');
+    const markers = page.locator('.gd-review-gutter .gd-record-marker');
+    await expect(markers).toHaveCount(4);
+    const widths = () => page.evaluate(() => ({
+      gutter: document.querySelector('.gd-review-gutter')!.getBoundingClientRect().width,
+      content: document.querySelector('.cm-content')!.getBoundingClientRect().width,
+    }));
+    const lefts = () => page.evaluate(() => [...document.querySelectorAll('.gd-review-gutter .gd-record-marker')]
+      .map((button) => parseFloat(getComputedStyle(button as HTMLElement).left)));
+    const idle = await widths();
+    // Фиксированный gutter: стек не расширяет колонку под маркеры
+    // (было 4*24+8 = 104 px; допускаем суб-пиксельное округление хоста).
+    expect(idle.gutter).toBeCloseTo(32, 0);
+    await expect.poll(lefts).toEqual([0, 3, 6, 9]);
+
+    // Hover разворачивает стек горизонтально поверх текста, ширины прежние.
+    await markers.nth(0).hover();
+    await expect.poll(lefts).toEqual([0, 24, 48, 72]);
+    expect(await widths()).toEqual(idle);
+
+    // Каждая кнопка доступна указателем: клик открывает попап записи.
+    await markers.nth(2).click();
+    await expect(page.getByRole('dialog', { name: 'Правка' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Правка' })).toHaveCount(0);
+
+    // Уводим указатель: раскрытие держит только фокус (focus-within).
+    await page.mouse.move(600, 500);
+    await markers.nth(0).focus();
+    await expect(markers.nth(0)).toBeFocused();
+    for (let index = 1; index < 4; index++) {
+      await page.keyboard.press('Tab');
+      await expect(markers.nth(index)).toBeFocused();
+    }
+    await expect.poll(lefts).toEqual([0, 24, 48, 72]);
+
+    // После blur стек снова сложен, ширины не изменились: reflow редактора нет.
+    await content.focus();
+    await expect.poll(lefts).toEqual([0, 3, 6, 9]);
+    expect(await widths()).toEqual(idle);
   } finally { await session.app.close(); }
 });

@@ -4,7 +4,7 @@ import { ChapterDialogs } from './ChapterDialogs';
 import { RenameBookDialog } from './RenameBookDialog';
 import { MetadataPopover } from './MetadataPopover';
 import type { MetadataPopoverHandle } from './MetadataPopover';
-import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconPencil, IconInfoCircle, IconX, IconLayoutSidebar, IconLayoutSidebarRight } from '@tabler/icons-react';
+import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconPencil, IconInfoCircle, IconX, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand } from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { AppearanceSettings, BookView, Command, RecordView, Snapshot } from '../../shared/api';
@@ -32,6 +32,7 @@ import { SIDEBAR_BOUNDS } from '../../shared/layout';
 import { CENTER_MIN_WIDTH, RESIZER_WIDTH, fitLayout } from './layout';
 import { SidebarResizer } from './SidebarResizer';
 import { TitleBar } from '../TitleBar';
+import { NoticeCenter, Notice } from '../ui/Notice';
 
 type Props = {
   book: BookView;
@@ -201,6 +202,10 @@ export function BookWindow({
   // сохранения при внешнем изменении — см. handleCommand).
   const snapshotRef = useRef<Snapshot | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Сообщение очереди редактора (onCommandError) при неразрешённом внешнем
+  // изменении: показывается отдельной карточкой без «Перечитать главу» и не
+  // переключает чип титлбара (см. handleCommandError).
+  const [commandError, setCommandError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<ViewMode>('text');
   const modeRef = useRef(mode);
@@ -250,8 +255,10 @@ export function BookWindow({
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
-  const chaptersButtonRef = useRef<HTMLButtonElement>(null);
-  const reviewButtonRef = useRef<HTMLButtonElement>(null);
+  // Floating-триггеры свёрнутых панелей (у левого/правого края .book__body);
+  // получение фокуса при закрытии панели и возврат фокуса после overlay.
+  const chaptersTriggerRef = useRef<HTMLButtonElement>(null);
+  const reviewTriggerRef = useRef<HTMLButtonElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const overlayPanelRef = useRef<HTMLDivElement>(null);
   const [availableWidth, setAvailableWidth] = useState(() => window.innerWidth);
@@ -279,7 +286,7 @@ export function BookWindow({
       if (overlayPanelRef.current?.contains(event.target as Node) || (event.target as Element).closest('.book__chapter-menu-items')) return;
       const side = sidebarOverlay;
       setSidebarOverlay(null);
-      requestAnimationFrame(() => (side === 'chapters' ? chaptersButtonRef : reviewButtonRef).current?.focus());
+      requestAnimationFrame(() => (side === 'chapters' ? chaptersTriggerRef : reviewTriggerRef).current?.focus());
     };
     document.addEventListener('pointerdown', dismiss);
     return () => document.removeEventListener('pointerdown', dismiss);
@@ -463,7 +470,7 @@ export function BookWindow({
       if (overlay.sidebarOverlay !== null) {
         event.preventDefault(); event.stopPropagation();
         setSidebarOverlay(null);
-        (overlay.sidebarOverlay === 'chapters' ? chaptersButtonRef : reviewButtonRef).current?.focus();
+        (overlay.sidebarOverlay === 'chapters' ? chaptersTriggerRef : reviewTriggerRef).current?.focus();
         return;
       }
       if (overlay.popup !== null) {
@@ -726,6 +733,30 @@ export function BookWindow({
   );
 
   /**
+   * Отказ команды из FIFO редактора (ReviewEditor.onCommandError): строка
+   * «локальный текст сохранён…» сводится в ту же рабочую область ошибок, где
+   * уже живёт saveError, поэтому сбой показывается одной карточкой с одним
+   * действием «Перечитать главу» — прежний дубль-алерт внутри редактора убран.
+   * null (успешная синхронизация очереди) снимает отдельное сообщение. При
+   * неразрешённом внешнем изменении отказ ввода (STALE_REVISION) — не сбой
+   * сохранения: то же маскирующее правило, что и в handleCommand, — строка
+   * показывается отдельной карточкой без «Перечитать главу» и не переводит
+   * чип титлбара в «Ошибка сохранения» (в остальных случаях transport уже
+   * положил отказ в saveError, и здесь она просто обновляется его строкой).
+   */
+  const handleCommandError = useCallback((message: string | null): void => {
+    if (message === null) {
+      setCommandError(null);
+      return;
+    }
+    if (snapshotRef.current?.saveState === 'external') {
+      setCommandError(message);
+      return;
+    }
+    setSaveError(message);
+  }, []);
+
+  /**
    * Маршрут команд записи: в «Тексте» команды идут через FIFO редактора
    * (порядок с вводом сохраняется), в остальных видах — напрямую в main.
    */
@@ -752,6 +783,7 @@ export function BookWindow({
         // Явное разрешение внешнего изменения — единственный (кроме
         // «Перечитать главу») путь принять внешнюю базу в редакторе.
         setSaveError(null);
+        setCommandError(null);
         setEditorEpoch((epoch) => epoch + 1);
       } catch (cause) {
         setSaveError(errorText(cause));
@@ -763,6 +795,7 @@ export function BookWindow({
   const rereadChapter = useCallback(() => {
     if (chapterId === null) return;
     setError(null);
+    setCommandError(null);
     window.desk
       .openChapter(book.bookId, chapterId)
       .then((loaded) => {
@@ -806,6 +839,14 @@ export function BookWindow({
     }
     onClose();
   };
+
+  // Папку книги открывает main (desk:open-book-folder): renderer передаёт
+  // только opaque id. Отказ shell не глотается — попадает в существующую
+  // видимую область ошибок книги.
+  const openBookFolder = useCallback((): void => {
+    setError(null);
+    window.desk.openBookFolder(book.bookId).catch((cause: unknown) => setError(errorText(cause)));
+  }, [book.bookId]);
 
   /** Смена вида закрывает всплывающие слои: flyout не бывает вне «Текста». */
   const switchMode = useCallback(async (next: ViewMode): Promise<void> => {
@@ -865,19 +906,23 @@ export function BookWindow({
     [flyout],
   );
 
-  /** Выбор записи в панели: скролл только при известном якоре; иначе карточка. */
+  /** Выбор записи в панели: попап у геометрии reveal; null — карточка. */
   const selectRecord = useCallback(
     (record: RecordView) => {
       setPopup(null);
       setCardId(null);
       const anchored = record.from !== null && record.to !== null;
-      if (anchored && mode === 'text' && editorApi !== null && editorApi.reveal(record.id)) {
-        // Программный переход к записи не оставляет flyout: reveal выделяет
-        // диапазон (selection window успевает сработать) — гасим его здесь.
-        setFlyout(null);
-        const coords = editorApi.coordsAt(record.to as number);
-        setPopup({ kind: 'record', id: record.id, at: coords === null ? null : { x: coords.left, y: coords.top, bottom: coords.bottom } });
-        return;
+      if (anchored && mode === 'text' && editorApi !== null) {
+        const at = editorApi.reveal(record.id);
+        if (at !== null) {
+          // Программный переход к записи не оставляет flyout: reveal выделяет
+          // диапазон (selection window успевает сработать) — гасим его здесь.
+          setFlyout(null);
+          setPopup({ kind: 'record', id: record.id, at });
+          return;
+        }
+        // null — настоящая невозможность перехода (записи нет в редакторе):
+        // manuscript не трогаем, команду не выполняем, карточка в панели.
       }
       if (anchored && mode === 'comparison' && comparisonRef.current !== null) {
         const marker = comparisonRef.current.querySelector<HTMLElement>(`[data-record-id="${cssEscape(record.id)}"]`);
@@ -913,14 +958,25 @@ export function BookWindow({
   const zenShortcut = zenShortcutLabel(platform);
   const preferredLayout = layoutPreview ?? layout;
   const fittedLayout = useMemo(() => fitLayout(preferredLayout, availableWidth), [preferredLayout, availableWidth]);
+  // Фокус в кнопку заголовка открывшейся панели; rAF ждёт коммит React —
+  // панель уже смонтирована, floating-триггер уже размонтирован. Запрос через
+  // `:scope >` исключает копии панелей внутри dialog-overlay.
+  const focusPanelHeading = useCallback((side: 'chapters' | 'review'): void => {
+    requestAnimationFrame(() => {
+      bodyRef.current?.querySelector<HTMLButtonElement>(
+        side === 'chapters' ? ':scope > .book__chapters .book__panel-collapse' : ':scope > .book__review .book__panel-collapse',
+      )?.focus();
+    });
+  }, []);
   useEffect(() => {
     if (sidebarOverlay === null) return;
     const stillResponsive = sidebarOverlay === 'chapters' ? fittedLayout.chaptersCollapsed : fittedLayout.reviewCollapsed;
     if (stillResponsive) return;
     const side = sidebarOverlay;
     setSidebarOverlay(null);
-    requestAnimationFrame(() => (side === 'chapters' ? chaptersButtonRef : reviewButtonRef).current?.focus());
-  }, [fittedLayout, sidebarOverlay]);
+    // Окно стало шире: панель открывается сама, триггер исчезает — фокус в её заголовок.
+    focusPanelHeading(side);
+  }, [fittedLayout, sidebarOverlay, focusPanelHeading]);
   const chaptersCollapsed = zen || chaptersHidden || fittedLayout.chaptersCollapsed;
   const reviewCollapsed = zen || reviewHidden || fittedLayout.reviewCollapsed;
   const sidebarOverlayCollapsed = sidebarOverlay === 'chapters' ? chaptersCollapsed : reviewCollapsed;
@@ -953,27 +1009,34 @@ export function BookWindow({
       setSidebarOverlay(current => current === side ? null : side);
       return;
     }
+    // User-hidden против responsive-collapsed: здесь переключается только
+    // явное скрытие панели. Фокус переезжает в rAF (после коммита): при
+    // скрытии заголовочная кнопка размонтируется и фокус берёт floating-
+    // триггер, при открытии — наоборот, триггер уступает заголовку панели.
+    const wasVisible = side === 'chapters' ? !chaptersHidden : !reviewHidden;
     if (side === 'chapters') setChaptersHidden(hidden => !hidden);
     else setReviewHidden(hidden => !hidden);
+    requestAnimationFrame(() => {
+      if (wasVisible) (side === 'chapters' ? chaptersTriggerRef : reviewTriggerRef).current?.focus();
+      else focusPanelHeading(side);
+    });
   };
 
   return (
     <div className={zen ? 'book book--zen' : 'book'}>
-      <TitleBar title={book.title}>
+      <TitleBar
+        title={book.title}
+        subtitle={book.path}
+        status={saveState !== null && (
+          <Tooltip content={snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}>
+            <span role="status" className={`book__save-state book__save-state--${snapshot?.readOnlyReason ? 'readonly' : saveState}`}>{snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}</span>
+          </Tooltip>
+        )}
+        onOpenLocation={openBookFolder}
+      >
         <div className="book__toolbar" aria-label="Действия книги">
-          {saveState !== null && (
-            <Tooltip content={snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}>
-              <span role="status" className={`book__save-state book__save-state--${snapshot?.readOnlyReason ? 'readonly' : saveState}`}>{snapshot?.readOnlyReason ? 'Только чтение' : SAVE_STATE_LABELS[saveState]}</span>
-            </Tooltip>
-          )}
           <Tooltip content="Поиск по главе" shortcut="Ctrl+F">
             <button type="button" ref={searchButtonRef} aria-label="Поиск по главе" aria-expanded={searchOpen} onClick={() => setSearchOpen((open) => !open)}><IconSearch /></button>
-          </Tooltip>
-          <Tooltip content="Оглавление">
-            <button ref={chaptersButtonRef} type="button" aria-label="Оглавление" aria-pressed={!chaptersCollapsed || sidebarOverlay === 'chapters'} onClick={() => toggleSidebar('chapters')}><IconLayoutSidebar /></button>
-          </Tooltip>
-          <Tooltip content="Рецензия">
-            <button ref={reviewButtonRef} type="button" aria-label="Рецензия" aria-pressed={!reviewCollapsed || sidebarOverlay === 'review'} onClick={() => toggleSidebar('review')}><IconLayoutSidebarRight /></button>
           </Tooltip>
           <div className="book__view-toggle" aria-label="Режим просмотра">
             <Tooltip content="Текст"><button type="button" aria-label="Текст" aria-pressed={mode === 'text'} onClick={() => switchMode('text')}><IconFileText /></button></Tooltip>
@@ -1015,50 +1078,75 @@ export function BookWindow({
           </div>
         </div>
       </TitleBar>
-      {saveError !== null && (
-        <p className="app__error book__save-error" role="alert">
-          {saveError} <button type="button" className="book__reread" onClick={rereadChapter}>Перечитать главу</button>
-        </p>
-      )}
-      {snapshot?.readOnlyReason && <p className="app__error" role="alert">{snapshot.readOnlyReason}</p>}
-      {snapshot !== null && snapshot.saveState === 'external' && (
-        <div className="book__external-actions" role="alert">
-          {snapshot.recoveryConflict && <span>Восстановление приостановлено. Локальная пара сохранена в журнале. Открытие внешней версии сохранит резервную копию; экспорт сохранит копию главы в новую папку и откроет внешнюю версию.</span>}
-          <button type="button" onClick={() => void resolveExternal('open-external')}>Открыть внешнюю версию</button>
-          <button type="button" onClick={() => void resolveExternal('export-local')}>{snapshot.recoveryConflict ? 'Экспортировать копию главы…' : 'Экспортировать черновик…'}</button>
-        </div>
-      )}
+      {/* Рабочие состояния книги — единым плавающим нижним центром (Task 8):
+          прежние flow-блоки над .book__body сдвигали редактор. Порядок в стеке:
+          инфраструктурные и фоновые состояния выше, активная работа с текстом
+          (внешнее изменение, отказ очереди, сбой сохранения) — у нижнего края.
+          Таймеров нет: карточку убирает разрешение состояния или явная кнопка. */}
+      <NoticeCenter>
+        {layoutError !== null && (
+          <Notice kind="error" actions={
+            <button type="button" onClick={onLayoutRetry}>Повторить сохранение ширины</button>
+          }>{layoutError}</Notice>
+        )}
+        {error !== null && (
+          <Notice kind="error" onDismiss={() => setError(null)}>{error}</Notice>
+        )}
+        {openWarning !== null && !openWarningDismissed && (
+          <Notice kind="info" actions={
+            <button type="button" onClick={() => setOpenWarningDismissed(true)}>Скрыть</button>
+          }>{openWarning}</Notice>
+        )}
+        {snapshot?.readOnlyReason && <Notice kind="warning">{snapshot.readOnlyReason}</Notice>}
+        {snapshot !== null && snapshot.saveState === 'external' && (
+          <Notice kind="warning" actions={
+            <>
+              <button type="button" onClick={() => void resolveExternal('open-external')}>Открыть внешнюю версию</button>
+              <button type="button" onClick={() => void resolveExternal('export-local')}>{snapshot.recoveryConflict ? 'Экспортировать копию главы…' : 'Экспортировать черновик…'}</button>
+            </>
+          }>
+            <span>Файл главы изменён вне приложения. Выберите версию, с которой продолжить работу.</span>
+            {snapshot.recoveryConflict && <span>Восстановление приостановлено. Локальная пара сохранена в журнале. Открытие внешней версии сохранит резервную копию; экспорт сохранит копию главы в новую папку и откроет внешнюю версию.</span>}
+          </Notice>
+        )}
+        {commandError !== null && <Notice kind="error">{commandError}</Notice>}
+        {saveError !== null && (
+          <Notice kind="error" actions={
+            <button type="button" onClick={rereadChapter}>Перечитать главу</button>
+          }>{saveError}</Notice>
+        )}
+      </NoticeCenter>
       {renameOpen && <RenameBookDialog title={book.title}
         onChange={async change => { await editorApi?.flushPending(); await refreshBook(await window.desk.manageBook(book.bookId, change)); }}
         onClose={() => { setRenameOpen(false); menuButtonRef.current?.focus(); }} />}
       {chapterAction && <ChapterDialogs action={chapterAction} book={book}
         onChange={async change => { await editorApi?.flushPending(); await refreshBook(await window.desk.manageBook(book.bookId, change)); }}
         onRefresh={refreshBook}
-        onClose={() => { setChapterAction(null); requestAnimationFrame(() => actionTriggerRef.current?.isConnected ? actionTriggerRef.current.focus() : (document.querySelector<HTMLButtonElement>('.book__chapter-row--active .book__chapter-menu-button, .book__chapter-menu-button, .book__chapter-tools button') ?? chaptersButtonRef.current)?.focus()); }} />}
-      {openWarning !== null && !openWarningDismissed && (
-        <p className="app__error" role="alert">
-          {openWarning}
-          <button type="button" onClick={() => setOpenWarningDismissed(true)}>Скрыть</button>
-        </p>
-      )}
-      {error !== null && (
-        <p className="app__error" role="alert">
-          {error}
-        </p>
-      )}
-      {layoutError !== null && (
-        <p className="app__error book__layout-error" role="alert">
-          {layoutError} <button type="button" onClick={onLayoutRetry}>Повторить сохранение ширины</button>
-        </p>
-      )}
+        onClose={() => { setChapterAction(null); requestAnimationFrame(() => actionTriggerRef.current?.isConnected ? actionTriggerRef.current.focus() : (document.querySelector<HTMLButtonElement>('.book__chapter-row--active .book__chapter-menu-button, .book__chapter-menu-button, .book__chapter-tools button') ?? chaptersTriggerRef.current)?.focus()); }} />}
       <div
         ref={bodyRef}
         className={`book__body${chaptersCollapsed ? ' book__body--chapters-collapsed' : ''}${reviewCollapsed ? ' book__body--review-collapsed' : ''}`}
         style={bodyStyle}
       >
+        {/* Floating-триггеры свёрнутых панелей: абсолютное позиционирование
+            выводит их из grid-потока (колонки и ширина чтения не меняются);
+            Zen скрывает панели и триггеры вместе с ними. Открытый overlay
+            перекрывает свой триггер (z-index), но не размонтирует его —
+            Escape/pointerdown возвращают фокус синхронно. */}
+        {!zen && chaptersCollapsed && (
+          <Tooltip content="Показать оглавление">
+            <button ref={chaptersTriggerRef} type="button" className="book__panel-trigger book__panel-trigger--chapters" aria-label="Показать оглавление" aria-pressed={sidebarOverlay === 'chapters'} onClick={() => toggleSidebar('chapters')}><IconLayoutSidebarLeftExpand /></button>
+          </Tooltip>
+        )}
+        {!zen && reviewCollapsed && (
+          <Tooltip content="Показать рецензию">
+            <button ref={reviewTriggerRef} type="button" className="book__panel-trigger book__panel-trigger--review" aria-label="Показать рецензию" aria-pressed={sidebarOverlay === 'review'} onClick={() => toggleSidebar('review')}><IconLayoutSidebarRightExpand /></button>
+          </Tooltip>
+        )}
         {!chaptersCollapsed && (
           <ChapterSidebar book={{ ...book, entries }} activeId={chapterId} disabled={metadataEditing || chapterAction !== null || renameOpen}
             onOpen={id => void switchChapter(id)}
+            onCollapse={() => toggleSidebar('chapters')}
             onAction={action => {
               actionTriggerRef.current = 'chapterId' in action
                 ? Array.from(document.querySelectorAll<HTMLButtonElement>('[data-chapter-menu-id]')).find(button => button.dataset.chapterMenuId === action.chapterId) ?? null
@@ -1135,6 +1223,7 @@ export function BookWindow({
                   snapshot={metadataEditing ? {...snapshot,readOnlyReason:'Изменение метаданных'} : snapshot}
                   theme={appearanceTheme.scheme}
                   onCommand={handleCommand}
+                  onCommandError={handleCommandError}
                   onSelectionChange={rememberAnchor}
                   onScrollChange={rememberScroll}
                   initialAnchor={anchorRef.current}
@@ -1153,7 +1242,10 @@ export function BookWindow({
             className="book__review"
             aria-label="Рецензия"
           >
-            <h2 className="book__panel-title">Рецензия</h2>
+            <div className="book__panel-heading">
+              <h2 className="book__panel-title">Рецензия</h2>
+              <Tooltip content="Скрыть рецензию"><button type="button" className="book__panel-collapse" aria-label="Скрыть рецензию" onClick={() => toggleSidebar('review')}><IconLayoutSidebarRightCollapse /></button></Tooltip>
+            </div>
             {/* Draft/open/error state belongs to the chapter above layout branches. */}
             <ChapterNote state={noteState} onState={updateNoteState} readOnly={readOnly} key={chapterId ?? 'none'} value={snapshot?.chapterNote ?? ''} onCommand={noteCommand} />
             <ReviewList
@@ -1171,12 +1263,13 @@ export function BookWindow({
             <button type="button" className="book__sidebar-overlay-close" aria-label="Закрыть панель" onClick={() => {
               const side = sidebarOverlay;
               setSidebarOverlay(null);
-              (side === 'chapters' ? chaptersButtonRef : reviewButtonRef).current?.focus();
+              (side === 'chapters' ? chaptersTriggerRef : reviewTriggerRef).current?.focus();
             }}><IconX /></button>
             {sidebarOverlay === 'chapters' ? (
               <ChapterSidebar book={{ ...book, entries }} activeId={chapterId} disabled={metadataEditing || chapterAction !== null || renameOpen}
                 onOpen={id => { setSidebarOverlay(null); void switchChapter(id); }}
-                onAction={action => { setSidebarOverlay(null); actionTriggerRef.current = document.activeElement as HTMLElement; setChapterAction(action); }} />
+                onAction={action => { setSidebarOverlay(null); actionTriggerRef.current = document.activeElement as HTMLElement; setChapterAction(action); }}
+                onCollapse={() => { setSidebarOverlay(null); chaptersTriggerRef.current?.focus(); }} />
             ) : (
               <aside className="book__review" aria-label="Рецензия">
                 <h2 className="book__panel-title">Рецензия</h2>
@@ -1187,7 +1280,10 @@ export function BookWindow({
           </div>
         )}
       </div>
-      {!readOnly && mode === 'text' && flyout !== null && (
+      {/* Панель действий живёт только при закрытом попапе: reveal() из панели
+          доставляет выделение отложенным кадром — без gate панель воскресла бы
+          поверх попапа записи (и вернулась бы при прокрутке под ним). */}
+      {!readOnly && popup === null && mode === 'text' && flyout !== null && (
         <SignalFlyout x={flyout.x} bottom={flyout.bottom} onPick={openDraft} registerFocus={registerFlyoutFocus} />
       )}
       {!readOnly && popup?.kind === 'draft' && (

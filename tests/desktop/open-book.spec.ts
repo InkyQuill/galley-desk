@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -166,7 +166,7 @@ test('открывает главу: правка из sidecar, локальна
       await expect(reopened.page.locator('.book__text')).toContainText('кит спит.');
       // Исходный файл не изменён: правка живёт в sidecar.
       expect(await readFile(path.join(bookRoot, 'Глава.md'), 'utf8')).toBe(chapterText);
-      await expect(reopened.page.getByRole('button', { name: 'Правка: кот спит → кит спит', exact: false })).toBeVisible();
+      await expect(reopened.page.getByRole('button', { name: 'Замена: кот спит → кит спит', exact: false })).toBeVisible();
 
       // Курсор уводится с картинки: в live-режиме Galley прячет виджет под
       // курсором. Локальная картинка отображается через защищённую схему.
@@ -562,4 +562,85 @@ test('malformed review is read-only from the first editor frame and preserves fi
     await session.page.keyboard.type('attempted mutation');
     for (const [name, bytes] of Object.entries(files)) expect(await readFile(path.join(bookRoot, name), 'utf8')).toBe(bytes);
   } finally { await closeApp(session); }
+});
+
+/** Подменяет shell.openPath в main, накапливая все вызванные директории. */
+async function stubOpenPath(app: ElectronApplication, failure = ''): Promise<void> {
+  await app.evaluate(({ shell }, reason) => {
+    const calls: string[] = [];
+    (shell as unknown as { __openPathCalls?: string[] }).__openPathCalls = calls;
+    shell.openPath = async (directory: string) => {
+      calls.push(directory);
+      return reason;
+    };
+  }, failure);
+}
+
+async function openPathCalls(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(({ shell }) => (shell as unknown as { __openPathCalls?: string[] }).__openPathCalls ?? []);
+}
+
+test('книга показывает identity с каноническим путём; кнопка папки открывает корень через shell.openPath', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-folder-');
+  const session = await launch(bookRoot, { 'Глава.md': 'текст\n' });
+  try {
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.getByRole('button', { name: 'Глава', exact: true })).toBeVisible();
+
+    const canonical = await realpath(bookRoot);
+    // Identity в едином титлбаре: заголовок, статус сохранения и канонический
+    // путь; второго заголовка книги в хроме нет.
+    await expect(session.page.locator('.titlebar__identity')).toBeVisible();
+    await expect(session.page.locator('.titlebar__title')).toHaveText(path.basename(bookRoot));
+    await expect(session.page.locator('.book__save-state')).toBeVisible();
+    await expect(session.page.locator('.titlebar__path')).toHaveText(canonical);
+    await expect(session.page.locator('header.titlebar').getByRole('heading')).toHaveCount(0);
+
+    // Кнопка папки: renderer передаёт только opaque id — main сам подставляет
+    // канонический корень из реестра открытых книг.
+    await stubOpenPath(session.app);
+    await session.page.getByRole('button', { name: 'Открыть папку книги' }).click();
+    await expect.poll(() => openPathCalls(session.app)).toEqual([canonical]);
+    await expect(session.page.getByRole('alert')).toHaveCount(0);
+
+    // Непустая строка отказа shell видна пользователю, а не глотается.
+    await stubOpenPath(session.app, 'Произошла ошибка');
+    await session.page.getByRole('button', { name: 'Открыть папку книги' }).click();
+    await expect(session.page.getByRole('alert')).toContainText('Не удалось открыть папку книги');
+  } finally {
+    await closeApp(session);
+  }
+});
+
+test('тесная ширина прячет видимый путь раньше заголовка; полный путь остаётся в подсказке кнопки', async () => {
+  const bookRoot = await makeTempDir('galley-e2e-narrow-');
+  const session = await launch(bookRoot, { 'Глава.md': 'текст\n' });
+  try {
+    await stubDialog(session.app, { canceled: false, filePaths: [bookRoot] });
+    await session.page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(session.page.getByRole('button', { name: 'Глава', exact: true })).toBeVisible();
+    const canonical = await realpath(bookRoot);
+    await expect(session.page.locator('.titlebar__path')).toBeVisible();
+
+    // 900 px: identity с путём ещё помещается целиком.
+    await session.page.setViewportSize({ width: 900, height: 700 });
+    await expect(session.page.locator('.titlebar__path')).toBeVisible();
+    await expect(session.page.locator('.titlebar__title')).toBeVisible();
+    await expect(session.page.locator('.book__save-state')).toBeVisible();
+
+    // Тесная ширина: сначала исчезает визуальный путь; полный остаётся
+    // подсказкой и accessible description кнопки папки.
+    await session.page.setViewportSize({ width: 720, height: 520 });
+    await expect(session.page.locator('.titlebar__path')).toBeHidden();
+    const folder = session.page.getByRole('button', { name: 'Открыть папку книги' });
+    await expect(folder).toBeVisible();
+    await folder.focus();
+    await expect(session.page.getByRole('tooltip')).toHaveText(canonical);
+    // Заголовок и статус сохранения не исчезают никогда.
+    await expect(session.page.locator('.titlebar__title')).toBeVisible();
+    await expect(session.page.locator('.book__save-state')).toBeVisible();
+  } finally {
+    await closeApp(session);
+  }
 });

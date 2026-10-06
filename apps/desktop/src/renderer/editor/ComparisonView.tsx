@@ -5,9 +5,11 @@
 // buildComparisonNodes), введённый текст сравнения неизменяем.
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
+import { IconBolt, IconMinus, IconPencil, IconPlus } from '@tabler/icons-react';
 import type { RecordView, Snapshot } from '../../shared/api';
-import { comparisonTint, useMarkerTheme, deletionColor, signalColor } from './markers';
+import { EDIT_MARKER_COLOR, comparisonTint, deletionColor, signalColor, useMarkerTheme } from './markers';
 import type { SignalTypeName } from './markers';
+import { editKind } from './visual-range';
 import type { ComparisonSegment } from '../search/search';
 import { Tooltip } from '../ui/Tooltip';
 
@@ -192,31 +194,34 @@ function RecordMarkerButton({
   onRecordClick: Props['onRecordClick'];
 }) {
   const theme = useMarkerTheme();
-  const isEdit = record.kind === 'edit';
-  const deletion = isEdit && record.after === '';
-  const color = isEdit ? (deletion ? deletionColor(theme) : undefined) : signalColor(record.signalType ?? 'note', theme);
-  const label = isEdit
-    ? deletion
-      ? `Удаление: ${record.before}`
-      : `Правка: ${record.before} → ${record.after}`
-    : `Сигнал [${record.signalType ?? 'note'}]${record.comment !== '' ? `: ${record.comment}` : ''}`;
+  // Тот же helper, что и в списке и gutter: исходная запись определяет вид.
+  const kind = record.kind === 'edit' ? editKind(record) : null;
+  const color = kind === null
+    ? signalColor(record.signalType ?? 'note', theme)
+    : kind === 'deletion' ? deletionColor(theme) : EDIT_MARKER_COLOR;
+  const label = kind === null
+    ? `Сигнал [${record.signalType ?? 'note'}]${record.comment !== '' ? `: ${record.comment}` : ''}`
+    : kind === 'deletion' ? `Удаление: ${record.before}` : kind === 'insertion' ? `Вставка: ${record.after}` : `Замена: ${record.before} → ${record.after}`;
+  const Icon = kind === null
+    ? IconBolt
+    : kind === 'insertion' ? IconPlus : kind === 'deletion' ? IconMinus : IconPencil;
   return (
     <Tooltip content={label}>
       <button
         type="button"
         data-record-id={record.id}
-        aria-label={isEdit ? (deletion ? `Удаление: ${record.before}` : 'Правка') : 'Сигнал'}
+        aria-label={kind === null ? 'Сигнал' : kind === 'deletion' ? `Удаление: ${record.before}` : kind === 'insertion' ? 'Вставка' : 'Замена'}
         style={{
           border: 'none',
           background: 'transparent',
-          color: color ?? 'inherit',
+          color,
           cursor: 'pointer',
           padding: '0 2px',
           font: 'inherit',
         }}
         onClick={(event) => onRecordClick(record, event.currentTarget.getBoundingClientRect())}
       >
-        {isEdit ? '✎' : '⚡'}
+        <Icon size={14} aria-hidden="true" />
       </button>
     </Tooltip>
   );

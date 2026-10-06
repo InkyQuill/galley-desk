@@ -425,12 +425,12 @@ export class ChapterSession {
    */
   checkExternal(): Promise<boolean> {
     return this.queue.enqueue(async () => {
+      const { pair, revision } = await readPair(this.book, this.chapterId);
+      if (revision.sourceHash === this.revision.sourceHash && revision.reviewHash === this.revision.reviewHash) {
+        // A watcher/focus signal alone does not turn a failed save into an external change.
+        return false;
+      }
       if (this.state === 'saved') {
-        const { pair, revision } = await readPair(this.book, this.chapterId);
-        if (revision.sourceHash === this.revision.sourceHash && revision.reviewHash === this.revision.reviewHash) {
-          // Внешней версии нет: дешёвый no-op без перестроения модели.
-          return false;
-        }
         this.applyHistory.clear();
         this.inputHistory.clear();
         this.adopt(pair, modelFromPair(pair, this.chapterId, this.sourcePath), revision);

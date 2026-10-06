@@ -161,6 +161,7 @@ test('STALE_REVISION при внешнем изменении не маскир�
     // аффорданс внешнего изменения.
     await session.page.getByRole('button', { name: 'Перечитать главу' }).click();
     await expect(session.page.getByText('Внешнее изменение')).toBeVisible();
+    await expect(session.page.getByText('Файл главы изменён вне приложения. Выберите версию, с которой продолжить работу.')).toBeVisible();
     await expect(session.page.getByRole('button', { name: 'Открыть внешнюю версию' })).toBeVisible();
 
     // Шаг 4: ввод при неразрешённом внешнем изменении отклоняется

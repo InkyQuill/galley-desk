@@ -25,3 +25,17 @@ export function recordsInReadingOrder(records: RecordView[]): RecordView[] {
   const position = (record: RecordView) => record.status === 'active' && record.from !== null ? record.from : Infinity;
   return [...records].sort((a, b) => position(a) - position(b));
 }
+
+export type EditKind = 'insertion' | 'deletion' | 'replacement';
+
+/**
+ * Вид правки по ИСХОДНОЙ записи (ReviewList, gutter и «Сравнение» классифицируют
+ * одну и ту же запись этим helper'ом). Важно передавать исходный RecordView, а
+ * не результат visualRecord: обрезка общего префикса/суффикса превращала бы
+ * replacement в ложную insertion (before '') или deletion (after '').
+ */
+export function editKind(record: RecordView): EditKind {
+  if (record.before === '') return 'insertion';
+  if (record.after === '') return 'deletion';
+  return 'replacement';
+}

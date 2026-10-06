@@ -624,6 +624,140 @@ test('поиск открывается с клавиатуры и Escape очи
   } finally { await closeApp(session); }
 });
 
+type GeometryBox = { left: number; right: number; top: number; bottom: number };
+
+test('геометрия строки поиска: панель с внутренними отступами, элементы не слипаются (900 и 1280 px)', async ({}, testInfo) => {
+  const paragraph = 'кот спит на подоконнике.\n\n';
+  const session = await launchWithBook({
+    'Глава 1.md': `# Глава первая\n\n${paragraph.repeat(40)}`,
+  });
+  const { page, openByDialog } = session;
+  try {
+    await openByDialog();
+    await expect(page.getByRole('button', { name: 'Глава первая', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Глава первая', exact: true }).click();
+    await expect(page.locator('.cm-content')).toBeVisible();
+
+    await page.keyboard.press('Control+f');
+    const searchField = page.getByRole('textbox', { name: 'Поиск по главе' });
+    await searchField.fill('кот');
+    await expect(page.locator('.book__search-counter')).toHaveText('1/40');
+    // Поведение поиска не менялось раскладкой: Enter/Shift+Enter цикличны
+    // (1/40 → 2/40 → … → 40/40 → 1/40), фокус остаётся в поле.
+    await searchField.press('Enter');
+    await expect(page.locator('.book__search-counter')).toHaveText('2/40');
+    await searchField.press('Shift+Enter');
+    await expect(page.locator('.book__search-counter')).toHaveText('1/40');
+    await searchField.press('Shift+Enter');
+    await expect(page.locator('.book__search-counter')).toHaveText('40/40');
+    await searchField.press('Enter');
+    await expect(page.locator('.book__search-counter')).toHaveText('1/40');
+    await expect(searchField).toBeFocused();
+
+    const measure = (): Promise<{
+      paddingX: [number, number];
+      searchWidth: number;
+      contentWidth: number;
+      label: GeometryBox;
+      input: GeometryBox;
+      counter: GeometryBox;
+      prev: GeometryBox;
+      next: GeometryBox;
+      close: GeometryBox;
+    }> => page.evaluate(() => {
+      const read = (element: Element): GeometryBox => {
+        const box = element.getBoundingClientRect();
+        return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+      };
+      const search = document.querySelector('.book__search')!;
+      const style = getComputedStyle(search);
+      const pick = (selector: string): GeometryBox => read(search.querySelector(selector)!);
+      const button = (name: string): GeometryBox =>
+        read([...search.querySelectorAll('button')].find((el) => el.getAttribute('aria-label') === name)!);
+      return {
+        paddingX: [parseFloat(style.paddingLeft), parseFloat(style.paddingRight)],
+        searchWidth: search.getBoundingClientRect().width,
+        contentWidth: (search.parentElement as HTMLElement).clientWidth,
+        label: pick('.book__search-area'),
+        input: pick('.book__search-input'),
+        counter: pick('.book__search-counter'),
+        prev: button('Предыдущее совпадение'),
+        next: button('Следующее совпадение'),
+        close: button('Закрыть поиск'),
+      };
+    });
+
+    const checkGeometry = async (width: number, height: number): Promise<void> => {
+      await page.setViewportSize({ width, height });
+      await page.evaluate(() => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }));
+      const g = await measure();
+      // Панель не шире контента и имеет внутренние горизонтальные отступы 10–12 px.
+      expect(g.searchWidth, `панель шире контента при ${width}px`).toBeLessThanOrEqual(g.contentWidth + 0.5);
+      for (const pad of g.paddingX) {
+        expect(pad, `горизонтальный отступ панели при ${width}px`).toBeGreaterThanOrEqual(10);
+        expect(pad, `горизонтальный отступ панели при ${width}px`).toBeLessThanOrEqual(12);
+      }
+      // Зазор соседних элементов: на одной строке — по горизонтали, при
+      // переносе — по вертикали. Подпись/поле/связка действий разделены
+      // родительским зазором ≥ 8 px; внутри связки действий (счётчик +
+      // стрелки + закрытие) плотный шаг 4 px -- элементы не слипаются.
+      const gap = (a: GeometryBox, b: GeometryBox): number => {
+        const sameRow = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+        return sameRow ? b.left - a.right : b.top - a.bottom;
+      };
+      const pairs: Array<[string, GeometryBox, GeometryBox, number]> = [
+        ['подпись→поле', g.label, g.input, 8],
+        ['поле→счётчик', g.input, g.counter, 8],
+        ['счётчик→стрелка', g.counter, g.prev, 4],
+        ['стрелки', g.prev, g.next, 4],
+        ['стрелка→закрыть', g.next, g.close, 4],
+      ];
+      for (const [name, a, b, min] of pairs) {
+        const value = gap(a, b);
+        expect(value, `${name}: ${value}px при ширине ${width}px`).toBeGreaterThanOrEqual(min);
+      }
+      // Никакие два элемента не перекрываются.
+      const boxes: Array<[string, GeometryBox]> = [
+        ['подпись', g.label], ['поле', g.input], ['счётчик', g.counter],
+        ['назад', g.prev], ['вперёд', g.next], ['закрыть', g.close],
+      ];
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          const overlapX = Math.min(boxes[i][1].right, boxes[j][1].right) - Math.max(boxes[i][1].left, boxes[j][1].left);
+          const overlapY = Math.min(boxes[i][1].bottom, boxes[j][1].bottom) - Math.max(boxes[i][1].top, boxes[j][1].top);
+          expect(Math.min(overlapX, overlapY), `${boxes[i][0]} и ${boxes[j][0]} перекрываются при ${width}px`).toBeLessThanOrEqual(0.5);
+        }
+      }
+    };
+
+    await checkGeometry(1280, 900);
+    await checkGeometry(900, 700);
+
+    // Светлый и тёмный снимки панели на 900 px -- для визуальной сверки
+    // отступов (файлы остаются в test-results). Тема меняется через панель
+    // «Оформление»: прямые window.desk.setAppearance пишут в appData, но
+    // живой UI красит только состояние App (см. updateAppearance в App.tsx).
+    const setTheme = async (themeId: string, scheme: 'light' | 'dark'): Promise<void> => {
+      await page.getByRole('button', { name: 'Меню книги' }).click();
+      await page.getByRole('button', { name: 'Оформление', exact: true }).click();
+      await page.getByLabel('Тема').selectOption(themeId);
+      await page.getByRole('button', { name: 'Закрыть оформление' }).click();
+      await expect.poll(() =>
+        page.evaluate(() => getComputedStyle(document.querySelector('.book')!).getPropertyValue('color-scheme').trim()),
+      ).toBe(scheme);
+    };
+    await page.setViewportSize({ width: 900, height: 700 });
+    await setTheme('galley-light', 'light');
+    await page.locator('.book__search').screenshot({ path: testInfo.outputPath('search-900-light.png') });
+    await setTheme('gruvbox-dark', 'dark');
+    await page.locator('.book__search').screenshot({ path: testInfo.outputPath('search-900-dark.png') });
+  } finally {
+    await closeApp(session);
+  }
+});
+
 test('размер книги не меняет интерфейс; оба локальных шрифта доступны с кириллицей', async () => {
   const session = await launchWithBook({ 'Глава.md': 'Кириллица: ёж и щука.\n' });
   try {

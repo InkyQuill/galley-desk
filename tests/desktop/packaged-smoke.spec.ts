@@ -44,7 +44,7 @@ test('packaged executable: save, restart, apply and byte-exact undo', async () =
     page = await launch();
     await expect(page.locator('.cm-content')).toContainText('кит');
     await page.getByRole('button', { name: 'Сравнение', exact: true }).click();
-    await page.getByRole('button', { name: 'Правка', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Замена', exact: true }).first().click();
     await page.getByRole('button', { name: 'Применить', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Отменить применение' })).toBeEnabled();
     expect(await readFile(sourcePath)).not.toEqual(source);

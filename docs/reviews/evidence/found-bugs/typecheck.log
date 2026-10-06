@@ -1,0 +1,5 @@
+
+> typecheck
+> tsc -b --pretty false
+
+typecheck=0

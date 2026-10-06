@@ -47,7 +47,8 @@ npm run make --workspace @galley-desk/desktop
 ## 3. Сборка на macOS
 
 macOS-джоба в `.github/workflows/desktop.yml` выполняет `npm ci → typecheck
-→ unit → Forge package → Electron tests` на нативном раннере. Ручные
+→ unit → Forge package` на нативном раннере. GUI-тесты macOS — **NOT RUN**:
+обвязка поддерживает изоляцию только через Linux/Xvfb. Ручные
 проверки на macOS (IME, буфер обмена, нативный выбор папки, Cmd-акселераторы,
 масштабирование) выполняются на реальной машине и фиксируются в
 `docs/verification.md`; без них релиз помечается как «macOS: не проверено

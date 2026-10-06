@@ -105,7 +105,7 @@ export function Diagnostics({ onClose }: { onClose: () => void }) {
     >
       <header>
         <h2 id="diagnostics-title">Диагностика</h2>
-        <button type="button" aria-label="Закрыть диагностику" onClick={requestClose}>
+        <button type="button" className="diagnostics__close" aria-label="Закрыть диагностику" onClick={requestClose}>
           <IconX />
         </button>
       </header>

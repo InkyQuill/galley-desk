@@ -93,28 +93,32 @@ export function ChapterSearch({ area, chapterId, searchText, onReveal, onClearHi
           if (event.key === 'Enter') goTo(event.shiftKey ? active - 1 : active + 1);
         }}
       />
-      <span className="book__search-counter" aria-live="polite">
-        {query === '' ? '' : results.length === 0 ? 'нет совпадений' : `${active + 1}/${results.length}`}
-      </span>
-      <Tooltip content="Предыдущее совпадение"><button
-        type="button"
-        aria-label="Предыдущее совпадение"
-        disabled={results.length === 0}
-        onClick={() => goTo(active - 1)}
-      >
-        <IconArrowUp />
-      </button></Tooltip>
-      <Tooltip content="Следующее совпадение"><button
-        type="button"
-        aria-label="Следующее совпадение"
-        disabled={results.length === 0}
-        onClick={() => goTo(active + 1)}
-      >
-        <IconArrowDown />
-      </button></Tooltip>
-      <Tooltip content="Закрыть поиск">
-        <button type="button" aria-label="Закрыть поиск" onClick={onClose}><IconX /></button>
-      </Tooltip>
+      {/* Счётчик и кнопки -- одна связка раскладки: плотный внутренний шаг,
+          при узкой ширине переносится целиком, не разъезжаясь по кнопкам. */}
+      <div className="book__search-actions">
+        <span className="book__search-counter" aria-live="polite">
+          {query === '' ? '' : results.length === 0 ? 'нет совпадений' : `${active + 1}/${results.length}`}
+        </span>
+        <Tooltip content="Предыдущее совпадение"><button
+          type="button"
+          aria-label="Предыдущее совпадение"
+          disabled={results.length === 0}
+          onClick={() => goTo(active - 1)}
+        >
+          <IconArrowUp />
+        </button></Tooltip>
+        <Tooltip content="Следующее совпадение"><button
+          type="button"
+          aria-label="Следующее совпадение"
+          disabled={results.length === 0}
+          onClick={() => goTo(active + 1)}
+        >
+          <IconArrowDown />
+        </button></Tooltip>
+        <Tooltip content="Закрыть поиск">
+          <button type="button" aria-label="Закрыть поиск" onClick={onClose}><IconX /></button>
+        </Tooltip>
+      </div>
     </div>
   );
 }

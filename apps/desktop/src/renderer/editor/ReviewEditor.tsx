@@ -15,8 +15,9 @@ import { frontmatter } from '../../shared/metadata';
 //   равенство и не трогает документ. Курсор и IME-композиция не сбрасываются.
 // - Пользовательские транзакции уходят в main строго FIFO (CommandQueue);
 //   ack обновляет записи/статус сохранения, но никогда не подменяет документ.
-// - После сбоя команды локальный текст сохраняется, показывается ошибка,
-//   отправки блокируются до ресинхронизации (замена документа/смена главы).
+// - После сбоя команды локальный текст сохраняется, ошибка уходит родителю
+//   (onCommandError → общая область уведомлений книги), отправки блокируются
+//   до ресинхронизации (замена документа/смена главы).
 // - Undo/redo в «Тексте» маршрутизируются в сессию (undo-input/redo-input);
 //   вне редактора нативный undo полей не затрагивается.
 import { Compartment, EditorState, Prec } from '@codemirror/state';
@@ -44,8 +45,12 @@ export type ReviewEditorApi = {
   flushPending: () => Promise<void>;
   focus: () => void;
   dismissPreview: () => boolean;
-  /** Скроллит к записи и выделяет её диапазон; false, если якоря нет. */
-  reveal: (recordId: string) => boolean;
+  /**
+   * Скроллит к записи и возвращает её геометрию в viewport (null, если якоря
+   * нет). Диапазон from < to выделяется и центрируется; точка (удаление)
+   * центрируется без выделения — без фиктивного непустого диапазона.
+   */
+  reveal: (recordId: string) => { x: number; y: number; bottom: number } | null;
   /**
    * Скроллит к диапазону (поиск); false без view. `focus: false` (по
    * умолчанию для поиска) подсвечивает диапазон отдельной декорацией, не
@@ -69,6 +74,13 @@ type Props = {
   theme: 'light' | 'dark';
   previewBlocked?: boolean;
   onCommand: (c: Command) => Promise<Snapshot>;
+  /**
+   * Отказ команды из очереди: родителю уходит строка «локальный текст
+   * сохранён…» (BookWindow сводит её в тот же saveError — одна карточка с
+   * одним действием «Перечитать главу»), успешная синхронизация — null.
+   * Локального алерта внутри редактора больше нет (Task 8).
+   */
+  onCommandError?: (message: string | null) => void;
   /** Якорь выделения для повторного монтирования редактора; viewport хранится отдельно. */
   onSelectionChange?: (anchor: number) => void;
   /** Реальный scrollTop скроллера редактора — уходит в savePosition. */
@@ -91,11 +103,17 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : 'Операция не выполнена';
 }
 
+function cssEscape(value: string): string {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(value);
+  return value.replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char}`);
+}
+
 export function ReviewEditor({
   snapshot,
   theme,
   previewBlocked = false,
   onCommand,
+  onCommandError,
   onSelectionChange,
   onScrollChange,
   initialAnchor = null,
@@ -118,6 +136,8 @@ export function ReviewEditor({
   // смена главы не перепривязывает уже поставленные команды к новой главе.
   const onCommandRef = useRef(onCommand);
   onCommandRef.current = onCommand;
+  const onCommandErrorRef = useRef(onCommandError);
+  onCommandErrorRef.current = onCommandError;
   const onSelectionRef = useRef(onSelectionChange);
   onSelectionRef.current = onSelectionChange;
   const onScrollRef = useRef(onScrollChange);
@@ -137,11 +157,8 @@ export function ReviewEditor({
   const recordsRef = useRef({ chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records });
 
   const setDocRef = useRef<((value: { chapterId: string; text: string }) => void) | null>(null);
-  const setCommandErrorRef = useRef<((value: string | null) => void) | null>(null);
   const [doc, setDoc] = useState(() => ({ chapterId: snapshot.chapterId, text: snapshot.text }));
-  const [commandError, setCommandError] = useState<string | null>(null);
   setDocRef.current = setDoc;
-  setCommandErrorRef.current = setCommandError;
 
   const queueRef = useRef<CommandQueue<Snapshot, string> | null>(null);
   if (queueRef.current === null) {
@@ -160,7 +177,9 @@ export function ReviewEditor({
       onError: (error, _command, context) => {
         if (stateRef.current.chapterId !== context) return;
         // Локальный текст сохраняется; отправки блокируются до ресинхронизации.
-        setCommandErrorRef.current?.(`${errorText(error)} — локальный текст сохранён, перечитайте главу`);
+        // Сообщение уходит родителю (Task 8): он показывает его в общей
+        // области уведомлений вместо прежнего локального алерта здесь.
+        onCommandErrorRef.current?.(`${errorText(error)} — локальный текст сохранён, перечитайте главу`);
       },
     });
   }
@@ -285,7 +304,7 @@ export function ReviewEditor({
       state.mounted = true;
       recordsRef.current = { chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records };
       queue.unblock();
-      setCommandError(null);
+      onCommandErrorRef.current?.(null);
       groupsRef.current.reset();
       requestReplace('switch', snapshot.chapterId, snapshot.text, initialAnchor ?? 0);
       return;
@@ -310,7 +329,7 @@ export function ReviewEditor({
         return;
       }
       queue.unblock();
-      setCommandError(null);
+      onCommandErrorRef.current?.(null);
     }
     if (!queue.blocked) recordsRef.current = { chapterId: snapshot.chapterId, revision: snapshot.revision, records: snapshot.records };
     // Авторитетный текст main расходится с локальным документом после команд,
@@ -444,26 +463,43 @@ export function ReviewEditor({
     extensionsRef.current = [protectedFrontmatter(), readOnlyCompartment.current.of(readOnlyExtensions(readOnly)), Prec.highest(keymap.of(sessionKeymapRef.current)), observerRef.current, recordMarkers(), recordPreview(), searchHighlight()];
   }
 
-  // Выделение → окно flyout: непустой диапазон даёт координаты конца выделения,
-  // схлопнутое выделение закрывает flyout. Фокус не переносится.
-  const handleSelection = useCallback((selection: { anchor: number; head: number; from: number; to: number }): void => {
-    onSelectionRef.current?.(selection.anchor);
-    if (selection.from < selection.to) {
-      const view = handleRef.current?.view ?? null;
-      const pos = Math.min(selection.to, view?.state.doc.length ?? selection.to);
-      const coords = view !== null ? view.coordsAtPos(pos) : null;
-      if (coords !== null) {
+  // Выделение → окно flyout по живой геометрии. Helper читает актуальное
+  // выделение и его экранные координаты: непустое выделение внутри viewport
+  // публикует clamp-координаты конца выделения, пустое или вышедшее из
+  // viewport — null. Панель прячется и возвращается вместе с прокруткой;
+  // фокус не переносится.
+  const publishSelectionWindowRef = useRef<(view: EditorView) => void>(() => undefined);
+  publishSelectionWindowRef.current = (view: EditorView): void => {
+    if (!view.dom.isConnected) {
+      onSelectionWindowRef.current?.(null);
+      return;
+    }
+    const selection = view.state.selection.main;
+    if (!selection.empty) {
+      const coords = view.coordsAtPos(Math.min(selection.to, view.state.doc.length));
+      const scroller = view.scrollDOM.getBoundingClientRect();
+      if (coords !== null && coords.bottom >= scroller.top && coords.top <= scroller.bottom) {
         onSelectionWindowRef.current?.({
           from: selection.from,
           to: selection.to,
-          x: coords.left,
-          y: coords.top,
-          bottom: coords.bottom,
+          x: Math.max(8, Math.min(coords.left, window.innerWidth - 320)),
+          y: Math.max(0, Math.min(coords.top, window.innerHeight)),
+          bottom: Math.min(coords.bottom, window.innerHeight),
         });
         return;
       }
     }
     onSelectionWindowRef.current?.(null);
+  };
+
+  const handleSelection = useCallback((selection: { anchor: number; head: number; from: number; to: number }): void => {
+    onSelectionRef.current?.(selection.anchor);
+    const view = handleRef.current?.view ?? null;
+    if (view === null) {
+      onSelectionWindowRef.current?.(null);
+      return;
+    }
+    publishSelectionWindowRef.current(view);
   }, []);
 
   // Ссылки: http(s) уходят во внешний браузер через typed IPC (отказ
@@ -490,10 +526,20 @@ export function ReviewEditor({
   }, []);
 
   // Реальный scrollTop скроллера редактора (fraction Galley пересчитывать
-  // в пиксели нельзя без потери точности при восстановлении).
+  // в пиксели нельзя без потери точности при восстановлении). Прокрутка
+  // меняет экранные координаты выделения: одна публикация окна на кадр
+  // (rAF), чтобы не измерять layout несколько раз за кадр и мерить уже
+  // устоявшийся после прокрутки DOM.
+  const publishFrameRef = useRef(0);
   const handleScroll = useCallback((_fraction: number): void => {
     const scroller = hostRef.current?.querySelector('.cm-scroller');
     if (scroller) onScrollRef.current?.(scroller.scrollTop);
+    if (publishFrameRef.current !== 0) cancelAnimationFrame(publishFrameRef.current);
+    publishFrameRef.current = requestAnimationFrame(() => {
+      publishFrameRef.current = 0;
+      const view = handleRef.current?.view ?? null;
+      if (view !== null) publishSelectionWindowRef.current(view);
+    });
   }, []);
 
   // Императивный API для панели и попапов: объект стабилен, ссылки — через ref.
@@ -510,11 +556,64 @@ export function ReviewEditor({
       reveal: (recordId) => {
         const view = handleRef.current?.view ?? null;
         const record = view?.state.field(mappedVisualRecords).find((candidate) => candidate.id === recordId);
-        if (record === undefined || record.from === null || record.to === null || view === null) return false;
+        if (record === undefined || record.from === null || record.to === null || view === null) return null;
         const from = Math.max(0, Math.min(record.from, view.state.doc.length));
         const to = Math.max(0, Math.min(record.to, view.state.doc.length));
+        if (from === to) {
+          // Точка (удаление): центрируем строку записи без выделения —
+          // фиктивный непустой диапазон не создаётся. Якорь прокрутки ставится
+          // на текстовый символ той же строки рядом с точкой, а не на саму
+          // точку: координаты точки разрешаются в виджет-плейсхолдер, чей
+          // coordsAt читает layout в measure-цикле CM и роняет прокрутку
+          // вместе с попапом.
+          const line = view.state.doc.lineAt(from);
+          const points = new Set(
+            view.state
+              .field(mappedVisualRecords)
+              .filter((candidate) => candidate.from !== null && candidate.from === candidate.to)
+              .map((candidate) => candidate.from as number),
+          );
+          let anchor = -1;
+          for (let offset = 1; anchor === -1 && offset <= line.length + 1; offset++) {
+            for (const candidate of [from - offset, from + offset]) {
+              if (candidate >= line.from && candidate <= line.to && !points.has(candidate)) {
+                anchor = candidate;
+                break;
+              }
+            }
+          }
+          // Точка на пустой строке (или строке из одних точек): якорь ищется в
+          // ближайших соседних строках, от границы, обращённой к точке.
+          const fullText = view.state.doc;
+          for (let distance = 1; anchor === -1 && distance <= fullText.lines; distance++) {
+            for (const neighbourNumber of [line.number - distance, line.number + distance]) {
+              if (neighbourNumber < 1 || neighbourNumber > fullText.lines) continue;
+              const nearby = fullText.line(neighbourNumber);
+              for (let offset = 0; anchor === -1 && offset <= nearby.length; offset++) {
+                const candidate = nearby.from >= from ? nearby.from + offset : nearby.to - offset;
+                if (!points.has(candidate)) anchor = candidate;
+              }
+            }
+          }
+          // Якоря нет нигде: reveal возвращает null — запись раскрывается
+          // карточкой в панели. Прокрутка на саму точку недопустима: она
+          // разрешается в виджет-плейсхолдер и роняет measure-цикл CM.
+          if (anchor === -1) return null;
+          view.dispatch({ effects: EditorView.scrollIntoView(anchor, { y: 'center' }) });
+          // Первый coordsAtPos сбрасывает отложенный measure: прокрутка
+          // применяется до снятия rect, поэтому попап встаёт по итоговому
+          // положению записи, а не по позиции до скролла.
+          const coords = view.coordsAtPos(from);
+          const marker = view.dom.querySelector<HTMLElement>(`[data-record-id="${cssEscape(recordId)}"]`);
+          if (marker !== null) {
+            const rect = marker.getBoundingClientRect();
+            return { x: rect.left, y: rect.top, bottom: rect.bottom };
+          }
+          return coords === null ? null : { x: coords.left, y: coords.top, bottom: coords.bottom };
+        }
         view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
-        return true;
+        const coords = view.coordsAtPos(to);
+        return coords === null ? null : { x: coords.left, y: coords.top, bottom: coords.bottom };
       },
       revealRange: (from, to, options) => {
         const view = handleRef.current?.view ?? null;
@@ -620,11 +719,6 @@ export function ReviewEditor({
 
   return (
     <div className="review-editor" ref={hostRef} onClick={handleHostClick}>
-      {commandError !== null && (
-        <p className="app__error" role="alert">
-          {commandError}
-        </p>
-      )}
       <GalleyEditor
         ref={handleRef}
         theme={theme}
