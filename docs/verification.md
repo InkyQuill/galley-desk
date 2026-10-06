@@ -2,7 +2,8 @@
 
 ## PR #3: CI и CodeRabbit, 2026-10-06
 
-Linux: typecheck/package PASS, 486 unit PASS, 122 desktop PASS / 1 performance skip.
+Linux: typecheck/package PASS, 487 unit PASS; полный прогон инфраструктуры — 122 PASS / 1 performance skip,
+после исправления ложного external при failed-save — 23 затронутых desktop PASS.
 Сканер: 6 известных находок, 0 ошибок разбора. macOS GUI — NOT RUN.
 [Причины падений, исправления и оценка обвязки](reviews/2026-10-06-pr3-ci-review.md).
 

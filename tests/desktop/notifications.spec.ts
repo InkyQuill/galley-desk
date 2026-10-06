@@ -201,7 +201,7 @@ test('карточки складываются вверх с зазором 8px
     await app.evaluate(() => (globalThis as unknown as { restoreSetLayout: () => void }).restoreSetLayout());
     await page.getByRole('button', { name: 'Повторить сохранение ширины' }).click();
     await expect(layoutNotice).toHaveCount(0);
-    await expect(page.locator('.notice-center .notice')).toHaveCount(1);
+    await expect(page.locator('.notice-center .notice')).toHaveText([/локальный текст сохранён/]);
 
     // «Перечитать главу» снимает последнюю.
     await chmod(bookRoot, 0o755);
