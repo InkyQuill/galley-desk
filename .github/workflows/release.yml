@@ -11,9 +11,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to retry (vX.Y.Z)
+        description: Release tag to retry (vX.Y.Z)
         type: string
         required: true
+      sha:
+        description: Exact release PR merge SHA when its tag has not been created yet
+        type: string
+        required: false
 permissions:
   contents: read
 concurrency:

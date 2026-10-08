@@ -212,3 +212,22 @@ No contract-related files changed in this correction.
 P2: после Escape, закрывающего меню главы, фокус возвращается на его кнопку. Следующий Escape поглощается и не закрывает панель/поиск. Явные кнопки закрытия работают; потери данных нет. Остаток отложен после одного финального цикла исправлений по SDD. Это известный дефект, а не подтверждённый PASS сценария двух последовательных Escape.
 
 Linux gates на `ec589b0`: 461 unit; 104 native PASS, 1 ожидаемый performance-skip; typecheck/package PASS. [Заключительное ревью](./reviews/evidence/workspace-ux/final-review/final-rereview.md). macOS/системный IME не проверены.
+
+## CodeRabbit PR #4 — 2026-10-08
+
+Проверены все шесть текущих замечаний. Исправлены очереди workflow и восстановление
+по merge SHA, загрузка установщика до исполнения, офлайн-режим без curl,
+root-owned проверенная копия ZIP и тест повтора опубликованного релиза.
+
+- PASS: TypeScript, 487 unit-тестов, 8 release-тестов, ShellCheck, actionlint,
+  `git diff --check`.
+- PASS: в отдельном Docker-контейнере штатная установка синтетического ZIP
+  выставляет root:root/4755; подмена ZIP перед повышением прав отклоняется,
+  staging удаляется, `current` не создаётся. Проверка сохранена в
+  `scripts/release/check-installer-container.sh` (только disposable root container,
+  репозиторий монтируется read-only в `/src`; нужны Bash, Python 3, coreutils).
+- Предыдущий HEAD `069ec7a`: GitHub Contracts, Linux и macOS PASS.
+  Новый HEAD требует собственного CI; GUI при этом исправлении не запускался.
+- BLOCKED: ruleset для `v*` — GitHub API HTTP 403, приватному репозиторию нужен
+  GitHub Pro либо публичная видимость. Тариф и видимость не менялись; замечание
+  о защите тегов остаётся открытым. Требуемое правило описано в runbook.

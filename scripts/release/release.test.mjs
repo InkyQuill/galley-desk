@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -86,6 +86,41 @@ test('installer pins latest downloads and rejects corrupted bytes before install
     assert.notEqual(f.run('--version', '1.2.3', '--download-only', path.join(f.temp, 'missing')).status, 0);
   } finally { rmSync(f.temp, { recursive: true, force: true }); }
 });
+test('offline installer works with no curl on PATH', () => {
+  const f = installerFixture();
+  try {
+    const bin = path.join(f.temp, 'offline-bin');
+    mkdirSync(bin);
+    for (const tool of ['uname', 'python3', 'sha256sum', 'mktemp', 'rm', 'cp', 'mkdir']) {
+      symlinkSync(execFileSync('which', [tool], { encoding: 'utf8' }).trim(), path.join(bin, tool));
+    }
+    // Keep the fixture architecture deterministic even on an ARM test host.
+    rmSync(path.join(bin, 'uname'));
+    symlinkSync(path.join(f.temp, 'bin/uname'), path.join(bin, 'uname'));
+    const result = spawnSync('/bin/bash', [path.join(root, 'scripts/install.sh'), '--from-directory', f.temp,
+      '--download-only', path.join(f.temp, 'offline')], { encoding: 'utf8', env: { ...process.env, PATH: bin } });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(path.join(f.temp, 'offline', f.asset), 'utf8'), 'fixture archive bytes');
+  } finally { rmSync(f.temp, { recursive: true, force: true }); }
+});
+test('documented one-liner never executes a partial failed download', () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'galley-download-'));
+  try {
+    const command = readFileSync(path.join(root, 'docs/installation.md'), 'utf8').split('```sh\n')[1].split('\n```')[0];
+    writeFileSync(path.join(temp, 'curl'), `#!/bin/sh
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = -o ]; then printf 'touch "$MARKER"\\n' > "$2"; break; fi
+  shift
+done
+exit 18
+`, { mode: 0o755 });
+    const result = spawnSync('bash', ['-c', command], {
+      encoding: 'utf8', env: { ...process.env, PATH: `${temp}:${process.env.PATH}`, MARKER: path.join(temp, 'executed') },
+    });
+    assert.notEqual(result.status, 0);
+    assert.throws(() => readFileSync(path.join(temp, 'executed')), { code: 'ENOENT' });
+  } finally { rmSync(temp, { recursive: true, force: true }); }
+});
 test('installer and native package hook are valid shell', () => {
   execFileSync('bash', ['-n', 'scripts/install.sh'], { cwd: root });
   execFileSync('sh', ['-n', 'apps/desktop/assets/linux/postinstall.sh'], { cwd: root });
@@ -108,7 +143,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const args = process.argv.slice(2);
 fs.appendFileSync('calls', args.join(' ') + '\\n');
-if (args[0] === 'api') console.log(args[1].includes('/commits/') ? JSON.stringify({sha:'a'.repeat(40)}) : '[[]]');
+if (args[0] === 'api') console.log(args[1].includes('/commits/') ? JSON.stringify({sha:'a'.repeat(40)}) : JSON.stringify([process.env.PUBLISHED ? [{tag_name:process.env.RELEASE_TAG,draft:false,assets:fs.readdirSync('release-assets').map(name=>({name}))}] : []]));
 else if (args[1] === 'view') console.log(JSON.stringify({assets:fs.readdirSync('release-assets').map(name=>({name}))}));
 else if (args[1] === 'download') {
   const dir = args[args.indexOf('--dir')+1];
@@ -116,8 +151,8 @@ else if (args[1] === 'download') {
   if (process.env.TAMPER) fs.writeFileSync(path.join(dir,'install.sh'),'tampered');
 }
 `, { mode: 0o755 });
-    const run = tamper => spawnSync('node', [path.join(root, 'scripts/release/publish.mjs')], {
-      cwd: temp, encoding: 'utf8', env: { ...process.env, PATH: `${temp}/bin:${process.env.PATH}`, RELEASE_TAG: `v${version}`, RELEASE_SHA: 'a'.repeat(40), GITHUB_REPOSITORY: 'owner/repo', TAMPER: tamper },
+    const run = (tamper, published = '') => spawnSync('node', [path.join(root, 'scripts/release/publish.mjs')], {
+      cwd: temp, encoding: 'utf8', env: { ...process.env, PATH: `${temp}/bin:${process.env.PATH}`, RELEASE_TAG: `v${version}`, RELEASE_SHA: 'a'.repeat(40), GITHUB_REPOSITORY: 'owner/repo', TAMPER: tamper, PUBLISHED: published },
     });
     const broken = run('1');
     assert.notEqual(broken.status, 0);
@@ -127,5 +162,10 @@ else if (args[1] === 'download') {
     const good = run('');
     assert.equal(good.status, 0, good.stderr);
     assert.match(readFileSync(path.join(temp, 'calls'), 'utf8'), /--draft=false/);
+    writeFileSync(path.join(temp, 'calls'), '');
+    const retry = run('', '1');
+    assert.equal(retry.status, 0, retry.stderr);
+    assert.match(retry.stdout, /already published/);
+    assert.doesNotMatch(readFileSync(path.join(temp, 'calls'), 'utf8'), /release (create|upload|edit)/);
   } finally { rmSync(temp, { recursive: true, force: true }); }
 });

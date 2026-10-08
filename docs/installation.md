@@ -10,7 +10,7 @@ Node.js, npm и исходники для их запуска не нужны. �
 или обновлением, затем выполните от обычного пользователя:
 
 ```sh
-curl -fsSL https://github.com/InkyQuill/galley-desk/releases/latest/download/install.sh | bash
+(installer=$(mktemp) && trap 'rm -f -- "$installer"' EXIT && curl -fsSL https://github.com/InkyQuill/galley-desk/releases/latest/download/install.sh -o "$installer" && bash "$installer")
 ```
 
 Команда скачивает последний стабильный релиз для x86_64 или ARM64, проверяет

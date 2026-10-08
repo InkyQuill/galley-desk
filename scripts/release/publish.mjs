@@ -23,7 +23,7 @@ if (existing && !existing.draft) {
   assert.deepEqual(existing.assets.map(asset => asset.name).sort(), files);
   console.log(`${tag} is already published; assets left unchanged.`);
 } else {
-  const notes = `# Galley Desk ${version}\n\nDownload the package for your OS and architecture.\n\n[Installation instructions](https://github.com/InkyQuill/galley-desk/blob/${tag}/docs/installation.md)\n\nLinux one-liner:\n\n\`\`\`sh\ncurl -fsSL https://github.com/InkyQuill/galley-desk/releases/download/${tag}/install.sh | bash -s -- --version ${version}\n\`\`\`\n\nChecksums: SHA256SUMS. Build: ${process.env.RELEASE_SHA}.\n\nmacOS: unsigned, not notarized; native GUI/IME checks NOT RUN.\n\n[Changelog](https://github.com/InkyQuill/galley-desk/blob/${tag}/CHANGELOG.md)\n`;
+  const notes = `# Galley Desk ${version}\n\nDownload the package for your OS and architecture.\n\n[Installation instructions](https://github.com/InkyQuill/galley-desk/blob/${tag}/docs/installation.md)\n\nLinux one-liner:\n\n\`\`\`sh\n(installer=$(mktemp) && trap 'rm -f -- "$installer"' EXIT && curl -fsSL https://github.com/InkyQuill/galley-desk/releases/download/${tag}/install.sh -o "$installer" && bash "$installer" --version ${version})\n\`\`\`\n\nChecksums: SHA256SUMS. Build: ${process.env.RELEASE_SHA}.\n\nmacOS: unsigned, not notarized; native GUI/IME checks NOT RUN.\n\n[Changelog](https://github.com/InkyQuill/galley-desk/blob/${tag}/CHANGELOG.md)\n`;
   const temp = mkdtempSync(path.join(os.tmpdir(), 'galley-release-'));
   try {
     const notesPath = path.join(temp, 'notes.md');

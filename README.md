@@ -10,7 +10,7 @@
 Для Linux после первого опубликованного релиза:
 
 ```sh
-curl -fsSL https://github.com/InkyQuill/galley-desk/releases/latest/download/install.sh | bash
+(installer=$(mktemp) && trap 'rm -f -- "$installer"' EXIT && curl -fsSL https://github.com/InkyQuill/galley-desk/releases/latest/download/install.sh -o "$installer" && bash "$installer")
 ```
 
 [Полная инструкция](docs/installation.md): системные deb/rpm/pacman, требования,

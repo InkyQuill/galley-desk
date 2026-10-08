@@ -22,7 +22,9 @@ case "$(uname -m)" in
   aarch64|arm64) arch=arm64 ;;
   *) echo 'Supported architectures: x86_64 and aarch64.' >&2; exit 1 ;;
 esac
-for tool in curl python3 sha256sum; do
+tools=(python3 sha256sum)
+if [ -z "$from_directory" ]; then tools+=(curl); fi
+for tool in "${tools[@]}"; do
   command -v "$tool" >/dev/null || { echo "Please install $tool first." >&2; exit 1; }
 done
 if [ -n "$version" ] && [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -62,6 +64,7 @@ if len(matches) != 1:
 print(matches[0].strip())
 PY
 (cd "$work" && sha256sum --check selected.sha256)
+read -r expected_digest _ < "$work/selected.sha256"
 if [ -n "$download_only" ]; then
   mkdir -p -- "$download_only"
   cp -- "$work/$asset" "$work/selected.sha256" "$work/SHA256SUMS" "$download_only/"
@@ -76,9 +79,9 @@ else
 fi
 # Python validates every entry before extraction and sets the sandbox permissions.
 # No user-controlled prefix, archive symlinks, or shell interpolation under sudo.
-"${elevate[@]}" python3 - "$work/$asset" "$version" "$arch" <<'PY'
-import os, pathlib, shutil, stat, sys, tempfile, zipfile
-archive, version, arch = sys.argv[1:]
+"${elevate[@]}" python3 - "$work/$asset" "$version" "$arch" "$expected_digest" <<'PY'
+import hashlib, os, pathlib, shutil, stat, sys, tempfile, zipfile
+archive, version, arch, expected_digest = sys.argv[1:]
 root = pathlib.Path('/opt/galley-desk')
 if root.is_symlink():
     sys.exit('/opt/galley-desk must not be a symlink')
@@ -92,7 +95,17 @@ if launcher.exists() or launcher.is_symlink():
 stage = pathlib.Path(tempfile.mkdtemp(prefix='.install-', dir=root))
 payload = stage / ('galley-desk-linux-' + arch)
 try:
-    with zipfile.ZipFile(archive) as z:
+    # Only extract a root-owned snapshot checked against the pre-elevation digest.
+    verified_archive = stage / 'archive.zip'
+    with open(archive, 'rb') as source, verified_archive.open('xb') as target:
+        shutil.copyfileobj(source, target)
+    with verified_archive.open('rb') as source:
+        digest = hashlib.sha256()
+        for chunk in iter(lambda: source.read(1024 * 1024), b''):
+            digest.update(chunk)
+        if digest.hexdigest() != expected_digest:
+            raise ValueError('Archive changed before privileged installation')
+    with zipfile.ZipFile(verified_archive) as z:
         for item in z.infolist():
             p = pathlib.PurePosixPath(item.filename)
             if not p.parts or p.parts[0] != payload.name:
