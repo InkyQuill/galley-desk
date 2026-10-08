@@ -1,0 +1,15 @@
+debconf: delaying package configuration, since apt-utils is not installed
+
+Running 3 tests using 1 worker
+
+  ✓  1 tests/desktop/packaged-smoke.spec.ts:10:1 › packaged executable: save, restart, apply and byte-exact undo (1.4s)
+  ✓  2 tests/desktop/shell.spec.ts:2:1 › launches without node access in renderer (485ms)
+  ✓  3 tests/desktop/shell.spec.ts:12:1 › blocks navigation away from the app origin (1.1s)
+
+  3 passed (3.3s)
+npm notice
+npm notice New major version of npm available! 11.19.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+INSTALLED_DEB_SMOKE_OK

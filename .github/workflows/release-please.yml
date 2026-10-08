@@ -1,0 +1,73 @@
+name: Release Please
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+jobs:
+  release-pr:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+    outputs:
+      tag: ${{ steps.identity.outputs.tag }}
+      sha: ${{ steps.identity.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Detect version merge
+        id: changed
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          changed=false
+          if [ "$GITHUB_EVENT_NAME" = push ] && previous=$(git show "$BEFORE:version.txt" 2>/dev/null); then
+            if [ "$previous" != "$(cat version.txt)" ]; then changed=true; fi
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+      - uses: googleapis/release-please-action@8b8fd2cc23b2e18957157a9d923d75aa0c6f6ad5 # v4
+        id: release
+        if: steps.changed.outputs.changed != 'true'
+        with:
+          skip-github-release: true
+          target-branch: main
+      - name: Explicitly check bot-created release PR
+        if: steps.release.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PR: ${{ steps.release.outputs.pr }}
+        run: |
+          number=$(node -e 'const n=JSON.parse(process.env.RELEASE_PR).number; if(!Number.isSafeInteger(n)||n<1)throw Error("Invalid PR"); console.log(n)')
+          head=$(gh pr view "$number" --json headRefName --jq .headRefName)
+          case "$head" in release-please--branches--main*) ;; *) exit 1 ;; esac
+          gh workflow run desktop.yml --ref "$head"
+          gh workflow run contracts.yml --ref "$head"
+      - name: Validate immutable release identity
+        id: identity
+        if: steps.changed.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release/identity.mjs
+  release:
+    needs: release-pr
+    if: needs.release-pr.outputs.tag != ''
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.release-pr.outputs.tag }}
+      sha: ${{ needs.release-pr.outputs.sha }}
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write

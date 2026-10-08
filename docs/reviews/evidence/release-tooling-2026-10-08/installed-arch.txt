@@ -1,0 +1,27 @@
+galley-desk: 96 total files, 0 altered files
+npm notice run npx
+npm notice run 'playwright' test tests/desktop/packaged-smoke.spec.ts tests/desktop/shell.spec.ts --workers=1 --output=/tmp/galley-arch-tests
+
+Running 3 tests using 1 worker
+
+  ✓  1 tests/desktop/packaged-smoke.spec.ts:10:1 › packaged executable: save, restart, apply and byte-exact undo (1.4s)
+  ✓  2 tests/desktop/shell.spec.ts:2:1 › launches without node access in renderer (510ms)
+  ✓  3 tests/desktop/shell.spec.ts:12:1 › blocks navigation away from the app origin (987ms)
+
+  3 passed (3.2s)
+checking dependencies...
+
+Package (1)  Old Version  Net Change
+
+galley-desk  0.1.0-1      -284.86 MiB
+
+Total Removed Size:  284.86 MiB
+
+:: Do you want to remove these packages? [Y/n]
+:: Processing package changes...
+removing galley-desk...
+:: Running post-transaction hooks...
+(1/3) Arming ConditionNeedsUpdate...
+(2/3) Updating icon theme caches...
+(3/3) Updating the desktop file MIME type cache...
+ARCH_PACKAGE_INSTALL_SMOKE_REMOVE_OK

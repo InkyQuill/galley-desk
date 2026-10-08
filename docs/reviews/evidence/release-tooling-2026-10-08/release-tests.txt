@@ -1,0 +1,19 @@
+
+> check:release
+> node scripts/release/identity.mjs --local && node --test scripts/release/*.test.mjs
+
+Release version: 0.1.0
+✔ release version must agree with runtime, lock and manifest (2.245661ms)
+✔ only the exact merged release PR authorizes publishing (0.327441ms)
+✔ release inventory covers both architectures and every package format (0.08943ms)
+✔ installer pins latest downloads and rejects corrupted bytes before installation (95.051409ms)
+✔ installer and native package hook are valid shell (2.551712ms)
+✔ publisher verifies uploaded bytes before making a draft public (194.177183ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 324.923909

@@ -1,5 +1,17 @@
 # Протокол верификации настольного приложения
 
+## Release Please и обновление зависимостей, 2026-10-08
+
+Чистый npm ci/typecheck PASS; npm audit — 0 уязвимостей, npm outdated — пусто.
+487 unit, 21 exchange, 122 desktop PASS; 1 performance skip.
+Linux x64 ZIP/deb/rpm собраны. Pacman `.pkg.tar.zst` собран и прошёл установку, 3 smoke-теста и удаление в Arch container.
+Установленные ZIP и deb прошли по 3 теста под
+Xvfb/Openbox с настоящим SUID sandbox; повторная установка ZIP проверена.
+Релизная обвязка: 6 тестов, actionlint/ShellCheck и репетиция release-please PASS.
+Electronegativity удалён как неподдерживаемый. Публикация, macOS, Linux ARM64
+и установка RPM в Fedora — NOT RUN. [Отчёт и evidence](reviews/2026-10-08-release-tooling.md).
+
+
 ## PR #3: CI и CodeRabbit, 2026-10-06
 
 Linux: typecheck/package PASS, 487 unit PASS; полный прогон инфраструктуры — 122 PASS / 1 performance skip,

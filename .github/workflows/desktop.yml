@@ -21,23 +21,18 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Release tooling checks
+        run: npm run check:release
+      - name: Dependency audit
+        run: npm audit
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
         run: npm test
-      - name: Electron static security analysis
-        run: npm run check:security
-      - name: Save security reports
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: electron-security
-          path: test-results/security/
-          if-no-files-found: warn
       - name: Forge package
         run: npm run package
       # Electron-тесты запускаются против собранного приложения (Forge .vite
@@ -58,6 +53,14 @@ jobs:
           CI: true
           GALLEY_PACKAGED_EXECUTABLE: ${{ github.workspace }}/apps/desktop/out/galley-desk-linux-x64/galley-desk
           GALLEY_TEST_FORCE_SUID_SANDBOX: "1"
+      - name: Build, install and verify the pacman package
+        run: scripts/release/check-arch.sh
+      - name: Retain pacman package for review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pacman-package
+          path: release-assets/*.pkg.tar.zst
+          if-no-files-found: error
       - name: Save failed desktop test evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -76,10 +79,14 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Release tooling checks
+        run: npm run check:release
+      - name: Dependency audit
+        run: npm audit
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests

@@ -49,8 +49,24 @@ const config: ForgeConfig = {
   rebuildConfig: {},
   makers: [
     new MakerZIP({}, ['darwin', 'linux']),
-    new MakerDeb({}, ['linux']),
-    new MakerRpm({}, ['linux']),
+    new MakerDeb({ options: {
+      name: 'galley-desk',
+      bin: 'galley-desk',
+      productName: 'Galley Desk',
+      genericName: 'Markdown book reviewer',
+      categories: ['Office'],
+      icon: path.resolve('assets/branding/generated/galley-desk-icon.png'),
+      scripts: { postinst: path.resolve('assets/linux/postinstall.sh') },
+    } }, ['linux']),
+    new MakerRpm({ options: {
+      name: 'galley-desk',
+      bin: 'galley-desk',
+      productName: 'Galley Desk',
+      categories: ['Office'],
+      icon: path.resolve('assets/branding/generated/galley-desk-icon.png'),
+      // electron-installer-redhat supports scripts; Forge omits it from its type.
+      ...{ scripts: { post: path.resolve('assets/linux/postinstall.sh') } },
+    } }, ['linux']),
   ],
   plugins: [
     new VitePlugin({

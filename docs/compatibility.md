@@ -9,11 +9,12 @@ Galley Desk хранит правки в формате sidecar-файлов Poc
 ## Текущие зависимости Desk
 
 Desk использует опубликованные npm-пакеты `@inkyquill/galley-editor` и
-`@inkyquill/galley-themes` версии `0.15.0`, закреплённые точными версиями
-и integrity в lockfile. Проверка 2026-09-16: полный TypeScript build,
-362 unit-теста, Forge package и 68 Electron-тестов на Linux прошли.
-Отдельный performance-тест пропущен в обычном Electron-прогоне;
-performance-бюджет при этом обновлении не проверялся.
+`@inkyquill/galley-themes` версии `0.16.0`, закреплённые точными версиями
+и integrity в lockfile. Registry `gitHead` редактора:
+`54808abce1898f5ad74c204f8c3ed84750382116`; эта редакция закреплена в baseline.
+Обновление 2026-10-08 не меняет схемы Pocket. Проверки текущей версии
+описаны в [отчёте обвязки выпуска](reviews/2026-10-08-release-tooling.md).
+Таблица ниже — сохранённый исторический срез, а не текущие package pins.
 
 ## Проверенные редакции A6/A7 (исторический срез)
 

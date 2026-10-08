@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Galley Desk
+Comment=Review Markdown books
+Exec=/usr/bin/galley-desk %U
+Icon=galley-desk
+Terminal=false
+Categories=Office;TextEditor;

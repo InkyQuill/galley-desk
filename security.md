@@ -1,12 +1,25 @@
-# Проверки безопасности Electron
+# Проверки безопасности Galley Desk
 
-## Electronegativity
+## Действующие проверки
 
-`npm run check:security` сканирует собственные TS/TSX и `index.html` с CSP. Временная копия сохраняет пути относительно репозитория; сборки, зависимости, тестовые книги и пользовательские файлы в неё не попадают. Версия Electron берётся из desktop package.json. Никакие правила не отключены.
+- `npm audit` — все runtime- и dev-зависимости; CI и публикация останавливаются при любой известной уязвимости.
+- `npm test` — в том числе `ipc.test.ts`, `window.test.ts`, `resources.test.ts`: проверка sender/аргументов IPC, закрытого набора протоколов и безопасных настроек окна.
+- `scripts/gui-test.sh npm run test:desktop -- --workers=1` после упаковки — настоящие Electron-сценарии: недоступность Node в renderer, блокировка навигации/разрешений и внешние ссылки.
+- Релизные Linux-тесты запускают установленный deb с настоящим SUID sandbox; `--no-sandbox` запрещён. Forge fuses запрещают RunAsNode, NODE_OPTIONS и Node inspector, включают ASAR integrity и OnlyLoadAppFromAsar.
 
-Выходные файлы: `test-results/security/electronegativity.json` и `.sarif`. Linux CI запускает проверку и сохраняет оба файла как artifact `electron-security`. Ошибка запуска/парсинга завершает команду неуспешно. Находки пока отчётные: нулевой exit code означает завершённый анализ, а не отсутствие уязвимостей.
+Изменения preload/main требуют ревью границ доверия по [Electron Security](https://www.electronjs.org/docs/latest/tutorial/security).
+Аудит зависимостей и тесты конкретных инвариантов не гарантируют отсутствие всех уязвимостей и не заменяют полный SAST.
 
-[Electronegativity 1.10.3](https://github.com/doyensec/electronegativity) больше не поддерживается авторами. Его база версий Electron и некоторые эвристики устарели. Инструмент делает сетевые запросы за переводами и списком версий; предупреждение о недоступном переводе не означает, что TS/TSX не разобран. Сканер не заменяет Electron security tests, npm audit и ревью IPC/ресурсного протокола. Dev-зависимость не включается в runtime приложения.
+## Удаление Electronegativity — 2026-10-08
+
+Авторы [больше не поддерживают Electronegativity](https://github.com/doyensec/electronegativity),
+а Electron [удалил рекомендацию сканера](https://github.com/electron/electron/pull/48878).
+Поддерживаемая бесплатная прямая замена для нашего CLI/CI-процесса не найдена.
+Общие SAST-системы требуют отдельного набора правил и не являются прямой заменой.
+По решению пользователя удалены пакет, скрипт, CI-шаг и временные dependency overrides.
+Прежние отчёты сохранены как исторические свидетельства, а не текущий security gate.
+
+## Исторические результаты (сканер больше не запускается)
 
 ## Разбор 2026-09-16
 
