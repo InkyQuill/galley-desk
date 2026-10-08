@@ -231,3 +231,20 @@ root-owned проверенная копия ZIP и тест повтора оп
 - BLOCKED: ruleset для `v*` — GitHub API HTTP 403, приватному репозиторию нужен
   GitHub Pro либо публичная видимость. Тариф и видимость не менялись; замечание
   о защите тегов остаётся открытым. Требуемое правило описано в runbook.
+
+## Galley Editor 0.17.0 — 2026-10-08
+
+Обновлены опубликованные `@inkyquill/galley-editor` и `@inkyquill/galley-themes`
+до точной версии 0.17.0, lockfile и исходный pin в baseline:
+`ff6a3163faa0f2ba9eb4255d66d40f51c4275be9` (registry gitHead обоих пакетов).
+Pocket-схемы и Pocket Editor pin не менялись.
+
+- PASS: `npm audit` (0 уязвимостей), TypeScript, 487 unit-тестов,
+  8 release-тестов, Linux x64 package, `git diff --check`.
+- Linux desktop: 115 PASS в полном прогоне, 1 штатный performance skip;
+  7 packaged-сценариев первоначально получили EACCES из-за прав 700 у вручную
+  скопированного каталога в контейнере. После назначения этому каталогу 755
+  все 7 прошли отдельным прогоном. Итого проверены все 122 обычных сценария.
+- GUI запускался только в disposable Docker + Xvfb/Openbox, от обычного
+  пользователя; packaged-прогоны использовали root-owned SUID sandbox.
+- macOS/ARM64 локально NOT RUN; удалённый CI проверяет новый HEAD отдельно.
