@@ -4,27 +4,42 @@
 
 Стек: Electron, React, TypeScript, Galley Editor и Galley Themes. Реализован основной настольный контур: открытие папок и недавних книг, редактирование с session Undo, сигналы и заметки главы, виды «Текст»/«Сравнение»/«Исходник», поиск по главе, фильтр оглавления, оформление (темы Galley, шрифт, ширина строки), режим Zen, упаковка Electron Forge и Electron-тесты по собранному JS. После [аудита реализации](docs/reviews/2026-09-16-implementation-audit.md) выполнены исправления сохранности данных и [проверка Linux/совместимости](docs/reviews/2026-09-16-local-integration.md). Реальная macOS пока не проверена. Текущие исправления по работе с книгами описаны в [отчёте](docs/reviews/2026-09-16-real-book-fixes.md).
 
-## Запуск и сборка
+## Установка
 
-Команды выполняются из корня репозитория (Node 20.19+ или 22.12+; проверено на Node 22 и Node 26):
+Готовые пакеты для Linux и macOS: [GitHub Releases](https://github.com/InkyQuill/galley-desk/releases/latest).
+Для Linux после первого опубликованного релиза:
 
-- `npm ci` — установка зависимостей (workspaces).
-- `npm start` — запустить приложение в режиме разработки (Electron Forge dev-сервер).
-- `npm run package` — собрать и упаковать приложение для текущей платформы в `apps/desktop/out`; собранный исполняемый файл (`Galley Desk`) запускается напрямую.
-- `npm run make --workspace @galley-desk/desktop` — дистрибутивы: Linux ZIP/deb/rpm, macOS ZIP (без подписи, см. `docs/runbooks/release.md`).
-- `npm run test:desktop` — Playwright-тесты Electron-приложения; перед запуском нужен `npm run package`. Performance запускается отдельно: `GALLEY_PERF=1 npx playwright test tests/desktop/performance.spec.ts --workers=1`.
-- `npm test` — модульные тесты пакетов (Vitest).
-- `npm run test:contracts` — Kotlin ↔ TypeScript контракты с Pocket Editor (нужен JDK 17; детали в `docs/compatibility.md`).
-- `npm run typecheck` — проверка типов во всех рабочих пространствах.
-
-Пример реального запуска после сборки:
-
-```bash
-npm run package
-"./apps/desktop/out/galley-desk-linux-x64/galley-desk"
+```sh
+(installer=$(mktemp) && trap 'rm -f -- "$installer"' EXIT && curl -fsSL https://github.com/InkyQuill/galley-desk/releases/latest/download/install.sh -o "$installer" && bash "$installer")
 ```
 
-Примечание: на Node 26 (и Node 24.16+) зависимость `extract-zip` из `@electron/packager` перестаёт работать; в корневом `package.json` она явно закреплена dev-зависимостью и override на официальный форк `@electron-internal/extract-zip`.
+[Полная инструкция](docs/installation.md): системные deb/rpm/pacman, требования,
+проверка checksum, обновление, откат и удаление. macOS-сборки пока не подписаны
+и не нотарифицированы; инструкция описывает первый запуск.
+
+## Разработка и сборка
+
+Нужен Node >=22.13 (CI использует Node 24) и npm. Из корня репозитория:
+
+- `npm ci` — зависимости и бинарник Electron.
+- `npm run typecheck` и `npm test` — типы и unit-тесты.
+- `npm audit` — аудит всех зависимостей, включая инструменты сборки.
+- `npm run check:release` — проверка версий и релизной обвязки.
+- `npm run test:contracts` — обмен с закреплённой редакцией Pocket Editor (JDK 17).
+- `npm run package` — приложение в `apps/desktop/out/`.
+- `npm run make` — Linux ZIP/deb/rpm или macOS ZIP.
+
+Запуски GUI при разработке и автоматизированных проверках изолируются:
+
+```sh
+scripts/gui-test.sh npm start
+npm run package
+GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/galley-desk-linux-x64/galley-desk" \
+  scripts/gui-test.sh npm run test:desktop -- --workers=1
+```
+
+Релизами управляет release-please: слияние `chore: release X.Y.Z` запускает
+проверку и публикацию бинарников. [Первое включение и повтор выпуска](docs/runbooks/release.md).
 
 ## Документация
 
@@ -61,6 +76,9 @@ npm run package
 
 Реализация включает необходимые изменения Pocket Editor, Galley Editor и Galley Pad в их отдельных репозиториях; проверенные редакции перечислены в [docs/compatibility.md](docs/compatibility.md). Совместимость с недоступными и конфликтующими правками требует обновлённого Pocket Editor; существующие старые версии могут отвергать такие файлы.
 
-## Статический анализ Electron
+## Безопасность
 
-`npm run check:security` запускает Electronegativity по собственным TS/TSX и HTML, сохраняет JSON/SARIF в `test-results/security/`. Находки требуют разбора; ошибки сканера и парсинга завершают проверку неуспешно. [Ограничения и разбор находок](security.md).
+`npm audit` проверяет зависимости, включая сборочные инструменты. Unit- и Electron-тесты
+проверяют IPC, sandbox, навигацию и доступ к ресурсам. Устаревший Electronegativity
+удалён; эти проверки не выдаются за универсальный статический анализ.
+[Модель безопасности и ограничения](security.md).

@@ -1,0 +1,178 @@
+name: Binary Release
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      sha:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to retry (vX.Y.Z)
+        type: string
+        required: true
+      sha:
+        description: Exact release PR merge SHA when its tag has not been created yet
+        type: string
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: binary-release-${{ inputs.tag }}
+  cancel-in-progress: false
+jobs:
+  identity:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: read
+    outputs:
+      sha: ${{ steps.identity.outputs.sha }}
+      tag: ${{ steps.identity.outputs.tag }}
+      pr: ${{ steps.identity.outputs.pr }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha || inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - id: identity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: node scripts/release/identity.mjs
+      - name: Create immutable tag for retries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.identity.outputs.tag }}
+          RELEASE_SHA: ${{ steps.identity.outputs.sha }}
+        run: |
+          if ! git rev-parse "$RELEASE_TAG^{commit}" >/dev/null 2>&1; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$RELEASE_SHA"
+          fi
+  contracts:
+    needs: identity
+    uses: ./.github/workflows/contracts.yml
+    with:
+      ref: ${{ needs.identity.outputs.sha }}
+  build:
+    needs: identity
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: linux-x64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+          - os: macos-15-intel
+            target: darwin-x64
+          - os: macos-15
+            target: darwin-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.identity.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check:release
+      - run: npm audit
+      - run: npm run typecheck
+      - run: npm test
+      - name: Linux maker and test prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm fakeroot dpkg zip xvfb openbox xdotool x11-utils libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2-dev
+      - name: Build installable packages
+        run: npm run make
+      - name: Build, install and verify the pacman package
+        if: matrix.target == 'linux-x64'
+        run: scripts/release/check-arch.sh
+      - name: Collect deterministic asset names
+        env:
+          TARGET: ${{ matrix.target }}
+        run: node scripts/release/assets.mjs collect "$TARGET"
+      - name: Install and test the ZIP payload
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          (cd release-assets && sha256sum -- *.zip > SHA256SUMS)
+          bash scripts/install.sh --from-directory release-assets
+          rm release-assets/SHA256SUMS
+          test "$(stat -c '%u:%g:%a' /opt/galley-desk/current/chrome-sandbox)" = '0:0:4755'
+          scripts/gui-test.sh npx playwright test tests/desktop/packaged-smoke.spec.ts --workers=1
+          sudo rm /usr/local/bin/galley-desk /usr/local/share/applications/galley-desk.desktop
+          sudo rm -r /opt/galley-desk
+        env:
+          CI: true
+          GALLEY_PACKAGED_EXECUTABLE: /opt/galley-desk/current/galley-desk
+          GALLEY_TEST_FORCE_SUID_SANDBOX: '1'
+      - name: Install and test the DEB payload
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get install -y ./release-assets/*.deb
+          test -x /usr/lib/galley-desk/galley-desk
+          test "$(stat -c '%u:%g:%a' /usr/lib/galley-desk/chrome-sandbox)" = '0:0:4755'
+          scripts/gui-test.sh npm run test:desktop -- --workers=1
+        env:
+          CI: true
+          GALLEY_PACKAGED_EXECUTABLE: /usr/lib/galley-desk/galley-desk
+          GALLEY_TEST_FORCE_SUID_SANDBOX: '1'
+      # macOS GUI checks are NOT RUN; no native display isolation is available.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-${{ matrix.target }}
+          path: release-assets/
+          if-no-files-found: error
+      - name: Retain failed verification evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: failure-${{ matrix.target }}
+          path: test-results/
+          if-no-files-found: ignore
+  publish:
+    needs: [identity, contracts, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.identity.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release-assets/
+      - run: node scripts/release/assets.mjs manifest
+      - name: Publish only the complete verified payload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.identity.outputs.tag }}
+          RELEASE_SHA: ${{ needs.identity.outputs.sha }}
+        run: node scripts/release/publish.mjs
+      - name: Reconcile release PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PR: ${{ needs.identity.outputs.pr }}
+        run: |
+          gh label create 'autorelease: tagged' --color 0E8A16 --force
+          gh issue edit "$RELEASE_PR" --remove-label 'autorelease: pending' --add-label 'autorelease: tagged'

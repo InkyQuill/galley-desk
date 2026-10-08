@@ -1,0 +1,28 @@
+# Packages the already-built Electron application; never rebuilds its binaries.
+pkgname=galley-desk
+pkgver=${GALLEY_ARCH_VERSION:?Use scripts/release/make-arch.sh}
+pkgrel=1
+pkgdesc='Desktop reviewer for Markdown books'
+arch=('x86_64')
+url='https://github.com/InkyQuill/galley-desk'
+license=('MIT')
+depends=('alsa-lib' 'at-spi2-core' 'cairo' 'dbus' 'expat' 'gcc-libs' 'glib2'
+         'glibc' 'gtk3' 'libdrm' 'libx11' 'libxcb' 'libxcomposite' 'libxdamage'
+         'libxext' 'libxfixes' 'libxkbcommon' 'libxrandr' 'mesa' 'nspr' 'nss'
+         'pango' 'libnotify' 'libsecret' 'xdg-utils')
+options=('!strip' '!debug')
+PKGEXT='.pkg.tar.zst'
+
+package() {
+  local _package_root=${pkgdir:?Set by makepkg}
+  local _recipe_root=${startdir:?Set by makepkg}
+  install -d "$_package_root/usr/lib/galley-desk" "$_package_root/usr/bin"
+  cp -a -- "${GALLEY_ARCH_SOURCE:?Missing packaged application}/." "$_package_root/usr/lib/galley-desk/"
+  chmod 755 "$_package_root/usr/lib/galley-desk"
+  chmod 4755 "$_package_root/usr/lib/galley-desk/chrome-sandbox"
+  ln -s ../lib/galley-desk/galley-desk "$_package_root/usr/bin/galley-desk"
+  install -Dm644 "$_recipe_root/galley-desk.desktop" "$_package_root/usr/share/applications/galley-desk.desktop"
+  install -Dm644 "$_package_root/usr/lib/galley-desk/resources/branding/generated/galley-desk-icon.png" \
+    "$_package_root/usr/share/icons/hicolor/512x512/apps/galley-desk.png"
+  install -Dm644 "$_package_root/usr/lib/galley-desk/LICENSE" "$_package_root/usr/share/licenses/galley-desk/LICENSE.electron"
+}

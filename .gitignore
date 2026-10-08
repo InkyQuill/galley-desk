@@ -17,3 +17,4 @@ out/
 playwright-report/
 test-results/
 .worktrees/
+release-assets/

@@ -1,0 +1,21 @@
+✔ Considering: 1 commits
+❯ component:
+❯ pull request title pattern: chore: release ${version}
+❯ componentNoSpace: undefined
+⚠ pullRequestTitlePattern miss the part of '${scope}'
+⚠ pullRequestTitlePattern miss the part of '${component}'
+fix: test -> chore: release 0.1.1, versions synchronized
+✔ Considering: 1 commits
+❯ component:
+❯ pull request title pattern: chore: release ${version}
+❯ componentNoSpace: undefined
+⚠ pullRequestTitlePattern miss the part of '${scope}'
+⚠ pullRequestTitlePattern miss the part of '${component}'
+feat: test -> chore: release 0.2.0, versions synchronized
+✔ Considering: 1 commits
+❯ component:
+❯ pull request title pattern: chore: release ${version}
+❯ componentNoSpace: undefined
+⚠ pullRequestTitlePattern miss the part of '${scope}'
+⚠ pullRequestTitlePattern miss the part of '${component}'
+feat!: breaking test -> chore: release 0.2.0, versions synchronized

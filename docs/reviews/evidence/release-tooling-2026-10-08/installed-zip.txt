@@ -1,0 +1,20 @@
+galley-desk-0.1.0-linux-x64.zip: OK
+Installed Galley Desk 0.1.0. Open it from the application menu or run galley-desk.
+Close the app before updating. Repeat this command to update; use --version X.Y.Z to roll back.
+galley-desk-0.1.0-linux-x64.zip: OK
+Installed Galley Desk 0.1.0. Open it from the application menu or run galley-desk.
+Close the app before updating. Repeat this command to update; use --version X.Y.Z to roll back.
+
+Running 3 tests using 1 worker
+
+  ✓  1 tests/desktop/packaged-smoke.spec.ts:10:1 › packaged executable: save, restart, apply and byte-exact undo (1.4s)
+  ✓  2 tests/desktop/shell.spec.ts:2:1 › launches without node access in renderer (712ms)
+  ✓  3 tests/desktop/shell.spec.ts:12:1 › blocks navigation away from the app origin (918ms)
+
+  3 passed (3.4s)
+npm notice
+npm notice New major version of npm available! 11.19.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+INSTALLED_ZIP_SMOKE_OK

@@ -1,5 +1,17 @@
 # Протокол верификации настольного приложения
 
+## Release Please и обновление зависимостей, 2026-10-08
+
+Чистый npm ci/typecheck PASS; npm audit — 0 уязвимостей, npm outdated — пусто.
+487 unit, 21 exchange, 122 desktop PASS; 1 performance skip.
+Linux x64 ZIP/deb/rpm собраны. Pacman `.pkg.tar.zst` собран и прошёл установку, 3 smoke-теста и удаление в Arch container.
+Установленные ZIP и deb прошли по 3 теста под
+Xvfb/Openbox с настоящим SUID sandbox; повторная установка ZIP проверена.
+Релизная обвязка: 6 тестов, actionlint/ShellCheck и репетиция release-please PASS.
+Electronegativity удалён как неподдерживаемый. Публикация, macOS, Linux ARM64
+и установка RPM в Fedora — NOT RUN. [Отчёт и evidence](reviews/2026-10-08-release-tooling.md).
+
+
 ## PR #3: CI и CodeRabbit, 2026-10-06
 
 Linux: typecheck/package PASS, 487 unit PASS; полный прогон инфраструктуры — 122 PASS / 1 performance skip,
@@ -200,3 +212,39 @@ No contract-related files changed in this correction.
 P2: после Escape, закрывающего меню главы, фокус возвращается на его кнопку. Следующий Escape поглощается и не закрывает панель/поиск. Явные кнопки закрытия работают; потери данных нет. Остаток отложен после одного финального цикла исправлений по SDD. Это известный дефект, а не подтверждённый PASS сценария двух последовательных Escape.
 
 Linux gates на `ec589b0`: 461 unit; 104 native PASS, 1 ожидаемый performance-skip; typecheck/package PASS. [Заключительное ревью](./reviews/evidence/workspace-ux/final-review/final-rereview.md). macOS/системный IME не проверены.
+
+## CodeRabbit PR #4 — 2026-10-08
+
+Проверены все шесть текущих замечаний. Исправлены очереди workflow и восстановление
+по merge SHA, загрузка установщика до исполнения, офлайн-режим без curl,
+root-owned проверенная копия ZIP и тест повтора опубликованного релиза.
+
+- PASS: TypeScript, 487 unit-тестов, 8 release-тестов, ShellCheck, actionlint,
+  `git diff --check`.
+- PASS: в отдельном Docker-контейнере штатная установка синтетического ZIP
+  выставляет root:root/4755; подмена ZIP перед повышением прав отклоняется,
+  staging удаляется, `current` не создаётся. Проверка сохранена в
+  `scripts/release/check-installer-container.sh` (только disposable root container,
+  репозиторий монтируется read-only в `/src`; нужны Bash, Python 3, coreutils).
+- Предыдущий HEAD `069ec7a`: GitHub Contracts, Linux и macOS PASS.
+  Новый HEAD требует собственного CI; GUI при этом исправлении не запускался.
+- BLOCKED: ruleset для `v*` — GitHub API HTTP 403, приватному репозиторию нужен
+  GitHub Pro либо публичная видимость. Тариф и видимость не менялись; замечание
+  о защите тегов остаётся открытым. Требуемое правило описано в runbook.
+
+## Galley Editor 0.17.0 — 2026-10-08
+
+Обновлены опубликованные `@inkyquill/galley-editor` и `@inkyquill/galley-themes`
+до точной версии 0.17.0, lockfile и исходный pin в baseline:
+`ff6a3163faa0f2ba9eb4255d66d40f51c4275be9` (registry gitHead обоих пакетов).
+Pocket-схемы и Pocket Editor pin не менялись.
+
+- PASS: `npm audit` (0 уязвимостей), TypeScript, 487 unit-тестов,
+  8 release-тестов, Linux x64 package, `git diff --check`.
+- Linux desktop: 115 PASS в полном прогоне, 1 штатный performance skip;
+  7 packaged-сценариев первоначально получили EACCES из-за прав 700 у вручную
+  скопированного каталога в контейнере. После назначения этому каталогу 755
+  все 7 прошли отдельным прогоном. Итого проверены все 122 обычных сценария.
+- GUI запускался только в disposable Docker + Xvfb/Openbox, от обычного
+  пользователя; packaged-прогоны использовали root-owned SUID sandbox.
+- macOS/ARM64 локально NOT RUN; удалённый CI проверяет новый HEAD отдельно.
