@@ -31,4 +31,4 @@ Verified after installing the synced lockfile with `npm ci`:
 
 The first full desktop run exposed default-profile collisions in the two shell tests; both now use temporary profiles. It also had one long-chapter undo/redo viewport assertion failure. That test passed standalone on Electron 44.7.0 and 44.10.0 and in the final full run; its root cause remains unconfirmed. No retry, timeout or assertion changes were made.
 
-The PR branch starts from remote `main`; unrelated local documentation and `AGENTS.md` edits are excluded. No release or installation was performed.
+The PR branch starts from remote `main`. A subsequent documentation review retained and refreshed useful local design records and the current agent guide; see [documentation review](2026-10-28-retained-documentation.md). No release or installation was performed.

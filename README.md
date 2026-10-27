@@ -43,6 +43,9 @@ GALLEY_PACKAGED_EXECUTABLE="$PWD/apps/desktop/out/galley-desk-linux-x64/galley-d
 
 ## Документация
 
+- [Продуктовые принципы](apps/desktop/PRODUCT.md), [система оформления](apps/desktop/DESIGN.md) и [перенос в сестринские проекты](docs/design-system-transfer.md).
+- [RU/EN: предложенный план](docs/superpowers/plans/2026-09-22-ru-en-localization.md) — ещё не реализован.
+
 - [Руководство пользователя](docs/user-guide.md) — поиск, оформление, Zen, недоступные записи, ошибки записи, передача папки.
 - [Протокол верификации](docs/verification.md) — что и где проверялось, железо, производительность, явно непроверенное.
 - [Runbook выпуска](docs/runbooks/release.md) — сборка дистрибутивов; подпись/нотаризация описаны и не выполнялись.
