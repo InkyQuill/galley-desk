@@ -284,6 +284,9 @@ if (!app.requestSingleInstanceLock()) {
         if (window === null) throw new Error('Window missing');
         return runWindowAction(window, action);
       },
+      broadcastBook: (update) => {
+        for (const window of BrowserWindow.getAllWindows()) window.webContents.send('desk:book-update', update);
+      },
       broadcast: (snapshot) => {
         for (const window of BrowserWindow.getAllWindows()) {
           window.webContents.send('desk:snapshot', snapshot);

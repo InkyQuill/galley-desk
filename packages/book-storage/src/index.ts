@@ -41,5 +41,5 @@ export type { ChapterSessionState, Draft } from './session';
 export { readJournalsForRoot, decodeBytes } from './journal';
 export type { JournalRecord } from './journal';
 
-export { manageBook, discoverChapters, BookManagementError } from './book';
+export { manageBook, discoverChapters, refreshManifest, BookManagementError } from './book';
 export type { BookChange } from './book';

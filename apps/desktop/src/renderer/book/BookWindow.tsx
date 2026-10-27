@@ -177,6 +177,9 @@ export function BookWindow({
   onLayoutRetry,
 }: Props) {
   const [book, setBook] = useState(initialBook);
+  const [discoveredFiles, setDiscoveredFiles] = useState<string[]>([]);
+  const [dismissedDiscovery, setDismissedDiscovery] = useState('');
+  const [binderError, setBinderError] = useState<string | null>(null);
   const [chapterAction, setChapterAction] = useState<ChapterAction | null>(null);
   const [noteStates, setNoteStates] = useState<Record<string, NoteState>>({});
   const [renameOpen, setRenameOpen] = useState(false);
@@ -400,6 +403,25 @@ export function BookWindow({
       applySnapshot(await window.desk.openChapter(next.bookId, chapterIdRef.current));
     }
   }, [applySnapshot, onBookChange]);
+
+  useEffect(() => {
+    let active = true;
+    const receive = (update: import('../../shared/api').ChapterDiscovery) => {
+      if (!active || update.book.bookId !== book.bookId) return;
+      setDiscoveredFiles(update.files.map(file => file.path).sort());
+      setBinderError(update.error ?? null);
+      // A file discovery alone must not replace the editor's pending input.
+      if (JSON.stringify(update.book) !== JSON.stringify(book)) {
+        void (async () => {
+          await editorApi?.flushPending();
+          if (active) await refreshBook(update.book);
+        })().catch(cause => { if (active) setError(errorText(cause)); });
+      }
+    };
+    const unsubscribe = window.desk.onBookUpdate(receive);
+    void window.desk.discoverChapters(book.bookId).then(receive).catch(() => undefined);
+    return () => { active = false; unsubscribe(); };
+  }, [book, refreshBook, editorApi]);
 
   // --- оформление ------------------------------------------------------------
 
@@ -1084,6 +1106,15 @@ export function BookWindow({
           (внешнее изменение, отказ очереди, сбой сохранения) — у нижнего края.
           Таймеров нет: карточку убирает разрешение состояния или явная кнопка. */}
       <NoticeCenter>
+        {binderError && <Notice kind="warning">{binderError}</Notice>}
+        {discoveredFiles.length > 0 && JSON.stringify(discoveredFiles) !== dismissedDiscovery && (
+          <Notice kind="info" onDismiss={() => setDismissedDiscovery(JSON.stringify(discoveredFiles))} actions={
+            <button type="button" onClick={() => {
+              actionTriggerRef.current = document.activeElement as HTMLElement;
+              setChapterAction({ kind: 'discover' });
+            }}>Выбрать главы</button>
+          }>В папке есть файлы вне оглавления: {discoveredFiles.length}. Добавить главы?</Notice>
+        )}
         {layoutError !== null && (
           <Notice kind="error" actions={
             <button type="button" onClick={onLayoutRetry}>Повторить сохранение ширины</button>

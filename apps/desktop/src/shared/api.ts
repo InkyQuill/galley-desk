@@ -26,7 +26,7 @@ export type BookChange =
  | {type:'add';paths:string[]}
  | {type:'reorder';chapterIds:string[]}
  | {type:'remove'|'trash';chapterId:string};
-export type ChapterDiscovery = {book:BookView;files:{path:string}[]};
+export type ChapterDiscovery = {book:BookView;files:{path:string}[]; error?:string};
 export type WindowAction = 'minimize'|'toggle-maximize'|'close';
 export type WindowState = {maximized:boolean;platform:NodeJS.Platform};
 /** Read-only, non-sensitive build/runtime facts shown in the Diagnostics
@@ -58,6 +58,7 @@ export interface DeskApi {
    * parameter exists to redirect this, extra renderer arguments are ignored. */
   openBookFolder(bookId:string):Promise<void>;
   openExternal(url:string):Promise<void>;
+  onBookUpdate(listener:(update:ChapterDiscovery)=>void):()=>void;
   onSnapshot(listener:(snapshot:Snapshot)=>void):()=>void;
   resolveExternal(bookId:string,chapterId:string,choice:'open-external'|'export-local'):Promise<Snapshot>;
   windowState():Promise<WindowState>;

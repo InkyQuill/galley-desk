@@ -23,6 +23,7 @@ import {
   openBook,
   readPair,
   recoverBook,
+  refreshManifest,
 } from '@galley-desk/book-storage';
 import type { BookHandle, ChapterSessionState, JournalRecord } from '@galley-desk/book-storage';
 import { classifyReview, decodeReview } from '@galley-desk/pocket-format';
@@ -143,6 +144,7 @@ export type BookService = {
   closeAll(): Promise<void>;
   /** Internal: snapshot push for the ipc layer (onSnapshot wiring). */
   subscribe(listener: SnapshotListener): () => void;
+  subscribeBook(listener: (update: ChapterDiscovery) => void): () => void;
   /** Internal: resource protocol lookup of the open root by opaque book id. */
   getBookRoot(bookId: string): string | undefined;
 };
@@ -309,6 +311,10 @@ export function createBookService(deps: BookServiceDeps): BookService {
   const books = new Map<string, BookEntry>();
   const resolutionQueues = new Map<string, SaveQueue>();
   const listeners = new Set<SnapshotListener>();
+  const activeCommands = new Map<ChapterEntry, number>();
+  const bookListeners = new Set<(update: ChapterDiscovery) => void>();
+  const lastBookUpdates = new Map<string, string>();
+  const rechecks = new Map<string, Promise<void>>();
   const watchers = new Map<string, () => void>();
   const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -353,10 +359,55 @@ export function createBookService(deps: BookServiceDeps): BookService {
   }
 
   /** Перечитывает пары живых глав книги; уведомляет только об изменениях. */
-  async function recheckBook(bookId: string): Promise<void> {
+  function recheckBook(bookId: string): Promise<void> {
+    const pending = rechecks.get(bookId);
+    if (pending) return pending;
+    const task = checkBook(bookId).finally(() => rechecks.delete(bookId));
+    rechecks.set(bookId, task);
+    return task;
+  }
+
+  async function checkBook(bookId: string): Promise<void> {
     if (managing.has(bookId)) return;
     const book = books.get(bookId);
     if (book === undefined) return;
+    let refreshError: string | undefined;
+    const replaced = new Map<string, number>();
+    let refreshing = false;
+    try {
+      await refreshManifest(book.handle, async next => {
+        if (managing.has(bookId)) throw new BookManagementError('Изменение книги ещё выполняется.');
+        managing.add(bookId);
+        refreshing = true;
+        const affected = [...book.chapters].filter(([id]) => {
+          const old = book.handle.manifest.chapters.find(chapter => chapter.id === id);
+          return !next.chapters.some(chapter => chapter.id === id && chapter.path === old?.path);
+        });
+        for (const [, entry] of affected) {
+          if (activeCommands.has(entry)) throw new BookManagementError('Дождитесь сохранения главы, чтобы обновить оглавление.');
+          if (entry.kind === 'recovery') throw new BookManagementError('Сначала разрешите восстановление главы, чтобы обновить оглавление.');
+          if (entry.kind === 'live') {
+            await entry.session.flushPending();
+            if (entry.session.state !== 'saved') throw new BookManagementError('Сначала разрешите внешнее изменение главы или ошибку сохранения, чтобы обновить оглавление.');
+          }
+        }
+        for (const [id, entry] of affected) {
+          if (entry.kind === 'live') await entry.session.close();
+          replaced.set(id, entry.revision);
+          book.chapters.delete(id);
+        }
+      });
+      for (const [id, revision] of replaced) {
+        const chapter = book.handle.manifest.chapters.find(chapter => chapter.id === id);
+        if (!chapter) continue;
+        const entry = await createChapterEntry(book.handle, id, chapter.path);
+        entry.revision = revision + 1;
+        book.chapters.set(id, entry);
+        notify(snapshotOf(bookId, id, entry));
+      }
+    } catch (error) {
+      refreshError = error instanceof BookManagementError ? error.message : 'Не удалось обновить оглавление. Локальная работа сохранена.';
+    } finally { if (refreshing) managing.delete(bookId); }
     for (const [chapterId, entry] of book.chapters) {
       if (entry.kind !== 'live') continue;
       try {
@@ -372,6 +423,19 @@ export function createBookService(deps: BookServiceDeps): BookService {
       entry.revision += 1;
       notify(snapshotOf(bookId, chapterId, entry));
     }
+    try {
+      const files = refreshError ? [] : await discoverStoredChapters(book.handle);
+      const key = JSON.stringify([book.handle.manifest, files, refreshError]);
+      if (lastBookUpdates.get(bookId) !== key) {
+        const update: ChapterDiscovery = {
+          book: await bookView(book.handle), files,
+          ...(refreshError ? { error: refreshError } : {}),
+        };
+        if (books.get(bookId) !== book) return;
+        lastBookUpdates.set(bookId, key);
+        for (const listener of bookListeners) listener(update);
+      }
+    } catch { /* Atomic replacement may still be in progress; retry on the next signal. */ }
   }
 
   /** Drains every session of the book and drops it from the registry. */
@@ -387,6 +451,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
     }
     stopWatching(bookId);
     books.delete(bookId);
+    lastBookUpdates.delete(bookId);
     book.chapters.clear();
   }
 
@@ -592,6 +657,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
 
   return {
     async discoverChapters(bookId: string): Promise<ChapterDiscovery> {
+      await recheckBook(bookId);
       const book = requireBook(bookId);
       try { return { book: await bookView(book.handle), files: await discoverStoredChapters(book.handle) }; }
       catch (error) { throw toIpcError(error); }
@@ -770,6 +836,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
       if (entry.session.state === 'error') {
         throw new IpcError('SAVE_FAILED', 'Предыдущее сохранение не удалось; перечитайте главу');
       }
+      activeCommands.set(entry, (activeCommands.get(entry) ?? 0) + 1);
       try {
         // Проверка внешнего изменения перед записью: неизменённая пара —
         // дешёвый no-op (короткое замыкание сессии); изменившаяся — принятие
@@ -790,6 +857,10 @@ export function createBookService(deps: BookServiceDeps): BookService {
         await applyCommand(entry, validated);
       } catch (error) {
         throw toIpcError(error);
+      } finally {
+        const remaining = (activeCommands.get(entry) ?? 1) - 1;
+        if (remaining) activeCommands.set(entry, remaining);
+        else activeCommands.delete(entry);
       }
       entry.revision += 1;
       const snapshot = snapshotOf(bookId, chapterId, entry);
@@ -884,6 +955,11 @@ export function createBookService(deps: BookServiceDeps): BookService {
       for (const bookId of [...books.keys()]) {
         await closeBookById(bookId);
       }
+    },
+
+    subscribeBook(listener: (update: ChapterDiscovery) => void): () => void {
+      bookListeners.add(listener);
+      return () => { bookListeners.delete(listener); };
     },
 
     subscribe(listener: SnapshotListener): () => void {

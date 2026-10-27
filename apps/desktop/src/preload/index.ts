@@ -78,6 +78,11 @@ const desk: DeskApi = {
     ipcRenderer.on('desk:open-diagnostics', handler);
     return () => { ipcRenderer.removeListener('desk:open-diagnostics', handler); };
   },
+  onBookUpdate: (listener) => {
+    const handler = (_event: unknown, update: ChapterDiscovery): void => listener(update);
+    ipcRenderer.on('desk:book-update', handler);
+    return () => { ipcRenderer.removeListener('desk:book-update', handler); };
+  },
   onSnapshot: (listener) => {
     // Подписка удаляет ровно свой обработчик, не чужие.
     const handler = (_event: unknown, snapshot: Snapshot): void => listener(snapshot);

@@ -358,7 +358,7 @@ for (const failure of ['trash', 'manifest-conflict'] as const) {
         );
         await page.getByRole('button', { name: 'Убрать из оглавления', exact: true }).click();
         const panel = page.getByRole('dialog', { name: 'Убрать главу из оглавления?' });
-        await expect(panel.getByRole('alert')).toContainText('Манифест');
+        await expect(panel.getByRole('alert')).toContainText('Оглавление изменилось');
         await panel.getByRole('button', { name: 'Закрыть' }).click();
       }
       await page.locator('.cm-content').click();
@@ -404,3 +404,48 @@ for (const failure of ['trash', 'manifest-conflict'] as const) {
     }
   });
 }
+
+test('external binder refresh and new chapter suggestion work without reopening the book', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'desk-external-binder-'));
+  const userData = await mkdtemp(path.join(tmpdir(), 'desk-external-profile-'));
+  await writeFile(path.join(root, 'a.md'), 'Alpha body.\n');
+  await writeFile(path.join(root, 'b.md'), 'Beta body.\n');
+  const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, GALLEY_DESK_USER_DATA: userData } });
+  try {
+    await app.evaluate(({ dialog }, root) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] }); }, root);
+    const page = await app.firstWindow();
+    await page.getByRole('button', { name: 'Открыть папку…' }).click();
+    await expect(page.locator('.cm-content')).toContainText('Alpha body.');
+    await page.locator('.cm-content').click();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
+    await page.keyboard.type('Draft ');
+    await expect.poll(async () => readFile(path.join(root, 'a.review.json'), 'utf8').catch(() => '')).toContain('Draft ');
+    const review = await readFile(path.join(root, 'a.review.json'));
+    const manifestPath = path.join(root, '.pocket-editor.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.title = 'Changed binder';
+    manifest.chapters.reverse();
+    const external = JSON.stringify(manifest);
+    await writeFile(manifestPath, external);
+    await expect(page.locator('.titlebar')).toContainText('Changed binder');
+    await expect(page.locator('.cm-content')).toContainText('Draft Alpha body.');
+    expect(await readFile(path.join(root, 'a.review.json'))).toEqual(review);
+    expect(await readFile(manifestPath, 'utf8')).toBe(external);
+    await writeFile(path.join(root, 'new.md'), 'New chapter body.\n');
+    await page.getByRole('button', { name: 'Выбрать главы', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Найти главы в папке' });
+    await dialog.getByLabel('new.md', { exact: true }).check();
+    await dialog.getByRole('button', { name: 'Добавить выбранные главы' }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect.poll(async () => JSON.parse(await readFile(manifestPath, 'utf8')).chapters.map((chapter: { path: string }) => chapter.path)).toEqual(['b.md', 'a.md', 'new.md']);
+    await page.locator('.cm-content').click();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+    await expect(page.locator('.cm-content')).not.toContainText('Draft ');
+    expect(await readFile(path.join(root, 'a.md'), 'utf8')).toBe('Alpha body.\n');
+  } finally {
+    await app.evaluate(({ app }) => app.exit(0)).catch(() => undefined);
+    await app.close().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+    await rm(userData, { recursive: true, force: true });
+  }
+});

@@ -336,6 +336,7 @@ export type SnapshotBroadcaster = (snapshot: import('../shared/api').Snapshot) =
 export type DeskIpcDeps = {
   service: import('./book-service').BookService;
   broadcast: SnapshotBroadcaster;
+  broadcastBook?: (update: import('../shared/api').ChapterDiscovery) => void;
   /** Внешнее открытие ссылок (main передаёт shell.openExternal); инъекция — для тестов. */
   openExternal: (url: string) => Promise<void>;
   /** Открытие папки средствами shell (main передаёт shell.openPath; инъекция —
@@ -527,6 +528,7 @@ export function registerDeskIpc(deps: DeskIpcDeps): void {
   });
 
   service.subscribe(deps.broadcast);
+  if (deps.broadcastBook) service.subscribeBook(deps.broadcastBook);
 }
 
 function asStringArg(value: unknown): string {
