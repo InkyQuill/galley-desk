@@ -31,7 +31,7 @@ test('a late initial response cannot clear newer files or binder errors', async 
   expect(receive).toHaveBeenCalledTimes(1);
   expect(receive.mock.calls[0]?.[0]).toEqual(newer);
   expect(h.api.discoverChapters).toHaveBeenCalledTimes(1);
-  stop();
+  stop.dispose();
   expect(h.unsubscribe).toHaveBeenCalledOnce();
 });
 
@@ -45,7 +45,7 @@ test('new updates invalidate work awaiting an editor flush, and closing invalida
   await Promise.resolve();
   h.push(update('next'));
   expect(pending.filter(item => item.isCurrent()).map(item => item.title)).toEqual(['next']);
-  stop();
+  stop.dispose();
   h.push(update('closed'));
   expect(pending).toHaveLength(2);
   expect(pending.some(item => item.isCurrent())).toBe(false);
@@ -60,10 +60,29 @@ test('unrelated books do not suppress initial discovery and closed requests are 
   h.resolve(update('initial'));
   await Promise.resolve();
   expect(receive).toHaveBeenCalledTimes(1);
-  stop();
+  stop.dispose();
   const late = harness();
-  subscribeBookUpdates(late.api, 'book', receive)();
+  subscribeBookUpdates(late.api, 'book', receive).dispose();
   late.resolve(update('closed'));
   await Promise.resolve();
   expect(receive).toHaveBeenCalledTimes(1);
+});
+
+
+test('a local book change invalidates initial discovery and pending pushed work', async () => {
+  const h = harness();
+  const receive = vi.fn<(value: ChapterDiscovery, isCurrent: () => boolean) => void>();
+  const subscription = subscribeBookUpdates(h.api, 'book', receive);
+  subscription.invalidate();
+  h.resolve(update('before rename'));
+  await Promise.resolve();
+  expect(receive).not.toHaveBeenCalled();
+  h.push(update('external'));
+  const isCurrent = receive.mock.calls[0]?.[1];
+  expect(isCurrent?.()).toBe(true);
+  subscription.invalidate();
+  expect(isCurrent?.()).toBe(false);
+  h.push(update('after rename'));
+  expect(receive).toHaveBeenCalledTimes(2);
+  subscription.dispose();
 });

@@ -69,3 +69,10 @@ The regression retains both Escape assertions and the draft-preservation checks.
 Validation after the focus fix: typecheck, all 495 unit tests, Linux packaging,
 and all eight isolated book-management/workspace-layer Electron tests passed.
 No retries, assertion weakening, or timeout increases were introduced.
+
+The outside-diff review also identified stale initial discovery after a local
+rename/add/reorder. Local refreshes now invalidate the subscription's pending
+initial result and any pushed update waiting for an editor flush. External
+updates use the separate apply path. A focused regression verifies that local
+changes reject old results while later external pushes still work. Typecheck,
+496 unit tests, packaging and the same eight isolated desktop tests passed.
