@@ -1574,3 +1574,69 @@ test('repeated binder checks refuse recovery before pausing the renderer', async
   expect(await readFile(manifestPath, 'utf8')).toBe(external);
   expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe('fox');
 });
+
+
+test('blocked binder refresh retries a draft that could previously only remain in memory', async () => {
+  const prepare = vi.fn(async () => ({ finish: async () => {}, cancel: async () => {} }));
+  const h = await makeService({ 'a.md': 'Alpha' }, undefined, undefined, prepare);
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  await rename(h.appData, h.appData + '-moved');
+  tempDirs.push(h.appData + '-moved');
+  await writeFile(h.appData, 'blocked');
+  await expect(h.command(book.bookId, id, initial.revision, { type: 'text', changes: [{ from: 0, to: 0, insert: 'Memory draft ' }], selection: { anchor: 13, head: 13 } })).rejects.toThrow();
+  await rm(h.appData);
+  await rename(h.appData + '-moved', h.appData);
+  expect(await readDrafts(h.appData)).toEqual([]);
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  await writeFile(manifestPath, JSON.stringify({ ...manifest, chapters: [] }));
+  await h.recheckExternal();
+  expect(prepare).not.toHaveBeenCalled();
+  expect((await readDrafts(h.appData)).find(draft => draft.id === id)?.pair.review).toContain('Memory draft ');
+  expect((await h.openChapter(book.bookId, id)).saveState).toBe('error');
+  expect(await readFile(path.join(h.bookRoot, 'a.md'), 'utf8')).toBe('Alpha');
+});
+
+test('failed replacement loads publish read-only entries before completion and recover after repair', async () => {
+  let injectFailure = async () => {};
+  let inspectCompletion = async () => {};
+  const finish = vi.fn(async () => { await inspectCompletion(); });
+  const h = await makeService({ 'a.md': 'Alpha', 'b.md': 'Beta', 'c.md': 'Gamma' }, undefined, undefined, async () => {
+    await injectFailure();
+    return { finish, cancel: async () => {} };
+  });
+  const book = (await h.chooseBook())!;
+  const a = book.entries[0]!.id;
+  const b = book.entries[1]!.id;
+  await h.openChapter(book.bookId, a);
+  await h.openChapter(book.bookId, b);
+  const journal = path.join(h.appData, 'galley-journal-' + createHash('sha256').update(h.bookRoot + '\n' + a).digest('hex').slice(0, 32) + '.json');
+  injectFailure = async () => { await writeFile(journal, '{malformed'); };
+  inspectCompletion = async () => {
+    for (const id of [a, b]) {
+      const snapshot = await h.openChapter(book.bookId, id);
+      expect(snapshot).toMatchObject({ text: '', sourceText: '', saveState: 'error', revision: 2 });
+      expect(snapshot.readOnlyReason).toContain('данные восстановления');
+      await expect(h.command(book.bookId, id, snapshot.revision, { type: 'note', text: 'must not write' })).rejects.toMatchObject({ code: 'UNAVAILABLE_RECORD' });
+    }
+  };
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.chapters = [{ ...manifest.chapters[0], path: 'b.md' }, { ...manifest.chapters[1], path: 'c.md' }];
+  const external = JSON.stringify(manifest);
+  await writeFile(manifestPath, external);
+  await h.recheckExternal();
+  expect(finish).toHaveBeenCalledOnce();
+  await expect(finish.mock.results[0]!.value).resolves.toBeUndefined();
+  expect(await readFile(journal, 'utf8')).toBe('{malformed');
+  expect(await readFile(manifestPath, 'utf8')).toBe(external);
+  await rm(journal);
+  expect(await h.openChapter(book.bookId, a)).toMatchObject({ text: 'Beta', revision: 3, readOnlyReason: null });
+  expect(await h.openChapter(book.bookId, b)).toMatchObject({ text: 'Gamma', revision: 3, readOnlyReason: null });
+  expect(await readFile(path.join(h.bookRoot, 'a.md'), 'utf8')).toBe('Alpha');
+  expect(await readFile(path.join(h.bookRoot, 'b.md'), 'utf8')).toBe('Beta');
+  expect(await readFile(path.join(h.bookRoot, 'c.md'), 'utf8')).toBe('Gamma');
+  await h.closeAll();
+});
