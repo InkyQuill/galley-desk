@@ -53,3 +53,19 @@ end-user application installation from dependency installation, annotate the
 historical 900px capture as anomalous without altering its data, and specify
 missing-locale migration and round-trip tests in the proposed localization
 plan. Localization itself remains unimplemented.
+
+## Merge-gate follow-up
+
+CodeRabbit's final ref-lifecycle finding was fixed by publishing book-update
+callback values in a layout effect, after React commits the render.
+
+The subsequent hosted Linux run exposed a review-overlay focus race: its
+scheduled frame could move focus away from an already-focused chapter note,
+so Escape closed the overlay instead of the note. A controlled frame-delay
+regression reproduced the focus theft before the fix. Overlay initialization
+now preserves focus within the panel and cancels its pending frame on cleanup.
+The regression retains both Escape assertions and the draft-preservation checks.
+
+Validation after the focus fix: typecheck, all 495 unit tests, Linux packaging,
+and all eight isolated book-management/workspace-layer Electron tests passed.
+No retries, assertion weakening, or timeout increases were introduced.

@@ -285,7 +285,13 @@ export function BookWindow({
 
   useEffect(() => {
     if (sidebarOverlay === null) return;
-    requestAnimationFrame(() => overlayPanelRef.current?.querySelector<HTMLElement>('button, input, [tabindex]')?.focus());
+    const panel = overlayPanelRef.current;
+    const frame = requestAnimationFrame(() => {
+      // Do not steal focus from a nested form that already received it.
+      if (panel?.isConnected && !panel.contains(document.activeElement)) {
+        panel.querySelector<HTMLElement>('button, input, [tabindex]')?.focus();
+      }
+    });
     const dismiss = (event: PointerEvent): void => {
       if (overlayPanelRef.current?.contains(event.target as Node) || (event.target as Element).closest('.book__chapter-menu-items')) return;
       const side = sidebarOverlay;
@@ -293,7 +299,10 @@ export function BookWindow({
       requestAnimationFrame(() => (side === 'chapters' ? chaptersTriggerRef : reviewTriggerRef).current?.focus());
     };
     document.addEventListener('pointerdown', dismiss);
-    return () => document.removeEventListener('pointerdown', dismiss);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener('pointerdown', dismiss);
+    };
   }, [sidebarOverlay]);
   useEffect(() => {
     if (!menuOpen) return;
