@@ -398,6 +398,11 @@ export function createBookService(deps: BookServiceDeps): BookService {
             return !next.chapters.some(chapter => chapter.id === id && chapter.path === old?.path);
           });
           if (affected.length > 0) {
+            // Known blockers must not repeatedly pause/blur another active chapter.
+            for (const [, entry] of affected) {
+              if (entry.kind === 'recovery') throw new BookManagementError('Сначала разрешите восстановление главы, чтобы обновить оглавление.');
+              if (entry.kind === 'live' && (entry.session.state === 'error' || entry.session.state === 'external')) throw new BookManagementError('Сначала разрешите внешнее изменение главы или ошибку сохранения, чтобы обновить оглавление.');
+            }
             preparing.add(bookId);
             lease = await deps.prepareBookRefresh?.(bookId);
           }

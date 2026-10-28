@@ -1404,7 +1404,8 @@ test('invalid external binder is preserved and a subsequent valid replacement re
 });
 
 test('binder refresh never drops a failed local save when the chapter is removed externally', async () => {
-  const h = await makeService({ 'a.md': 'Alpha\n' });
+  const prepare = vi.fn(async () => ({ finish: async () => {}, cancel: async () => {} }));
+  const h = await makeService({ 'a.md': 'Alpha\n' }, undefined, undefined, prepare);
   const book = (await h.chooseBook())!;
   const id = book.entries[0]!.id;
   const initial = await h.openChapter(book.bookId, id);
@@ -1419,6 +1420,8 @@ test('binder refresh never drops a failed local save when the chapter is removed
     const updates: import('../shared/api').ChapterDiscovery[] = [];
     h.subscribeBook(update => updates.push(update));
     await h.recheckExternal();
+    await h.recheckExternal();
+    expect(prepare).not.toHaveBeenCalled();
     expect(updates.at(-1)?.error).toBeTruthy();
     expect(updates.at(-1)?.book.entries[0]?.id).toBe(id);
     expect(await readFile(manifestPath, 'utf8')).toBe(external);
@@ -1533,4 +1536,24 @@ test('renderer flush refusal leaves the old session and mapping available for re
   expect(await h.openChapter(book.bookId, id)).toMatchObject({ text: 'Alpha', revision: initial.revision });
   expect(updates.at(-1)?.error).toBeDefined();
   await h.closeAll();
+});
+
+
+test('repeated binder checks refuse recovery before pausing the renderer', async () => {
+  const prepare = vi.fn(async () => ({ finish: async () => {}, cancel: async () => {} }));
+  const h = await makeService({ '01.md': 'cat' }, undefined, undefined, prepare);
+  const { c } = await seedRecovery(h);
+  await writeFile(path.join(h.bookRoot, '01.md'), 'fox');
+  const book = (await h.chooseBook())!;
+  expect((await h.openChapter(book.bookId, c)).recoveryConflict).toBe(true);
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const external = JSON.stringify({ ...manifest, chapters: [] });
+  await writeFile(manifestPath, external);
+  await h.recheckExternal();
+  await h.recheckExternal();
+  expect(prepare).not.toHaveBeenCalled();
+  expect((await h.openChapter(book.bookId, c)).recoveryConflict).toBe(true);
+  expect(await readFile(manifestPath, 'utf8')).toBe(external);
+  expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe('fox');
 });

@@ -110,3 +110,12 @@ full packaged Electron suite under the isolated wrapper PASS (125 tests,
 checks and waits for all preparation acknowledgements before cancelling a
 failed multi-window preparation. macOS native validation was not run locally.
 Pocket schemas/fixtures are unchanged; hosted CI reruns the contract gate.
+
+A subsequent review identified repeated renderer pauses for already-blocked
+chapters. Recovery and live error/external states are now rejected before
+requesting preparation; the post-flush checks remain in place. Repeated-check
+regressions verify that recovery and failed-save cases never invoke the
+renderer handshake and preserve the external manifest and local draft.
+Validation: typecheck, 503 unit tests, packaging and all 11 isolated
+book-management/external-change desktop tests passed. The full 125-test local
+suite above covers the preceding handshake commit; CI reruns the full suite.
