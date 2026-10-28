@@ -1,7 +1,7 @@
 {
   "name": "@galley-desk/desktop",
   "productName": "Galley Desk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Настольная оболочка Galley Desk для рецензирования Markdown-книг",
   "main": ".vite/build/main.cjs",
   "private": true,
