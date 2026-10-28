@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.3.0](https://github.com/InkyQuill/galley-desk/compare/v0.2.0...v0.3.0) (2026-10-28)
+
+
+### Features
+
+* **review:** add Good and Brilliant signals ([332b483](https://github.com/InkyQuill/galley-desk/commit/332b4834cbba5c0f7df3a2d204c083961f7dd9dd))
+* **review:** add Good and Brilliant signals matching Pocket Editor ([0efdccb](https://github.com/InkyQuill/galley-desk/commit/0efdccb15321024becc97ce0cc36369878822973))
+
+
+### Bug Fixes
+
+* **a11y:** expose positive signal preservation guidance ([d9f8ea1](https://github.com/InkyQuill/galley-desk/commit/d9f8ea1370a975679045055627dff0132f2b7521))
+* **book:** coordinate binder refresh with renderer input and chapter opens ([94907b3](https://github.com/InkyQuill/galley-desk/commit/94907b3d9b8c1474de52e9c09e81e3fd68c7d18d))
+* **book:** expose only committed state to update callbacks ([5e4a0d1](https://github.com/InkyQuill/galley-desk/commit/5e4a0d1d595d37009cdd03dc808d8263d25e648a))
+* **book:** invalidate pending discovery after local changes ([629d021](https://github.com/InkyQuill/galley-desk/commit/629d0213c8a95a6f492a0261b1cd40e6c2a49d5e))
+* **book:** merge refresh recovery and draft preservation ([c363b25](https://github.com/InkyQuill/galley-desk/commit/c363b25ec558ccdb397c5fffb20b5b514fd1d91d))
+* **book:** preserve recovery across refresh load failures ([24275cb](https://github.com/InkyQuill/galley-desk/commit/24275cbc35bc99cd6b828dcb8617c1dad37cc5a1))
+* **book:** refresh external binders and suggest new chapters ([fe846c4](https://github.com/InkyQuill/galley-desk/commit/fe846c466fdb03defb9c8005c7afb5837e471bb7))
+* **book:** reject blocked refreshes before pausing the renderer ([3215849](https://github.com/InkyQuill/galley-desk/commit/32158498ca43a14a13eef146c70754a5cb5d2af4))
+* **book:** stabilize discovery updates and clarify review documentation ([2cb53a0](https://github.com/InkyQuill/galley-desk/commit/2cb53a0bf0b0a2130bc2e05f92c960f33fb1d12a))
+* **deps:** update vulnerable Electron and transitive dependencies ([b008527](https://github.com/InkyQuill/galley-desk/commit/b0085274d1fa64abb600df2a8ac0e91666dbf447))
+* refresh external binders, secure dependencies and document design ([70b90ea](https://github.com/InkyQuill/galley-desk/commit/70b90ea041b48af4188713b587cf7b1af20c3834))
+* **storage:** Retry draft preservation when binder refresh is blocked by save errors or external changes ([40f28dd](https://github.com/InkyQuill/galley-desk/commit/40f28dd5f7fa6bc809120e5cf3c779f09c07af53))
+* **ui:** preserve nested form focus when opening sidebar overlays ([cc070d2](https://github.com/InkyQuill/galley-desk/commit/cc070d228693a4eef40da3efc83376a8500e949e))
+
 ## [0.2.0](https://github.com/InkyQuill/galley-desk/compare/v0.1.0...v0.2.0) (2026-10-08)
 
 
