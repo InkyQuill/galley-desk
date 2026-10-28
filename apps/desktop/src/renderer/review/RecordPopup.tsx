@@ -4,7 +4,7 @@
 // комментарий и тип; недоступная/конфликтующая запись — сохранённые тексты,
 // причина и удаление, без фиктивного перехода к якорю. Esc закрывает попап,
 // не создавая сигнал, и возвращает фокус туда, где он был.
-import { signalLabels, signalIcons } from './signal-types';
+import { signalLabels, signalIcons, signalHelp } from './signal-types';
 import { mappedVisualRecords } from '../editor/markers';
 import { useEffect, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
@@ -274,7 +274,7 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
       </strong>
       <div style={rowStyle}>
         {SIGNAL_TYPES.map((type) => (
-          <Tooltip key={type} content={signalLabels[type]} describe={false}>
+          <Tooltip key={type} content={signalHelp[type]} describe={type === 'good' || type === 'brilliant'}>
             <button
               aria-label={signalLabels[type]}
               type="button"

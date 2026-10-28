@@ -60,6 +60,26 @@
           "after": "Anchor you"
         }
       ]
+    },
+    {
+      "name": "exchange-positive-signals",
+      "source": "﻿Красивый 🌟 образ.\r\nФинал.\r\n",
+      "chapterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "sourcePath": "positive.md",
+      "signals": [
+        {
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "type": "good",
+          "selected": "Красивый 🌟 образ.",
+          "comment": ""
+        },
+        {
+          "id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          "type": "brilliant",
+          "selected": "🌟 образ.",
+          "comment": "Обязательно сохранить"
+        }
+      ]
     }
   ],
   "anchorCases": [

@@ -296,7 +296,7 @@ async function createSignal(
       note: 'Заметка',
       change_required: 'Требуется правка',
       warning: 'Предупреждение',
-      review: 'На проверку',
+      review: 'На проверку', good: 'Хорошо', brilliant: 'Блестяще',
     };
     await flyout.getByRole('button', { name: labels[type], exact: true }).click();
   }
@@ -496,7 +496,7 @@ test('Esc закрывает попап без создания сигнала �
   }
 });
 
-test('четыре типа сигналов получают свои цвета flyout; пересекающиеся сигналы независимы', async () => {
+test('шесть типов сигналов получают свои цвета flyout; пересекающиеся сигналы независимы', async () => {
   const bookRoot = await makeTempDir('galley-e2e-types-');
   await writeBook(bookRoot, emptyReview());
   const session = await launch(bookRoot);
@@ -514,13 +514,25 @@ test('четыре типа сигналов получают свои цвет�
       change_required: 'rgb(166, 43, 43)',
       warning: 'rgb(121, 89, 0)',
       review: 'rgb(117, 69, 165)',
+      good: 'rgb(40, 107, 58)',
+      brilliant: 'rgb(155, 59, 112)',
     };
     for (const [type, rgb] of Object.entries(expectedColors)) {
       expect(
         await flyout
-          .getByRole('button', { name: ({ note: 'Заметка', change_required: 'Требуется правка', warning: 'Предупреждение', review: 'На проверку' })[type], exact: true })
+          .getByRole('button', { name: ({ note: 'Заметка', change_required: 'Требуется правка', warning: 'Предупреждение', review: 'На проверку', good: 'Хорошо', brilliant: 'Блестяще' })[type], exact: true })
           .evaluate((element) => getComputedStyle(element).color),
       ).toBe(rgb);
+    }
+
+    for (const [label, description] of [
+      ['Хорошо', 'Фрагмент понравился — сохранить при редактировании'],
+      ['Блестяще', 'Фрагмент особенно понравился — обязательно сохранить его сильные стороны'],
+      ['Заметка', ''],
+    ]) {
+      const button = flyout.getByRole('button', { name: label, exact: true });
+      await button.focus();
+      await expect(button).toHaveAccessibleDescription(description!);
     }
 
     // Пустой комментарий допустим; правка существующего сигнала — отдельный тест.
@@ -529,14 +541,19 @@ test('четыре типа сигналов получают свои цвет�
     await createSignal(page, sidecarPath, { skip: 0, length: 3 }, 'change_required', 'Проверить');
     await createSignal(page, sidecarPath, { skip: 4, length: 4 }, 'warning', 'Тон');
     await createSignal(page, sidecarPath, { skip: 8, length: 1 }, 'review', '');
-    await expect(page.getByRole('button', { name: 'Сигнал', exact: true })).toHaveCount(4);
-    await expect(page.locator('.gd-signal-comment')).toHaveCount(2);
+    await createSignal(page, sidecarPath, { skip: 0, length: 3 }, 'good', '');
+    await createSignal(page, sidecarPath, { skip: 4, length: 4 }, 'brilliant', 'Сохранить');
+    await expect(page.getByRole('button', { name: 'Сигнал', exact: true })).toHaveCount(6);
+    await expect(page.locator('.gd-signal-comment')).toHaveCount(3);
     await expect(page.locator('.book__review')).toContainText('Проверить');
     await expect(page.locator('.book__review')).toContainText('Тон');
 
     const sidecar = await readSidecar(sidecarPath);
     const types = sidecar?.signals.map((signal) => signal.type).sort() ?? [];
-    expect(types).toEqual(['change_required', 'note', 'review', 'warning']);
+    expect(types).toEqual(['brilliant', 'change_required', 'good', 'note', 'review', 'warning']);
+    expect(await readFile(path.join(bookRoot, CHAPTER_PATH), 'utf8')).toBe(SOURCE_TEXT);
+    await expect(page.locator('.book__review')).toContainText('Хорошо');
+    await expect(page.locator('.book__review')).toContainText('Блестяще');
     expect(sidecar?.signals.find((signal) => signal.type === 'note')?.comment).toBe('');
 
     // Удаление: zero-width маркер с доступным названием остаётся видимым.
@@ -650,6 +667,16 @@ test('изменение существующего сигнала заменя�
     await expect(dialog).toBeVisible();
     const textarea = dialog.getByRole('textbox', { name: 'Комментарий сигнала' });
     await expect(textarea).toHaveValue('Первый');
+    for (const [label, description] of [
+      ['Хорошо', 'Фрагмент понравился — сохранить при редактировании'],
+      ['Блестяще', 'Фрагмент особенно понравился — обязательно сохранить его сильные стороны'],
+      ['Заметка', ''],
+    ]) {
+      const button = dialog.getByRole('button', { name: label, exact: true });
+      await button.focus();
+      await expect(button).toHaveAccessibleDescription(description!);
+    }
+
     await dialog.getByRole('button', { name: 'На проверку', exact: true }).click();
     await textarea.fill('Второй');
     await textarea.press('ControlOrMeta+Enter');

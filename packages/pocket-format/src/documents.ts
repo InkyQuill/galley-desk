@@ -18,7 +18,7 @@ export type Anchor = {
 
 export type Edit = { id: string; before: string; after: string; anchor: Anchor };
 
-export type SignalType = 'note' | 'change_required' | 'warning' | 'review';
+export type SignalType = 'note' | 'change_required' | 'warning' | 'review' | 'good' | 'brilliant';
 
 export type Signal = {
   id: string;

@@ -570,3 +570,8 @@ test('a crashed renderer rejects binder refresh instead of permitting retirement
   await expect(pending).rejects.toMatchObject({ code: 'SAVE_FAILED' });
   expect(ipcMain.listenerCount('desk:book-refresh-ack')).toBe(0);
 });
+
+test.each(['good', 'brilliant'])('accepts positive signal %s with optional comment', (signalType) => {
+  const command = { type: 'signal', from: 0, to: 3, signalType, comment: '' };
+  expect(validateCommand(command)).toEqual(command);
+});
