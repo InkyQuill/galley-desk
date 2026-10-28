@@ -32,3 +32,21 @@ need the new enum values to read these reviews.
 - macOS native checks, Android device tests, and the remaining desktop suites: NOT RUN.
 
 No tag or release created.
+
+## PR #8 accessibility follow-up
+
+Verified CodeRabbit's finding: both positive-signal tooltips disabled accessible
+ descriptions despite supplying help beyond the button names. Enable descriptions
+for Good and Brilliant in the selection flyout and existing-record popup; other
+signal types retain their existing behavior. Native regression assertions focus
+both positive buttons in both controls and check their accessible descriptions,
+then check Note still has no redundant description. Restored a concise API comment
+for the shared review-list label function.
+
+Validation: typecheck, all 508 unit tests, Linux packaging and diff check passed.
+The full review-action run passed 26/27 tests, including both changed scenarios;
+the long-chapter undo/redo scroll-position test failed its geometry assertion.
+An isolated run of that test alongside both changed scenarios passed 3/3 without
+changing assertions, timeouts, or retries. This intermittent failure remains
+recorded rather than treating the full run as green. The prior PR head's remote
+contracts, Linux, and macOS CI jobs were all green.

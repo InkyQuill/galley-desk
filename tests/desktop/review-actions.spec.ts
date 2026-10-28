@@ -525,6 +525,16 @@ test('шесть типов сигналов получают свои цвет�
       ).toBe(rgb);
     }
 
+    for (const [label, description] of [
+      ['Хорошо', 'Фрагмент понравился — сохранить при редактировании'],
+      ['Блестяще', 'Фрагмент особенно понравился — обязательно сохранить его сильные стороны'],
+      ['Заметка', ''],
+    ]) {
+      const button = flyout.getByRole('button', { name: label, exact: true });
+      await button.focus();
+      await expect(button).toHaveAccessibleDescription(description!);
+    }
+
     // Пустой комментарий допустим; правка существующего сигнала — отдельный тест.
     await createSignal(page, sidecarPath, { skip: 0, length: 3 }, 'note', '');
     // Пересекающийся сигнал на том же диапазоне: оба маркера остаются видимы.
@@ -657,6 +667,16 @@ test('изменение существующего сигнала заменя�
     await expect(dialog).toBeVisible();
     const textarea = dialog.getByRole('textbox', { name: 'Комментарий сигнала' });
     await expect(textarea).toHaveValue('Первый');
+    for (const [label, description] of [
+      ['Хорошо', 'Фрагмент понравился — сохранить при редактировании'],
+      ['Блестяще', 'Фрагмент особенно понравился — обязательно сохранить его сильные стороны'],
+      ['Заметка', ''],
+    ]) {
+      const button = dialog.getByRole('button', { name: label, exact: true });
+      await button.focus();
+      await expect(button).toHaveAccessibleDescription(description!);
+    }
+
     await dialog.getByRole('button', { name: 'На проверку', exact: true }).click();
     await textarea.fill('Второй');
     await textarea.press('ControlOrMeta+Enter');

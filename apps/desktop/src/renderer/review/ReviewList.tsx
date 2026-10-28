@@ -14,6 +14,7 @@ import { Tooltip } from '../ui/Tooltip';
 
 import { signalLabels } from './signal-types';
 
+/** Accessible review summary shared by list buttons and their tooltips. */
 export function recordLabel(record: RecordView): string {
   const suffix =
     record.status === 'active' ? '' : record.status === 'conflicting' ? ' — конфликтует' : ` — недоступна: ${record.reason}`;

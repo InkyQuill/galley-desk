@@ -274,7 +274,7 @@ export function RecordPopup({ record = null, draft = null, at, onCommand, onClos
       </strong>
       <div style={rowStyle}>
         {SIGNAL_TYPES.map((type) => (
-          <Tooltip key={type} content={signalHelp[type]} describe={false}>
+          <Tooltip key={type} content={signalHelp[type]} describe={type === 'good' || type === 'brilliant'}>
             <button
               aria-label={signalLabels[type]}
               type="button"
