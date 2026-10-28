@@ -1,5 +1,22 @@
 # Протокол верификации настольного приложения
 
+## 2026-10-28 — Coordinated binder refresh follow-up
+
+Per-book serialization and a renderer preparation/completion handshake protect
+queued input and chapter opens during external removal/remapping. Discovery
+rescan follows local management. Typecheck, 502 unit tests, audit (0), Linux
+packaging and the full isolated packaged Electron suite (125 PASS, 1 opt-in
+performance skip) passed. See the [follow-up report](reviews/2026-10-28-external-binder-refresh.md).
+
+## 2026-10-28 — External binder refresh and dependency security
+
+External binder reload and new-chapter suggestions verified. Electron 44.10.0,
+fast-uri 3.1.9 and undici 6.29.1/7.30.1: clean npm ci and audit (0 vulnerabilities).
+Typecheck, 492 unit tests, 21 exchange tests, 8 release-tooling tests and Linux
+x64 packaging PASS. Full isolated Electron suite: 123 PASS, 1 opt-in performance
+skip. macOS native checks NOT RUN. Initial-run failures and their investigation
+are recorded in the [verification report](reviews/2026-10-28-external-binder-refresh.md).
+
 ## Release Please и обновление зависимостей, 2026-10-08
 
 Чистый npm ci/typecheck PASS; npm audit — 0 уязвимостей, npm outdated — пусто.

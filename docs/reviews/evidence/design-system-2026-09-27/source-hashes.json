@@ -1,0 +1,28 @@
+{
+  "capturedAt": "2026-09-27T06:47:17.972Z",
+  "gitHead": "849b35dfe254027b884284b936650f4ba701b779",
+  "sha256": {
+    "apps/desktop/src/renderer/app.css": "ceffb71cc18af26bbe5946d9ac2e293b98c2f40fb5fa2ac67ffa1bf8d05ddc40",
+    "apps/desktop/src/renderer/fonts.css": "6e3718346585759568a0c14c856b11fe89587ac3f55f7c1b3398c19bdf0f4988",
+    "apps/desktop/src/renderer/appearance/Appearance.tsx": "8f414cc67b49acb39a6e4c2b432c57f6153fb73c074a0eee283c575649db2548",
+    "apps/desktop/src/renderer/App.tsx": "2cd8fddee41a42c039b1827d8ccb0990a16ff1f5e536a64d7790648da108689f",
+    "apps/desktop/src/renderer/TitleBar.tsx": "2a34dbd5a11a405549f1b160783eed6e52a44cf5248ec0bc722ca48052adb70f",
+    "apps/desktop/src/renderer/book/BookWindow.tsx": "7128e58d0daeab2341aecfd21f7867431783a0677e37294770ebf442aa4abb08",
+    "apps/desktop/src/renderer/book/layout.ts": "2a9408db6cbbd4ac32b65a87dc97f2cc3c45b3122f4e40a26c31aa64d36b657c",
+    "apps/desktop/src/renderer/book/SidebarResizer.tsx": "96cd1f93ec67ac299a4511d21202b01808263904a18c6102a2cb03ee98e784a8",
+    "apps/desktop/src/renderer/ui/Tooltip.tsx": "ec47419da49c16fc6230ce0023ae95f753cb17ec87eb3ba8e9632351185c0005",
+    "apps/desktop/src/renderer/ui/tooltip-controller.ts": "fd5ffba802257b524ba5689c989b80312905e3029b3343a96636b6ce3ec79a82",
+    "apps/desktop/src/renderer/ui/AnchoredLayer.tsx": "a710afc272a0caa31f0796f3152952708d61c4a1e0e777368b6ef62942c60b99",
+    "apps/desktop/src/renderer/editor/markers.ts": "e23d35fb22fcca0bd54b285b1b199344a16a8882f93e4cb1f23e4e3d56ca917f",
+    "apps/desktop/src/renderer/editor/ComparisonView.tsx": "e8fa3c7d0b08e7717f9e76c391f4f428ab4588c3e4003974b03268f5b3139404",
+    "apps/desktop/src/renderer/review/RecordPopup.tsx": "e79dcb3bb435fc330cd6cb2dbd4b816e3e707678c57ec3d3e267f8e1dd744dd3",
+    "apps/desktop/src/renderer/review/SignalFlyout.tsx": "8875c13b7f0a76b10667dfff270e5bd95001a191552b40634dda1e7867749c09",
+    "apps/desktop/src/shared/appearance.ts": "84fee9d6faa4a3c85034bda6196038a5370d8aeaa969841906020cd6e2ed2721",
+    "apps/desktop/src/shared/layout.ts": "f537d83b3ef5b84b0891698c1279f3c5a662f58e8eded4d0125e78fb8f5560f7",
+    "apps/desktop/src/main/window.ts": "cbb471ec7d71c5823fd5e68b908134f5af86366641e52654030675e2b9464497",
+    "apps/desktop/package.json": "3c3b0d8972eaaf44f78a5c58d235193678c7cb5ed7a6bdcc804ca2457e97e531",
+    "package-lock.json": "6765ce7464dc50bb9fb3337a90a4eef44740e0067676b47e65b396b23e6dd7d8",
+    "node_modules/@inkyquill/galley-editor/dist/style.css": "601e4cb5fc4aeaeb7f84908965ffb83f83bc4159760a62302835b630b5bb6d7b",
+    "node_modules/@inkyquill/galley-themes/dist/index.js": "4dd5bea4778162f5bfc0df98a25b01cf40d8c407f414291b5676ad883d623f4a"
+  }
+}

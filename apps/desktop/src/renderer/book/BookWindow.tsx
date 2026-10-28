@@ -1,3 +1,5 @@
+import { flushSync } from 'react-dom';
+import { subscribeBookUpdates } from './book-updates';
 import { ChapterSidebar } from './ChapterSidebar';
 import type { ChapterAction } from './ChapterSidebar';
 import { ChapterDialogs } from './ChapterDialogs';
@@ -5,7 +7,7 @@ import { RenameBookDialog } from './RenameBookDialog';
 import { MetadataPopover } from './MetadataPopover';
 import type { MetadataPopoverHandle } from './MetadataPopover';
 import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconPencil, IconInfoCircle, IconX, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand } from '@tabler/icons-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { AppearanceSettings, BookView, Command, RecordView, Snapshot } from '../../shared/api';
 import type { ThemeDefinition } from '@inkyquill/galley-themes';
@@ -177,6 +179,9 @@ export function BookWindow({
   onLayoutRetry,
 }: Props) {
   const [book, setBook] = useState(initialBook);
+  const [discoveredFiles, setDiscoveredFiles] = useState<string[]>([]);
+  const [dismissedDiscovery, setDismissedDiscovery] = useState('');
+  const [binderError, setBinderError] = useState<string | null>(null);
   const [chapterAction, setChapterAction] = useState<ChapterAction | null>(null);
   const [noteStates, setNoteStates] = useState<Record<string, NoteState>>({});
   const [renameOpen, setRenameOpen] = useState(false);
@@ -281,7 +286,13 @@ export function BookWindow({
 
   useEffect(() => {
     if (sidebarOverlay === null) return;
-    requestAnimationFrame(() => overlayPanelRef.current?.querySelector<HTMLElement>('button, input, [tabindex]')?.focus());
+    const panel = overlayPanelRef.current;
+    const frame = requestAnimationFrame(() => {
+      // Do not steal focus from a nested form that already received it.
+      if (panel?.isConnected && !panel.contains(document.activeElement)) {
+        panel.querySelector<HTMLElement>('button, input, [tabindex]')?.focus();
+      }
+    });
     const dismiss = (event: PointerEvent): void => {
       if (overlayPanelRef.current?.contains(event.target as Node) || (event.target as Element).closest('.book__chapter-menu-items')) return;
       const side = sidebarOverlay;
@@ -289,7 +300,10 @@ export function BookWindow({
       requestAnimationFrame(() => (side === 'chapters' ? chaptersTriggerRef : reviewTriggerRef).current?.focus());
     };
     document.addEventListener('pointerdown', dismiss);
-    return () => document.removeEventListener('pointerdown', dismiss);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener('pointerdown', dismiss);
+    };
   }, [sidebarOverlay]);
   useEffect(() => {
     if (!menuOpen) return;
@@ -381,7 +395,7 @@ export function BookWindow({
     setChapterId(next);
   }, [editorApi]);
 
-  const refreshBook = useCallback(async (next: BookView) => {
+  const applyBook = useCallback(async (next: BookView) => {
     setBook(next);
     onBookChange?.(next);
     if (!next.entries.some(entry => entry.id === chapterIdRef.current)) {
@@ -400,6 +414,69 @@ export function BookWindow({
       applySnapshot(await window.desk.openChapter(next.bookId, chapterIdRef.current));
     }
   }, [applySnapshot, onBookChange]);
+
+  const [refreshPaused, setRefreshPaused] = useState(false);
+  const refreshPausedRef = useRef(false);
+  const refreshRequestRef = useRef(0);
+  const bookUpdatesRef = useRef<ReturnType<typeof subscribeBookUpdates> | null>(null);
+  const refreshBook = useCallback(async (next: BookView) => {
+    bookUpdatesRef.current?.invalidate();
+    await applyBook(next);
+    setDiscoveredFiles(files => files.filter(file => !next.entries.some(entry => entry.path === file)));
+    try { await bookUpdatesRef.current?.refresh(); }
+    catch (cause) { setError(errorText(cause)); }
+  }, [applyBook]);
+  const bookUpdateRef = useRef({ book, editorApi, applyBook, saveError });
+  useLayoutEffect(() => {
+    bookUpdateRef.current = { book, editorApi, applyBook, saveError };
+  }, [book, editorApi, applyBook, saveError]);
+  useEffect(() => {
+    const subscription = subscribeBookUpdates(window.desk, book.bookId, (update, isCurrent) => {
+      setDiscoveredFiles(update.files.map(file => file.path).sort());
+      setBinderError(update.error ?? null);
+      const current = bookUpdateRef.current;
+      // A file discovery alone must not replace the editor's pending input.
+      if (!refreshPausedRef.current && JSON.stringify(update.book) !== JSON.stringify(current.book)) {
+        void (async () => {
+          await current.editorApi?.flushPending();
+          if (isCurrent() && !refreshPausedRef.current) await bookUpdateRef.current.applyBook(update.book);
+        })().catch(cause => { if (isCurrent()) setError(errorText(cause)); });
+      }
+    });
+    bookUpdatesRef.current = subscription;
+    return () => {
+      subscription.dispose();
+      bookUpdatesRef.current = null;
+    };
+  }, [book.bookId]);
+
+  useEffect(() => window.desk.onBookRefresh(async request => {
+    const bookId = request.phase === 'complete' ? request.book.bookId : request.bookId;
+    if (bookId !== book.bookId) return;
+    const requestVersion = ++refreshRequestRef.current;
+    const resume = () => {
+      flushSync(() => setRefreshPaused(false));
+      refreshPausedRef.current = false;
+      const element = document.querySelector<HTMLElement>('.book');
+      if (element) element.inert = false;
+    };
+    if (request.phase === 'cancel') { resume(); return; }
+    if (request.phase === 'complete') {
+      try { await bookUpdateRef.current.applyBook(request.book); }
+      finally { resume(); }
+      return;
+    }
+    if ((await metadataRef.current?.requestDismiss()) === false) throw new Error('Обновление оглавления отложено: метаданные не завершены');
+    // A cancelled/timed-out preparation must not pause input later.
+    if (requestVersion !== refreshRequestRef.current) return;
+    refreshPausedRef.current = true;
+    setRefreshPaused(true);
+    const element = document.querySelector<HTMLElement>('.book');
+    if (element) element.inert = true;
+    bookUpdatesRef.current?.invalidate();
+    await bookUpdateRef.current.editorApi?.flushPending();
+    if (bookUpdateRef.current.saveError !== null) throw new Error('Сначала сохраните изменения главы');
+  }), [book.bookId]);
 
   // --- оформление ------------------------------------------------------------
 
@@ -1023,7 +1100,7 @@ export function BookWindow({
   };
 
   return (
-    <div className={zen ? 'book book--zen' : 'book'}>
+    <div className={zen ? 'book book--zen' : 'book'} inert={refreshPaused}>
       <TitleBar
         title={book.title}
         subtitle={book.path}
@@ -1084,6 +1161,15 @@ export function BookWindow({
           (внешнее изменение, отказ очереди, сбой сохранения) — у нижнего края.
           Таймеров нет: карточку убирает разрешение состояния или явная кнопка. */}
       <NoticeCenter>
+        {binderError && <Notice kind="warning">{binderError}</Notice>}
+        {discoveredFiles.length > 0 && JSON.stringify(discoveredFiles) !== dismissedDiscovery && (
+          <Notice kind="info" onDismiss={() => setDismissedDiscovery(JSON.stringify(discoveredFiles))} actions={
+            <button type="button" onClick={() => {
+              actionTriggerRef.current = document.activeElement as HTMLElement;
+              setChapterAction({ kind: 'discover' });
+            }}>Выбрать главы</button>
+          }>В папке есть файлы вне оглавления: {discoveredFiles.length}. Добавить главы?</Notice>
+        )}
         {layoutError !== null && (
           <Notice kind="error" actions={
             <button type="button" onClick={onLayoutRetry}>Повторить сохранение ширины</button>

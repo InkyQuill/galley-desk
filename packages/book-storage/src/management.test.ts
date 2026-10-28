@@ -118,7 +118,7 @@ test('reorder rejects duplicate, unknown, missing IDs and stale manifest, includ
   }
   const external = JSON.stringify({ ...JSON.parse(before), title: 'External' });
   await writeFile(manifestPath, external);
-  await expect(manageBook(book, { type: 'reorder', chapterIds: ids })).rejects.toThrow(/manifest/i);
+  await expect(manageBook(book, { type: 'reorder', chapterIds: ids })).rejects.toThrow(/Оглавление/);
   expect(await readFile(manifestPath, 'utf8')).toBe(external);
 });
 test('unsafe, ignored, duplicate and ambiguous additions do not mutate manifest', async () => {
@@ -162,7 +162,7 @@ test('external manifest conflict and existing creation target leave files intact
   await writeFile(path.join(root, '.pocket-editor.json'), external);
   await expect(
     manageBook(book, { type: 'create', path: 'new.md', title: 'New' }),
-  ).rejects.toThrow(/manifest/i);
+  ).rejects.toThrow(/Оглавление/);
   expect(await readFile(path.join(root, '.pocket-editor.json'), 'utf8')).toBe(
     external,
   );

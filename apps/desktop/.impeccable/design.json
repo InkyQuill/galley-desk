@@ -1,0 +1,168 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-27T06:49:02.630Z",
+  "title": "Design System: Galley Desk",
+  "extensions": {
+    "shadows": [
+      {
+        "name": "galley-light-dialog",
+        "value": "0 18px 54px rgb(31 37 35 / 18%)",
+        "purpose": "Временные слои базовой светлой темы; runtime: --app-dialog-shadow."
+      },
+      {
+        "name": "galley-dark-dialog",
+        "value": "0 18px 54px rgb(0 0 0 / 32%)",
+        "purpose": "Временные слои базовой тёмной темы; runtime: --app-dialog-shadow."
+      }
+    ],
+    "motion": [
+      {
+        "name": "sidebar-resizer",
+        "value": "background-color 120ms ease",
+        "purpose": "Появление акцента на линии разделителя при hover/focus."
+      },
+      {
+        "name": "signal-flyout-action",
+        "value": "background-color 120ms ease",
+        "purpose": "Hover/focus-visible кнопок выбора типа сигнала; правило текущего app.css."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-shell-max",
+        "value": "1099px"
+      },
+      {
+        "name": "both-sidebars-min",
+        "value": "972px"
+      },
+      {
+        "name": "chapters-sidebar-min",
+        "value": "726px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Кнопка",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Обычное действие; базовая светлая тема как fallback, переменные корня имеют приоритет.",
+      "html": "<button class=\"ds-button\" type=\"button\">Открыть</button>",
+      "css": ".ds-button{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:6px;padding:7px 9px;background:transparent;color:var(--app-text, #1f2523);cursor:pointer;}.ds-button:hover,.ds-button[aria-pressed=\"true\"]{background:var(--app-hover, #e3ded3);}.ds-button:disabled{opacity:.4;cursor:default;}.ds-button:focus-visible{outline:2px solid var(--desk-accent, #5d7cda);outline-offset:2px;}"
+    },
+    {
+      "name": "Открытие книги",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Заливка hover-поверхностью; отдельной акцентной primary-заливки в Desk нет.",
+      "html": "<button class=\"ds-primary\" type=\"button\">Открыть папку…</button>",
+      "css": ".ds-primary{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:6px;padding:10px 22px;background:var(--app-hover, #e3ded3);color:var(--app-text, #1f2523);cursor:pointer;}.ds-primary:hover,.ds-primary[aria-pressed=\"true\"]{background:var(--app-hover, #e3ded3);}.ds-primary:disabled{opacity:.4;cursor:default;}.ds-primary:focus-visible{outline:2px solid var(--desk-accent, #5d7cda);outline-offset:2px;}"
+    },
+    {
+      "name": "Поле фильтра",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Приглушённая поверхность, UI-шрифт, без рамки; стандартный focus-visible.",
+      "html": "<input class=\"ds-input\" aria-label=\"Фильтр глав\" placeholder=\"Фильтр глав…\">",
+      "css": ".ds-input{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);min-width:0;border:0;border-radius:6px;padding:8px 10px;color:var(--app-text, #1f2523);background:var(--app-panel-muted, #f3f0e9);}.ds-input:focus-visible{outline:2px solid var(--desk-accent, #5d7cda);outline-offset:2px;}"
+    },
+    {
+      "name": "Активная глава",
+      "kind": "nav",
+      "refersTo": "chapter-active",
+      "description": "Две строки, muted-имя файла, выделение выбранной главы. Кнопка контекстного меню описана в DESIGN.md.",
+      "html": "<nav class=\"ds-chapters\" aria-label=\"Оглавление\"><div class=\"ds-chapter-row\"><button type=\"button\" class=\"ds-chapter\" aria-current=\"page\"><span>Последний паром</span><small>01 Последний паром.md</small></button></div></nav>",
+      "css": ".ds-chapters{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);background:var(--app-panel, #fbfaf7);color:var(--app-text, #1f2523);padding:14px 12px;}.ds-chapter-row{border-radius:7px;background:var(--app-hover, #e3ded3);}.ds-chapter{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:6px;padding:9px 4px 9px 10px;background:transparent;color:var(--app-text, #1f2523);cursor:pointer;}.ds-chapter:hover,.ds-chapter[aria-pressed=\"true\"]{background:var(--app-hover, #e3ded3);}.ds-chapter:disabled{opacity:.4;cursor:default;}.ds-chapter:focus-visible{outline:2px solid var(--desk-accent, #5d7cda);outline-offset:2px;}.ds-chapter{display:block;width:100%;text-align:left;min-width:0;}.ds-chapter span,.ds-chapter small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.ds-chapter small{opacity:.6;font-size:.8em;}"
+    },
+    {
+      "name": "Недавняя книга",
+      "kind": "card",
+      "description": "Постоянная поверхность без тени; название и путь с разной иерархией.",
+      "html": "<div class=\"ds-recent\"><div class=\"ds-recent-info\"><strong>Последний паром</strong><span>Книги / Последний паром</span></div><button type=\"button\" class=\"ds-recent-open\">Открыть</button></div>",
+      "css": ".ds-recent{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);display:flex;align-items:center;justify-content:space-between;gap:16px;border-radius:8px;padding:12px;background:var(--app-panel, #fbfaf7);color:var(--app-text, #1f2523);}.ds-recent-info{display:grid;gap:4px;min-width:0;text-align:left;}.ds-recent-info strong{font-weight:600;}.ds-recent-info span{font-size:.9em;overflow-wrap:anywhere;color:var(--app-text-muted, #69726e);}.ds-recent-open{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:6px;padding:7px 9px;background:transparent;color:var(--app-text, #1f2523);cursor:pointer;}.ds-recent-open:hover,.ds-recent-open[aria-pressed=\"true\"]{background:var(--app-hover, #e3ded3);}.ds-recent-open:disabled{opacity:.4;cursor:default;}.ds-recent-open:focus-visible{outline:2px solid var(--desk-accent, #5d7cda);outline-offset:2px;}"
+    },
+    {
+      "name": "Карточка записи",
+      "kind": "card",
+      "refersTo": "record-card",
+      "description": "Плавающая карточка рецензии; встроенный вариант получает muted-фон и не требует тени.",
+      "html": "<section class=\"ds-record\" aria-label=\"Правка\"><strong>Правка</strong><p>До правки: вернулась к пристани.</p><textarea class=\"ds-record-field\" aria-label=\"Текст правки\">пришла к пристани.</textarea><button class=\"ds-record-action\" type=\"button\">Сохранить</button></section>",
+      "css": ".ds-record{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);background:var(--app-panel, #fbfaf7);color:var(--app-text, #1f2523);border:0;border-radius:8px;padding:.75rem;display:grid;gap:.5rem;text-align:left;width:440px;max-width:min(100%,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;overflow-wrap:anywhere;box-sizing:border-box;box-shadow:var(--app-dialog-shadow,0 18px 54px rgb(31 37 35 / 18%));}.ds-record-field{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);width:100%;min-height:8rem;box-sizing:border-box;resize:vertical;border:0;border-radius:6px;padding:8px 10px;background:var(--app-panel-muted, #f3f0e9);color:var(--app-text, #1f2523);}.ds-record-field:focus-visible{outline:2px solid var(--desk-accent, #5d7cda);outline-offset:2px;}.ds-record-action{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:6px;padding:7px 9px;background:transparent;color:var(--app-text, #1f2523);cursor:pointer;}.ds-record-action:hover,.ds-record-action[aria-pressed=\"true\"]{background:var(--app-hover, #e3ded3);}.ds-record-action:disabled{opacity:.4;cursor:default;}.ds-record-action:focus-visible{outline:2px solid var(--desk-accent, #5d7cda);outline-offset:2px;}"
+    },
+    {
+      "name": "Подсказка",
+      "kind": "custom",
+      "refersTo": "tooltip",
+      "description": "Видимый образец общей подсказки; реальные 300ms/focus/aria-describedby реализуются контроллером.",
+      "html": "<div class=\"ds-tooltip\" role=\"tooltip\"><span>Режим Zen</span><span class=\"ds-tooltip-shortcut\">Ctrl+Alt+Z</span></div>",
+      "css": ".ds-tooltip{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);max-width:min(320px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:hidden;overflow-wrap:anywhere;padding:6px 10px;border-radius:8px;background:var(--app-panel, #fbfaf7);color:var(--app-text, #1f2523);line-height:1.4;box-shadow:var(--app-dialog-shadow,0 18px 54px rgb(31 37 35 / 18%));pointer-events:none;}.ds-tooltip>span{display:block;}.ds-tooltip-shortcut{margin-top:2px;color:var(--app-text-muted, #69726e);font-size:.85em;}"
+    },
+    {
+      "name": "Диалог действия",
+      "kind": "custom",
+      "refersTo": "dialog",
+      "description": "Визуальный образец поверхности. В приложении используется настоящий dialog.showModal(), собственный backdrop и возврат фокуса.",
+      "html": "<section class=\"ds-dialog\" aria-label=\"Переименовать книгу\"><header><h2>Переименовать книгу</h2></header><label class=\"ds-dialog-label\">Название<input class=\"ds-dialog-input\" value=\"Последний паром\"></label><div class=\"ds-dialog-actions\"><button class=\"ds-dialog-button\" type=\"button\">Отмена</button><button class=\"ds-dialog-button\" type=\"button\">Сохранить</button></div></section>",
+      "css": ".ds-dialog{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);width:min(460px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow-y:auto;padding:20px;border:0;border-radius:12px;background:var(--app-panel, #fbfaf7);color:var(--app-text, #1f2523);box-shadow:var(--app-dialog-shadow,0 18px 54px rgb(31 37 35 / 18%));}.ds-dialog header{display:flex;align-items:center;justify-content:space-between;gap:12px;}.ds-dialog h2{margin:0;font-size:1.2em;}.ds-dialog-label{display:grid;gap:5px;margin-top:18px;}.ds-dialog-input{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);min-width:0;box-sizing:border-box;border:0;border-radius:6px;padding:8px 10px;background:var(--app-panel-muted, #f3f0e9);color:var(--app-text, #1f2523);}.ds-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}.ds-dialog-button{font-family:var(--desk-ui-font, Geist, system-ui, sans-serif);font-size:var(--desk-ui-size, 13px);display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:6px;padding:7px 9px;background:transparent;color:var(--app-text, #1f2523);cursor:pointer;}.ds-dialog-button:hover,.ds-dialog-button[aria-pressed=\"true\"]{background:var(--app-hover, #e3ded3);}.ds-dialog-button:disabled{opacity:.4;cursor:default;}.ds-dialog-button:focus-visible{outline:2px solid var(--desk-accent, #5d7cda);outline-offset:2px;}.ds-dialog-input:focus-visible{outline:2px solid var(--desk-accent, #5d7cda);outline-offset:2px;}"
+    },
+    {
+      "name": "Переключатель видов",
+      "kind": "nav",
+      "refersTo": "view-toggle",
+      "description": "Иконки Текст/Сравнение/Исходник с accessible names; выбранность через aria-pressed.",
+      "html": "<div class=\"ds-view\" aria-label=\"Режим просмотра\"><button type=\"button\" aria-label=\"Текст\" aria-pressed=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"tabler-icon tabler-icon-file-text \" aria-hidden=\"true\"><path d=\"M14 3v4a1 1 0 0 0 1 1h4\"></path><path d=\"M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2\"></path><path d=\"M9 9l1 0\"></path><path d=\"M9 13l6 0\"></path><path d=\"M9 17l6 0\"></path></svg></button><button type=\"button\" aria-label=\"Сравнение\" aria-pressed=\"false\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"tabler-icon tabler-icon-columns-2 \" aria-hidden=\"true\"><path d=\"M3 4a1 1 0 0 1 1 -1h16a1 1 0 0 1 1 1v16a1 1 0 0 1 -1 1h-16a1 1 0 0 1 -1 -1v-16\"></path><path d=\"M12 3v18\"></path></svg></button><button type=\"button\" aria-label=\"Исходник\" aria-pressed=\"false\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"tabler-icon tabler-icon-code \" aria-hidden=\"true\"><path d=\"M7 8l-4 4l4 4\"></path><path d=\"M17 8l4 4l-4 4\"></path><path d=\"M14 4l-4 16\"></path></svg></button></div>",
+      "css": ".ds-view{display:flex;gap:2px;padding:2px;border-radius:8px;background:var(--app-panel-muted,#f3f0e9);}.ds-view button{color:var(--app-text,#1f2523);font:var(--desk-ui-size,13px) var(--desk-ui-font,Geist,system-ui,sans-serif);display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:6px;padding:7px 9px;background:transparent;cursor:pointer;}.ds-view button:hover,.ds-view button[aria-pressed=\"true\"]{background:var(--app-hover,#e3ded3);}.ds-view svg{width:18px;height:18px;stroke-width:2;flex:none;}.ds-view button:focus-visible,.ds-signal:focus-visible{outline:2px solid var(--desk-accent,#5d7cda);outline-offset:2px;}"
+    },
+    {
+      "name": "Тип сигнала — заметка",
+      "kind": "chip",
+      "description": "Выбранная icon-кнопка типа сигнала. Светлая семантическая пара; для dark брать signal-note-dark. borderColor не создаёт рамку при border:0.",
+      "html": "<button class=\"ds-signal\" type=\"button\" aria-label=\"Заметка\" aria-pressed=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"tabler-icon tabler-icon-message \" aria-hidden=\"true\"><path d=\"M8 9h8\"></path><path d=\"M8 13h6\"></path><path d=\"M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12\"></path></svg></button>",
+      "css": ".ds-signal{display:inline-flex;align-items:center;justify-content:center;border:0;border-color:#1E5A9B;border-radius:6px;padding:.1rem .4rem;background:transparent;color:#1E5A9B;cursor:pointer;}.ds-signal[aria-pressed=\"true\"]{background:color-mix(in srgb,#1E5A9B 15%,transparent);}.ds-signal:disabled{opacity:.4;cursor:default;}.ds-signal svg{width:18px;height:18px;stroke-width:2;flex:none;}.ds-view button:focus-visible,.ds-signal:focus-visible{outline:2px solid var(--desk-accent,#5d7cda);outline-offset:2px;}"
+    }
+  ],
+  "narrative": {
+    "overview": "Снимок реализованной системы оформления на 2026-09-27. Пользователь подтвердил сохранение текущего интерфейса и перенос его правил в сестринские проекты. Описание извлечено из кода и сверено со свежей Electron-сборкой; новая визуальная концепция, метафора или палитра не вводятся.\n\nИнтерфейс организован вокруг чтения: книжная типографика в центре, компактные инструменты по краям, спокойные сплошные поверхности. Иерархию создают шрифт, тон поверхности, отступы и состояние элемента. Тень отделяет временный слой от рабочего пространства; постоянно видимый текст не помещён в отдельную карточку.",
+    "keyCharacteristics": [
+      "Независимые настройки типографики книги и интерфейса.",
+      "Общая тема окна, панелей, редактора и всплывающих слоёв.",
+      "Плоская область чтения без рамки, скругления, тени и размытия.",
+      "Компактные действия с контурными иконками, подписями для доступности и тематическими подсказками.",
+      "Сохранение места чтения, выделения и черновиков при работе с инструментами."
+    ],
+    "rules": [
+      {
+        "name": "The Shared Theme Rule",
+        "body": "Один результат `themeToCssVariables(theme)` применяется на корневой контейнер; `colorScheme` и `data-scheme` соответствуют выбранной теме. «Системная» (`auto`) следует за сменой схемы ОС без перезапуска. Явно выбранная тема имеет приоритет над ОС. Неизвестный идентификатор разрешается в базовую тему текущей системной схемы.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Type Scales Rule",
+        "body": "Изменение шрифта книги не меняет меню, подсказки и карточки. Изменение UI-размера не подменяет размер текста книги. В CSS используются `--desk-ui-font`, `--desk-ui-size`, `--desk-book-font`, `--desk-book-size`, а в редактор дополнительно передаются `--ge-font-body` и `--ge-font-size`.",
+        "section": "typography"
+      },
+      {
+        "name": "The Floating Layer Rule",
+        "body": "Тень отделяет временный инструмент от текста; оболочка самого текста остаётся плоской. Не возвращать Galley Editor его самостоятельную карточку с рамкой/тенью/размытием поверх оформления Desk.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** применять тему на весь корневой контейнер, включая порталы и первый экран.",
+      "**Do** сохранять независимые настройки книги и интерфейса и локальную поставку шрифтов.",
+      "**Do** переносить состояния, клавиатурное управление и работу фокуса вместе с внешним видом.",
+      "**Do** проверять светлую/тёмную темы, пользовательский UI-размер, длинные русские названия и сужение окна.",
+      "**Do** переиспользовать опубликованные общие пакеты и явно согласовывать обновление их версий.",
+      "**Do** брать значения из действующего CSS с учётом каскада и сверять с computed styles."
+    ],
+    "donts": [
+      "**Don't** добавлять самостоятельную карточку, рамку, тень или blur вокруг текста книги при переносе оформления Desk.",
+      "**Don't** подменять выбранную тему системной схемой внутри редактора или отдельного popover.",
+      "**Don't** копировать временные абсолютные пути книг, название приложения, Electron IPC или модель рецензирования в общий дизайн-контракт.",
+      "**Don't** считать наличие токена в каталоге требованием использовать его в каждом компоненте.",
+      "**Don't** объявлять несуществующую строгую spacing-сетку, единую систему анимаций или проверенное соответствие WCAG.",
+      "**Don't** переносить устаревшие комментарии вместо фактического поведения: Zen сохраняет строку окна, preview прокручивается."
+    ]
+  }
+}

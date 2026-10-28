@@ -3,8 +3,10 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
+import { readDrafts } from '@galley-desk/book-storage';
 import { encodeReview, makeAnchor } from '@galley-desk/pocket-format';
 import type { Edit, Review, Signal } from '@galley-desk/pocket-format';
+import type { BookServiceDeps } from './book-service';
 import { createBookService } from './book-service';
 import type { Logger } from './diagnostics/logger';
 import { IpcError } from './ipc';
@@ -42,6 +44,7 @@ async function makeService(
   bookFiles: Record<string, string> = {},
   trashItem?: (target: string) => Promise<void>,
   logger?: Logger,
+  prepareBookRefresh?: BookServiceDeps['prepareBookRefresh'],
 ): Promise<Harness> {
   const bookRoot = await tempDir('galley-book-');
   for (const [name, content] of Object.entries(bookFiles)) {
@@ -58,6 +61,7 @@ async function makeService(
   const watcherEvents = new Map<string, () => void>();
   const service = createBookService({
     appData,
+    ...(prepareBookRefresh ? { prepareBookRefresh } : {}),
     ...(trashItem ? { trashItem } : {}),
     ...(logger ? { logger } : {}),
     chooseDirectory: () => pickerHandler(),
@@ -1331,5 +1335,308 @@ test.each(['\n', '\r\n'])('editing a body-start insertion preserves its metadata
   expect(edited.text).toBe(initial.text.slice(0, body) + 'ZYBody');
   await expect(h.command(book.bookId, id, edited.revision, {type: 'text', changes: [{from: body - 1, to: body, insert: ''}], selection: {anchor: body - 1, head: body - 1}})).rejects.toMatchObject({code: 'UNAVAILABLE_RECORD'});
   expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe(source);
+  await h.closeAll();
+});
+
+test('external binder refresh preserves the active review and undo while discovering unlisted files', async () => {
+  const h = await makeService({ 'a.md': 'Alpha\n', 'b.md': 'Beta\n' });
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const snap = await h.openChapter(book.bookId, id);
+  await h.command(book.bookId, id, snap.revision, { type: 'text', changes: [{ from: 0, to: 0, insert: 'Draft ' }], selection: { anchor: 6, head: 6 } });
+  const source = await readFile(path.join(h.bookRoot, 'a.md'));
+  const review = await readFile(path.join(h.bookRoot, 'a.review.json'));
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.title = 'External title';
+  manifest.chapters.reverse();
+  const bytes = JSON.stringify(manifest);
+  await writeFile(manifestPath, bytes);
+  await writeFile(path.join(h.bookRoot, 'new.md'), 'New chapter\n');
+  const updates: import('../shared/api').ChapterDiscovery[] = [];
+  h.subscribeBook(update => updates.push(update));
+  await h.recheckExternal();
+  expect(updates.at(-1)).toMatchObject({ book: { title: 'External title', entries: [{ path: 'b.md' }, { path: 'a.md' }] }, files: [{ path: 'new.md' }] });
+  const current = await h.openChapter(book.bookId, id);
+  expect(current.text).toBe('Draft Alpha\n');
+  expect(current.canUndoInput).toBe(true);
+  expect(await readFile(manifestPath, 'utf8')).toBe(bytes);
+  expect(await readFile(path.join(h.bookRoot, 'a.md'))).toEqual(source);
+  expect(await readFile(path.join(h.bookRoot, 'a.review.json'))).toEqual(review);
+  await h.manageBook(book.bookId, { type: 'add', paths: ['new.md'] });
+  expect((await h.discoverChapters(book.bookId)).files).toEqual([]);
+  await h.closeAll();
+});
+
+test('external binder removes and remaps opened chapters without keeping stale sessions', async () => {
+  const h = await makeService({ 'a.md': 'Alpha\n', 'b.md': 'Beta\n' });
+  const book = (await h.chooseBook())!;
+  const a = book.entries[0]!.id;
+  const b = book.entries[1]!.id;
+  await h.openChapter(book.bookId, a);
+  await h.openChapter(book.bookId, b);
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.chapters = [{ ...manifest.chapters[0], path: 'b.md' }];
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await h.recheckExternal();
+  expect(await h.openChapter(book.bookId, a)).toMatchObject({ text: 'Beta\n', revision: 2 });
+  await expect(h.openChapter(book.bookId, b)).rejects.toThrow();
+  await h.closeAll();
+});
+
+test('invalid external binder is preserved and a subsequent valid replacement refreshes', async () => {
+  const h = await makeService({ 'a.md': 'Alpha\n' });
+  const book = (await h.chooseBook())!;
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const original = await readFile(manifestPath, 'utf8');
+  const updates: import('../shared/api').ChapterDiscovery[] = [];
+  h.subscribeBook(update => updates.push(update));
+  await writeFile(manifestPath, '{');
+  await h.recheckExternal();
+  expect(updates.at(-1)?.error).toContain('Не удалось прочитать');
+  expect(await readFile(manifestPath, 'utf8')).toBe('{');
+  await writeFile(manifestPath, original);
+  await h.recheckExternal();
+  expect(updates.at(-1)?.error).toBeUndefined();
+  expect((await h.openChapter(book.bookId, book.entries[0]!.id)).text).toBe('Alpha\n');
+  await h.closeAll();
+});
+
+test.each(['error', 'external'] as const)('binder refresh retries draft preservation in %s without pausing or dropping the chapter', async state => {
+  const prepare = vi.fn(async () => ({ finish: async () => {}, cancel: async () => {} }));
+  const h = await makeService({ 'a.md': 'Alpha\n' }, undefined, undefined, prepare);
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  const draftPath = path.join(h.appData, `${id}.draft.json`);
+  await mkdir(draftPath);
+  const storage = await vi.importActual<typeof import('@galley-desk/book-storage')>('../../../../packages/book-storage/src/book');
+  const spy = vi.spyOn(storage, 'writePair').mockRejectedValueOnce(new Error('injected failure'));
+  try {
+    await expect(h.command(book.bookId, id, initial.revision, { type: 'text', changes: [{ from: 0, to: 0, insert: 'Local ' }], selection: { anchor: 6, head: 6 } })).rejects.toThrow();
+    if (state === 'external') {
+      await rm(draftPath, { recursive: true });
+      await writeFile(path.join(h.bookRoot, 'a.md'), 'External\n');
+      await h.recheckExternal();
+      expect((await h.openChapter(book.bookId, id)).saveState).toBe('external');
+      // Reverting the disk pair makes checkExternal a no-op; only the refresh
+      // guard can retry preservation of the still-unresolved local draft.
+      await writeFile(path.join(h.bookRoot, 'a.md'), 'Alpha\n');
+      await rm(draftPath);
+      await mkdir(draftPath);
+    }
+    const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+    const original = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const external = JSON.stringify({ ...original, chapters: [] });
+    await writeFile(manifestPath, external);
+    const updates: import('../shared/api').ChapterDiscovery[] = [];
+    h.subscribeBook(update => updates.push(update));
+    await h.recheckExternal();
+    expect(await readDrafts(h.appData)).toEqual([]);
+    await rm(draftPath, { recursive: true });
+    await h.recheckExternal();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(updates.at(-1)?.error).toBeTruthy();
+    expect(updates.at(-1)?.book.entries[0]?.id).toBe(id);
+    expect(await readFile(manifestPath, 'utf8')).toBe(external);
+    expect(await h.openChapter(book.bookId, id)).toMatchObject({ text: 'Alpha\n', saveState: state });
+    expect(await readFile(path.join(h.bookRoot, 'a.md'), 'utf8')).toBe('Alpha\n');
+    expect(existsSync(path.join(h.bookRoot, 'a.review.json'))).toBe(false);
+    const draft = (await readDrafts(h.appData)).find(draft => draft.id === id);
+    expect(draft?.pair.review).toContain('Local ');
+    expect(new TextDecoder().decode(draft?.pair.source)).toBe('Alpha\n');
+  } finally { spy.mockRestore(); }
+});
+
+test('discovery excludes hidden, ignored, nested and already registered files', async () => {
+  const h = await makeService({ 'a.md': 'Alpha\n' });
+  const book = (await h.chooseBook())!;
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.ignored_files = ['ignored.md'];
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await mkdir(path.join(h.bookRoot, 'nested'));
+  for (const name of ['new.md', '.hidden.md', 'ignored.md', 'nested/chapter.md']) await writeFile(path.join(h.bookRoot, name), 'Text');
+  expect((await h.discoverChapters(book.bookId)).files).toEqual([{ path: 'new.md' }]);
+  await h.closeAll();
+});
+
+
+function barrier() {
+  let release = () => {};
+  const promise = new Promise<void>(resolve => { release = resolve; });
+  return { promise, release };
+}
+
+test('an in-flight chapter open completes before manifest remapping, and the replacement accepts edits', async () => {
+  const h = await makeService({ 'a.md': 'Alpha', 'b.md': 'Different beta' });
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const storage = await vi.importActual<typeof import('@galley-desk/book-storage')>('../../../../packages/book-storage/src/book');
+  const original = storage.readPair;
+  const entered = barrier();
+  const resume = barrier();
+  const spy = vi.spyOn(storage, 'readPair').mockImplementationOnce(async (...args) => {
+    entered.release();
+    await resume.promise;
+    return original(...args);
+  });
+  try {
+    const opening = h.openChapter(book.bookId, id);
+    await entered.promise;
+    const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.chapters = [{ ...manifest.chapters[0], path: 'b.md' }];
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    const refreshing = h.recheckExternal();
+    resume.release();
+    expect((await opening).text).toBe('Alpha');
+    await refreshing;
+    const current = await h.openChapter(book.bookId, id);
+    expect(current.text).toBe('Different beta');
+    const edited = await h.command(book.bookId, id, current.revision, { type: 'text', changes: [{ from: 0, to: 0, insert: 'New ' }], selection: { anchor: 4, head: 4 } });
+    expect(edited.text).toBe('New Different beta');
+    expect(await readFile(path.join(h.bookRoot, 'a.md'), 'utf8')).toBe('Alpha');
+  } finally { resume.release(); spy.mockRestore(); await h.closeAll(); }
+});
+
+test('refresh drains renderer commands before retirement and holds new chapter opens until adoption', async () => {
+  const entered = barrier();
+  const resume = barrier();
+  const finish = vi.fn(async () => {});
+  const cancel = vi.fn(async () => {});
+  let drain = async () => {};
+  const h = await makeService({ 'a.md': 'Alpha', 'b.md': 'Beta' }, undefined, undefined, async () => {
+    entered.release();
+    await resume.promise;
+    await drain();
+    return { finish, cancel };
+  });
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  drain = async () => {
+    await h.command(book.bookId, id, initial.revision, { type: 'text', changes: [{ from: 0, to: 0, insert: 'Queued ' }], selection: { anchor: 7, head: 7 } });
+  };
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.chapters = [{ ...manifest.chapters[0], path: 'b.md' }];
+  const bytes = JSON.stringify(manifest);
+  await writeFile(manifestPath, bytes);
+  const refreshing = h.recheckExternal();
+  await entered.promise;
+  const opening = h.openChapter(book.bookId, id);
+  resume.release();
+  await refreshing;
+  expect((await opening).text).toBe('Beta');
+  expect(await readFile(path.join(h.bookRoot, 'a.review.json'), 'utf8')).toContain('Queued ');
+  expect(await readFile(path.join(h.bookRoot, 'a.md'), 'utf8')).toBe('Alpha');
+  expect(await readFile(manifestPath, 'utf8')).toBe(bytes);
+  expect(finish).toHaveBeenCalledOnce();
+  expect(cancel).not.toHaveBeenCalled();
+  await h.closeAll();
+});
+
+test('renderer flush refusal leaves the old session and mapping available for retry', async () => {
+  const h = await makeService({ 'a.md': 'Alpha', 'b.md': 'Beta' }, undefined, undefined, async () => { throw new Error('flush refused'); });
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.chapters = [{ ...manifest.chapters[0], path: 'b.md' }];
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  const updates: import('../shared/api').ChapterDiscovery[] = [];
+  h.subscribeBook(update => updates.push(update));
+  await h.recheckExternal();
+  expect(await h.openChapter(book.bookId, id)).toMatchObject({ text: 'Alpha', revision: initial.revision });
+  expect(updates.at(-1)?.error).toBeDefined();
+  await h.closeAll();
+});
+
+
+test('repeated binder checks refuse recovery before pausing the renderer', async () => {
+  const prepare = vi.fn(async () => ({ finish: async () => {}, cancel: async () => {} }));
+  const h = await makeService({ '01.md': 'cat' }, undefined, undefined, prepare);
+  const { c } = await seedRecovery(h);
+  await writeFile(path.join(h.bookRoot, '01.md'), 'fox');
+  const book = (await h.chooseBook())!;
+  expect((await h.openChapter(book.bookId, c)).recoveryConflict).toBe(true);
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const external = JSON.stringify({ ...manifest, chapters: [] });
+  await writeFile(manifestPath, external);
+  await h.recheckExternal();
+  await h.recheckExternal();
+  expect(prepare).not.toHaveBeenCalled();
+  expect((await h.openChapter(book.bookId, c)).recoveryConflict).toBe(true);
+  expect(await readFile(manifestPath, 'utf8')).toBe(external);
+  expect(await readFile(path.join(h.bookRoot, '01.md'), 'utf8')).toBe('fox');
+});
+
+
+test('blocked binder refresh retries a draft that could previously only remain in memory', async () => {
+  const prepare = vi.fn(async () => ({ finish: async () => {}, cancel: async () => {} }));
+  const h = await makeService({ 'a.md': 'Alpha' }, undefined, undefined, prepare);
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  await rename(h.appData, h.appData + '-moved');
+  tempDirs.push(h.appData + '-moved');
+  await writeFile(h.appData, 'blocked');
+  await expect(h.command(book.bookId, id, initial.revision, { type: 'text', changes: [{ from: 0, to: 0, insert: 'Memory draft ' }], selection: { anchor: 13, head: 13 } })).rejects.toThrow();
+  await rm(h.appData);
+  await rename(h.appData + '-moved', h.appData);
+  expect(await readDrafts(h.appData)).toEqual([]);
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  await writeFile(manifestPath, JSON.stringify({ ...manifest, chapters: [] }));
+  await h.recheckExternal();
+  expect(prepare).not.toHaveBeenCalled();
+  expect((await readDrafts(h.appData)).find(draft => draft.id === id)?.pair.review).toContain('Memory draft ');
+  expect((await h.openChapter(book.bookId, id)).saveState).toBe('error');
+  expect(await readFile(path.join(h.bookRoot, 'a.md'), 'utf8')).toBe('Alpha');
+});
+
+test('failed replacement loads publish read-only entries before completion and recover after repair', async () => {
+  let injectFailure = async () => {};
+  let inspectCompletion = async () => {};
+  const finish = vi.fn(async () => { await inspectCompletion(); });
+  const h = await makeService({ 'a.md': 'Alpha', 'b.md': 'Beta', 'c.md': 'Gamma' }, undefined, undefined, async () => {
+    await injectFailure();
+    return { finish, cancel: async () => {} };
+  });
+  const book = (await h.chooseBook())!;
+  const a = book.entries[0]!.id;
+  const b = book.entries[1]!.id;
+  await h.openChapter(book.bookId, a);
+  await h.openChapter(book.bookId, b);
+  const journal = path.join(h.appData, 'galley-journal-' + createHash('sha256').update(h.bookRoot + '\n' + a).digest('hex').slice(0, 32) + '.json');
+  injectFailure = async () => { await writeFile(journal, '{malformed'); };
+  inspectCompletion = async () => {
+    for (const id of [a, b]) {
+      const snapshot = await h.openChapter(book.bookId, id);
+      expect(snapshot).toMatchObject({ text: '', sourceText: '', saveState: 'error', revision: 2 });
+      expect(snapshot.readOnlyReason).toContain('данные восстановления');
+      await expect(h.command(book.bookId, id, snapshot.revision, { type: 'note', text: 'must not write' })).rejects.toMatchObject({ code: 'UNAVAILABLE_RECORD' });
+    }
+  };
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.chapters = [{ ...manifest.chapters[0], path: 'b.md' }, { ...manifest.chapters[1], path: 'c.md' }];
+  const external = JSON.stringify(manifest);
+  await writeFile(manifestPath, external);
+  await h.recheckExternal();
+  expect(finish).toHaveBeenCalledOnce();
+  await expect(finish.mock.results[0]!.value).resolves.toBeUndefined();
+  expect(await readFile(journal, 'utf8')).toBe('{malformed');
+  expect(await readFile(manifestPath, 'utf8')).toBe(external);
+  await rm(journal);
+  expect(await h.openChapter(book.bookId, a)).toMatchObject({ text: 'Beta', revision: 3, readOnlyReason: null });
+  expect(await h.openChapter(book.bookId, b)).toMatchObject({ text: 'Gamma', revision: 3, readOnlyReason: null });
+  expect(await readFile(path.join(h.bookRoot, 'a.md'), 'utf8')).toBe('Alpha');
+  expect(await readFile(path.join(h.bookRoot, 'b.md'), 'utf8')).toBe('Beta');
+  expect(await readFile(path.join(h.bookRoot, 'c.md'), 'utf8')).toBe('Gamma');
   await h.closeAll();
 });

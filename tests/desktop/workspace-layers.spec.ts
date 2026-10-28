@@ -3,6 +3,14 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+declare global {
+  interface Window {
+    waitOverlayFrames?: () => Promise<void>;
+    releaseOverlayFrames?: () => void;
+    pendingOverlayFrames?: Array<() => void>;
+  }
+}
+
 test('workspace layers preserve drafts, own Escape and remain painted inside the viewport', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'desk-layers-'));
   const profile = await mkdtemp(path.join(tmpdir(), 'desk-layers-profile-'));
@@ -54,8 +62,26 @@ test('workspace layers preserve drafts, own Escape and remain painted inside the
     await expect(page.getByLabel('Текст заметки')).toHaveValue('Unsaved survives layout');
     await page.setViewportSize({ width: 900, height: 700 });
     await expect(page.locator('.book__review')).toHaveCount(0);
+    // Hold the overlay's deferred focus until the user has focused the note.
+    await page.evaluate(() => {
+      const original = window.requestAnimationFrame.bind(window);
+      const pending: Array<() => void> = [];
+      window.requestAnimationFrame = callback => {
+        pending.push(() => callback(performance.now()));
+        return original(() => undefined);
+      };
+      Object.assign(window, { waitOverlayFrames: () => new Promise<void>(resolve => original(() => original(() => resolve()))), releaseOverlayFrames: () => {
+        window.requestAnimationFrame = original;
+        pending.splice(0).forEach(callback => callback());
+      }, pendingOverlayFrames: pending });
+    });
     await page.getByRole('button', { name: 'Показать рецензию', exact: true }).click();
-    await page.getByLabel('Текст заметки').press('Escape');
+    await page.evaluate(() => window.waitOverlayFrames?.());
+    await page.getByLabel('Текст заметки').focus();
+    await expect.poll(() => page.evaluate(() => window.pendingOverlayFrames?.length ?? 0)).toBeGreaterThan(0);
+    await page.evaluate(() => window.releaseOverlayFrames?.());
+    await expect(page.getByLabel('Текст заметки')).toBeFocused();
+    await page.keyboard.press('Escape');
     await expect(page.locator('.book__sidebar-overlay')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.locator('.book__sidebar-overlay')).toHaveCount(0);

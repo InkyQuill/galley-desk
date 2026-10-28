@@ -467,13 +467,30 @@ export class BookManagementError extends Error {
   constructor(message: string, readonly filesMoved = false) { super(message); this.name = 'BookManagementError'; }
 }
 
+/** Adopt a valid external binder only after the owner has prepared affected sessions.
+ * No creation, normalization or write occurs during refresh. */
+export async function refreshManifest(book: BookHandle, prepare: (next: Manifest) => Promise<void>): Promise<boolean> {
+  const stored = await readOptionalFileBytes(path.join(book.root, MANIFEST_NAME));
+  if (!stored) throw new BookManagementError('Оглавление временно недоступно. Проверка повторится при следующем изменении или возвращении в окно.');
+  const previous = manifestBytes.get(book);
+  if (previous && sha256Hex(stored) === sha256Hex(previous)) return false;
+  let next: Manifest;
+  try { next = decodeManifest(utf8Text(stored)); }
+  catch { throw new BookManagementError('Не удалось прочитать изменённое оглавление. Исправьте файл, чтобы обновить книгу.'); }
+  if (next.book_id !== book.id) throw new BookManagementError('В папке теперь другая книга. Откройте её отдельно.');
+  await prepare(next);
+  book.manifest = next;
+  manifestBytes.set(book, stored);
+  return true;
+}
+
 async function checkedManifest(book: BookHandle): Promise<Uint8Array> {
   const target = path.join(book.root, MANIFEST_NAME);
   await assertWritableFileTarget(target);
   const current = await readOptionalFileBytes(target);
   const expected = manifestBytes.get(book);
   if (!current || !expected || sha256Hex(current) !== sha256Hex(expected)) {
-    throw new BookManagementError('Манифест (manifest) изменился на диске. Закройте и снова откройте книгу перед изменением оглавления.');
+    throw new BookManagementError('Оглавление изменилось на диске. Дождитесь обновления книги и повторите действие.');
   }
   return current;
 }

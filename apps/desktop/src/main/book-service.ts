@@ -23,6 +23,7 @@ import {
   openBook,
   readPair,
   recoverBook,
+  refreshManifest,
 } from '@galley-desk/book-storage';
 import type { BookHandle, ChapterSessionState, JournalRecord } from '@galley-desk/book-storage';
 import { classifyReview, decodeReview } from '@galley-desk/pocket-format';
@@ -58,6 +59,11 @@ export type SnapshotListener = (snapshot: Snapshot) => void;
 
 export type BookServiceDeps = {
   appData: string;
+  /** Pause and drain renderer input before replacing open chapter sessions. */
+  prepareBookRefresh?: (bookId: string) => Promise<{
+    finish: (book: BookView) => Promise<void>;
+    cancel: () => Promise<void>;
+  }>;
   trashItem?: (absolutePath: string) => Promise<void>;
   /** Directory picker; null means the user cancelled. */
   chooseDirectory: () => Promise<string | null>;
@@ -110,7 +116,8 @@ type MissingChapter = {
 };
 
 type RecoveryChapter = { kind: 'recovery'; model: ChapterModel; record: JournalRecord; revision: number };
-type ChapterEntry = LiveChapter | ReadonlyChapter | MissingChapter | RecoveryChapter;
+type LoadErrorChapter = { kind: 'readonly-load-error'; revision: number };
+type ChapterEntry = LiveChapter | ReadonlyChapter | MissingChapter | LoadErrorChapter | RecoveryChapter;
 
 type BookEntry = { handle: BookHandle; chapters: Map<string, ChapterEntry> };
 
@@ -143,6 +150,7 @@ export type BookService = {
   closeAll(): Promise<void>;
   /** Internal: snapshot push for the ipc layer (onSnapshot wiring). */
   subscribe(listener: SnapshotListener): () => void;
+  subscribeBook(listener: (update: ChapterDiscovery) => void): () => void;
   /** Internal: resource protocol lookup of the open root by opaque book id. */
   getBookRoot(bookId: string): string | undefined;
 };
@@ -304,11 +312,22 @@ function buildRecordViews(model: ChapterModel): RecordView[] {
 
 export function createBookService(deps: BookServiceDeps): BookService {
   const managing = new Set<string>();
+  const preparing = new Set<string>();
+  const chapterLifecycles = new WeakMap<BookEntry, SaveQueue>();
+  function chapterLifecycle(book: BookEntry): SaveQueue {
+    let queue = chapterLifecycles.get(book);
+    if (!queue) { queue = new SaveQueue(); chapterLifecycles.set(book, queue); }
+    return queue;
+  }
   const { appData } = deps;
   const watchRoot = deps.watchRoot ?? defaultWatchRoot;
   const books = new Map<string, BookEntry>();
   const resolutionQueues = new Map<string, SaveQueue>();
   const listeners = new Set<SnapshotListener>();
+  const activeCommands = new Map<ChapterEntry, number>();
+  const bookListeners = new Set<(update: ChapterDiscovery) => void>();
+  const lastBookUpdates = new Map<string, string>();
+  const rechecks = new Map<string, Promise<void>>();
   const watchers = new Map<string, () => void>();
   const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -353,10 +372,89 @@ export function createBookService(deps: BookServiceDeps): BookService {
   }
 
   /** Перечитывает пары живых глав книги; уведомляет только об изменениях. */
-  async function recheckBook(bookId: string): Promise<void> {
+  function recheckBook(bookId: string): Promise<void> {
+    const pending = rechecks.get(bookId);
+    if (pending) return pending;
+    const task = checkBook(bookId).finally(() => rechecks.delete(bookId));
+    rechecks.set(bookId, task);
+    return task;
+  }
+
+  async function checkBook(bookId: string): Promise<void> {
     if (managing.has(bookId)) return;
     const book = books.get(bookId);
     if (book === undefined) return;
+    let refreshError: string | undefined;
+    const replaced = new Map<string, number>();
+    let refreshing = false;
+    let lease: Awaited<ReturnType<NonNullable<BookServiceDeps['prepareBookRefresh']>>> | undefined;
+    let adopted = false;
+    try {
+      await chapterLifecycle(book).enqueue(async () => {
+        await refreshManifest(book.handle, async next => {
+          if (books.get(bookId) !== book) throw new BookManagementError('Книга уже закрыта.');
+          if (managing.has(bookId)) throw new BookManagementError('Изменение книги ещё выполняется.');
+          const affected = [...book.chapters].filter(([id]) => {
+            const old = book.handle.manifest.chapters.find(chapter => chapter.id === id);
+            return !next.chapters.some(chapter => chapter.id === id && chapter.path === old?.path);
+          });
+          if (affected.length > 0) {
+            // Known blockers must not repeatedly pause/blur another active chapter.
+            for (const [, entry] of affected) {
+              if (entry.kind === 'recovery') throw new BookManagementError('Сначала разрешите восстановление главы, чтобы обновить оглавление.');
+              if (entry.kind === 'live' && (entry.session.state === 'error' || entry.session.state === 'external')) {
+                // Retry preserving an in-memory draft without pausing the renderer.
+                await entry.session.flushPending().catch(() => undefined);
+                throw new BookManagementError('Сначала разрешите внешнее изменение главы или ошибку сохранения, чтобы обновить оглавление.');
+              }
+            }
+            preparing.add(bookId);
+            lease = await deps.prepareBookRefresh?.(bookId);
+          }
+          if (managing.has(bookId)) throw new BookManagementError('Изменение книги ещё выполняется.');
+          managing.add(bookId);
+          refreshing = true;
+          for (const [, entry] of affected) {
+            if (activeCommands.has(entry)) throw new BookManagementError('Дождитесь сохранения главы, чтобы обновить оглавление.');
+            if (entry.kind === 'recovery') throw new BookManagementError('Сначала разрешите восстановление главы, чтобы обновить оглавление.');
+            if (entry.kind === 'live') {
+              await entry.session.flushPending();
+              if (entry.session.state !== 'saved') throw new BookManagementError('Сначала разрешите внешнее изменение главы или ошибку сохранения, чтобы обновить оглавление.');
+            }
+          }
+          for (const [id, entry] of affected) {
+            if (entry.kind === 'live') await entry.session.close();
+            replaced.set(id, entry.revision);
+            book.chapters.delete(id);
+          }
+        });
+        adopted = true;
+        for (const [id, revision] of replaced) {
+          const chapter = book.handle.manifest.chapters.find(chapter => chapter.id === id);
+          if (!chapter) continue;
+          let entry: ChapterEntry;
+          try { entry = await createChapterEntry(book.handle, id, chapter.path); }
+          catch {
+            entry = { kind: 'readonly-load-error', revision: revision + 1 };
+            refreshError = 'Не удалось загрузить главу после обновления оглавления. Данные на диске сохранены.';
+          }
+          entry.revision = revision + 1;
+          book.chapters.set(id, entry);
+          notify(snapshotOf(bookId, id, entry));
+        }
+      });
+    } catch (error) {
+      refreshError = error instanceof BookManagementError ? error.message : 'Не удалось обновить оглавление. Локальная работа сохранена.';
+    } finally {
+      if (refreshing) managing.delete(bookId);
+      preparing.delete(bookId);
+      if (lease) {
+        try {
+          if (adopted) await lease.finish(await bookView(book.handle));
+          else await lease.cancel();
+        } catch { refreshError = 'Не удалось завершить обновление оглавления. Локальная работа сохранена.'; }
+      }
+    }
     for (const [chapterId, entry] of book.chapters) {
       if (entry.kind !== 'live') continue;
       try {
@@ -372,11 +470,24 @@ export function createBookService(deps: BookServiceDeps): BookService {
       entry.revision += 1;
       notify(snapshotOf(bookId, chapterId, entry));
     }
+    try {
+      const files = refreshError ? [] : await discoverStoredChapters(book.handle);
+      const key = JSON.stringify([book.handle.manifest, files, refreshError]);
+      if (lastBookUpdates.get(bookId) !== key) {
+        const update: ChapterDiscovery = {
+          book: await bookView(book.handle), files,
+          ...(refreshError ? { error: refreshError } : {}),
+        };
+        if (books.get(bookId) !== book) return;
+        lastBookUpdates.set(bookId, key);
+        for (const listener of bookListeners) listener(update);
+      }
+    } catch { /* Atomic replacement may still be in progress; retry on the next signal. */ }
   }
 
   /** Drains every session of the book and drops it from the registry. */
   async function closeBookById(bookId: string): Promise<void> {
-    if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
+    if (managing.has(bookId) || preparing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
     const book = books.get(bookId);
     if (book === undefined) return;
     await Promise.all([...book.chapters.values()].map(async (entry) => {
@@ -387,6 +498,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
     }
     stopWatching(bookId);
     books.delete(bookId);
+    lastBookUpdates.delete(bookId);
     book.chapters.clear();
   }
 
@@ -473,6 +585,8 @@ export function createBookService(deps: BookServiceDeps): BookService {
       recoveryConflict: entry.kind === 'recovery',
       readOnlyReason: entry.kind === 'live' ? null : entry.kind === 'recovery'
         ? 'Только чтение: Восстановление приостановлено. Сохраните локальную пару или откройте внешнюю версию.'
+        : entry.kind === 'readonly-load-error'
+          ? 'Только чтение: не удалось загрузить главу или данные восстановления. Исправьте файлы и перечитайте главу.'
         : entry.kind === 'readonly-missing'
           ? 'Только чтение: файл главы отсутствует или недоступен.'
           : 'Только чтение: файл рецензии повреждён или имеет неподдерживаемый формат.',
@@ -483,7 +597,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
       canUndoApply: live?.canUndoApply ?? false,
       canRedoApply: live?.canRedoApply ?? false,
     };
-    if (entry.kind === 'readonly-missing') {
+    if (entry.kind === 'readonly-missing' || entry.kind === 'readonly-load-error') {
       return {
         ...head,
         text: '',
@@ -592,13 +706,14 @@ export function createBookService(deps: BookServiceDeps): BookService {
 
   return {
     async discoverChapters(bookId: string): Promise<ChapterDiscovery> {
+      await recheckBook(bookId);
       const book = requireBook(bookId);
       try { return { book: await bookView(book.handle), files: await discoverStoredChapters(book.handle) }; }
       catch (error) { throw toIpcError(error); }
     },
     async manageBook(bookId: string, change: BookChange): Promise<BookView> {
       const book = requireBook(bookId);
-      if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
+      if (managing.has(bookId) || preparing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
       managing.add(bookId);
       try {
         if ((await readJournalsForRoot(appData, book.handle.root)).some(record => !record.complete)) throw new IpcError('SAVE_FAILED', 'Сначала разрешите восстановление книги');
@@ -727,18 +842,26 @@ export function createBookService(deps: BookServiceDeps): BookService {
     },
 
     async openChapter(bookId: string, chapterId: string): Promise<Snapshot> {
-      if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
       const book = requireBook(bookId);
-      const chapter = book.handle.manifest.chapters.find((candidate) => candidate.id === chapterId);
-      if (chapter === undefined) {
-        throw new IpcError('BOOK_MISSING', 'Глава отсутствует в манифесте книги');
-      }
-      let entry = book.chapters.get(chapterId);
-      if (entry === undefined) {
-        entry = await createChapterEntry(book.handle, chapterId, chapter.path);
-        book.chapters.set(chapterId, entry);
-      }
-      return snapshotOf(bookId, chapterId, entry);
+      return chapterLifecycle(book).enqueue(async () => {
+        if (books.get(bookId) !== book) throw new IpcError('BOOK_MISSING', 'Книга уже закрыта');
+        if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
+        const chapter = book.handle.manifest.chapters.find(candidate => candidate.id === chapterId);
+        if (!chapter) throw new IpcError('BOOK_MISSING', 'Глава отсутствует в манифесте книги');
+        let entry = book.chapters.get(chapterId);
+        if (!entry || entry.kind === 'readonly-load-error') {
+          const previous = entry;
+          try {
+            entry = await createChapterEntry(book.handle, chapterId, chapter.path);
+            if (previous) entry.revision = previous.revision + 1;
+            book.chapters.set(chapterId, entry);
+          } catch (error) {
+            if (!previous) throw error;
+            entry = previous;
+          }
+        }
+        return snapshotOf(bookId, chapterId, entry);
+      });
     },
 
     async command(
@@ -770,6 +893,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
       if (entry.session.state === 'error') {
         throw new IpcError('SAVE_FAILED', 'Предыдущее сохранение не удалось; перечитайте главу');
       }
+      activeCommands.set(entry, (activeCommands.get(entry) ?? 0) + 1);
       try {
         // Проверка внешнего изменения перед записью: неизменённая пара —
         // дешёвый no-op (короткое замыкание сессии); изменившаяся — принятие
@@ -790,6 +914,10 @@ export function createBookService(deps: BookServiceDeps): BookService {
         await applyCommand(entry, validated);
       } catch (error) {
         throw toIpcError(error);
+      } finally {
+        const remaining = (activeCommands.get(entry) ?? 1) - 1;
+        if (remaining) activeCommands.set(entry, remaining);
+        else activeCommands.delete(entry);
       }
       entry.revision += 1;
       const snapshot = snapshotOf(bookId, chapterId, entry);
@@ -884,6 +1012,11 @@ export function createBookService(deps: BookServiceDeps): BookService {
       for (const bookId of [...books.keys()]) {
         await closeBookById(bookId);
       }
+    },
+
+    subscribeBook(listener: (update: ChapterDiscovery) => void): () => void {
+      bookListeners.add(listener);
+      return () => { bookListeners.delete(listener); };
     },
 
     subscribe(listener: SnapshotListener): () => void {

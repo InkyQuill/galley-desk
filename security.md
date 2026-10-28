@@ -1,5 +1,17 @@
 # Проверки безопасности Galley Desk
 
+## Binder refresh handshake — 2026-10-28
+
+Main alone initiates the typed book-refresh prepare/complete/cancel protocol.
+Acknowledgements must match both the trusted requesting WebContents and its
+unique request token. The renderer cannot select filesystem paths or trigger
+arbitrary operations through this listener. A failed or crashed renderer does
+not authorize session retirement. Unit checks cover forged sender/token/URL
+acknowledgements and process loss; packaged tests cover in-transit command
+persistence through removal and remapping. This is targeted boundary coverage,
+not a complete security audit.
+
+
 ## Действующие проверки
 
 - `npm audit` — все runtime- и dev-зависимости; CI и публикация останавливаются при любой известной уязвимости.
