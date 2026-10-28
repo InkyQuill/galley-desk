@@ -1403,16 +1403,29 @@ test('invalid external binder is preserved and a subsequent valid replacement re
   await h.closeAll();
 });
 
-test('binder refresh never drops a failed local save when the chapter is removed externally', async () => {
+test.each(['error', 'external'] as const)('binder refresh retries draft preservation in %s without pausing or dropping the chapter', async state => {
   const prepare = vi.fn(async () => ({ finish: async () => {}, cancel: async () => {} }));
   const h = await makeService({ 'a.md': 'Alpha\n' }, undefined, undefined, prepare);
   const book = (await h.chooseBook())!;
   const id = book.entries[0]!.id;
   const initial = await h.openChapter(book.bookId, id);
+  const draftPath = path.join(h.appData, `${id}.draft.json`);
+  await mkdir(draftPath);
   const storage = await vi.importActual<typeof import('@galley-desk/book-storage')>('../../../../packages/book-storage/src/book');
   const spy = vi.spyOn(storage, 'writePair').mockRejectedValueOnce(new Error('injected failure'));
   try {
     await expect(h.command(book.bookId, id, initial.revision, { type: 'text', changes: [{ from: 0, to: 0, insert: 'Local ' }], selection: { anchor: 6, head: 6 } })).rejects.toThrow();
+    if (state === 'external') {
+      await rm(draftPath, { recursive: true });
+      await writeFile(path.join(h.bookRoot, 'a.md'), 'External\n');
+      await h.recheckExternal();
+      expect((await h.openChapter(book.bookId, id)).saveState).toBe('external');
+      // Reverting the disk pair makes checkExternal a no-op; only the refresh
+      // guard can retry preservation of the still-unresolved local draft.
+      await writeFile(path.join(h.bookRoot, 'a.md'), 'Alpha\n');
+      await rm(draftPath);
+      await mkdir(draftPath);
+    }
     const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
     const original = JSON.parse(await readFile(manifestPath, 'utf8'));
     const external = JSON.stringify({ ...original, chapters: [] });
@@ -1420,12 +1433,16 @@ test('binder refresh never drops a failed local save when the chapter is removed
     const updates: import('../shared/api').ChapterDiscovery[] = [];
     h.subscribeBook(update => updates.push(update));
     await h.recheckExternal();
+    expect(await readDrafts(h.appData)).toEqual([]);
+    await rm(draftPath, { recursive: true });
     await h.recheckExternal();
     expect(prepare).not.toHaveBeenCalled();
     expect(updates.at(-1)?.error).toBeTruthy();
     expect(updates.at(-1)?.book.entries[0]?.id).toBe(id);
     expect(await readFile(manifestPath, 'utf8')).toBe(external);
-    expect(await h.openChapter(book.bookId, id)).toMatchObject({ text: 'Alpha\n', saveState: 'error' });
+    expect(await h.openChapter(book.bookId, id)).toMatchObject({ text: 'Alpha\n', saveState: state });
+    expect(await readFile(path.join(h.bookRoot, 'a.md'), 'utf8')).toBe('Alpha\n');
+    expect(existsSync(path.join(h.bookRoot, 'a.review.json'))).toBe(false);
     const draft = (await readDrafts(h.appData)).find(draft => draft.id === id);
     expect(draft?.pair.review).toContain('Local ');
     expect(new TextDecoder().decode(draft?.pair.source)).toBe('Alpha\n');
