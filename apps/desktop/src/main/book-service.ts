@@ -116,7 +116,8 @@ type MissingChapter = {
 };
 
 type RecoveryChapter = { kind: 'recovery'; model: ChapterModel; record: JournalRecord; revision: number };
-type ChapterEntry = LiveChapter | ReadonlyChapter | MissingChapter | RecoveryChapter;
+type LoadErrorChapter = { kind: 'readonly-load-error'; revision: number };
+type ChapterEntry = LiveChapter | ReadonlyChapter | MissingChapter | LoadErrorChapter | RecoveryChapter;
 
 type BookEntry = { handle: BookHandle; chapters: Map<string, ChapterEntry> };
 
@@ -401,7 +402,11 @@ export function createBookService(deps: BookServiceDeps): BookService {
             // Known blockers must not repeatedly pause/blur another active chapter.
             for (const [, entry] of affected) {
               if (entry.kind === 'recovery') throw new BookManagementError('Сначала разрешите восстановление главы, чтобы обновить оглавление.');
-              if (entry.kind === 'live' && (entry.session.state === 'error' || entry.session.state === 'external')) throw new BookManagementError('Сначала разрешите внешнее изменение главы или ошибку сохранения, чтобы обновить оглавление.');
+              if (entry.kind === 'live' && (entry.session.state === 'error' || entry.session.state === 'external')) {
+                // Retry preserving an in-memory draft without pausing the renderer.
+                await entry.session.flushPending().catch(() => undefined);
+                throw new BookManagementError('Сначала разрешите внешнее изменение главы или ошибку сохранения, чтобы обновить оглавление.');
+              }
             }
             preparing.add(bookId);
             lease = await deps.prepareBookRefresh?.(bookId);
@@ -427,7 +432,12 @@ export function createBookService(deps: BookServiceDeps): BookService {
         for (const [id, revision] of replaced) {
           const chapter = book.handle.manifest.chapters.find(chapter => chapter.id === id);
           if (!chapter) continue;
-          const entry = await createChapterEntry(book.handle, id, chapter.path);
+          let entry: ChapterEntry;
+          try { entry = await createChapterEntry(book.handle, id, chapter.path); }
+          catch {
+            entry = { kind: 'readonly-load-error', revision: revision + 1 };
+            refreshError = 'Не удалось загрузить главу после обновления оглавления. Данные на диске сохранены.';
+          }
           entry.revision = revision + 1;
           book.chapters.set(id, entry);
           notify(snapshotOf(bookId, id, entry));
@@ -575,6 +585,8 @@ export function createBookService(deps: BookServiceDeps): BookService {
       recoveryConflict: entry.kind === 'recovery',
       readOnlyReason: entry.kind === 'live' ? null : entry.kind === 'recovery'
         ? 'Только чтение: Восстановление приостановлено. Сохраните локальную пару или откройте внешнюю версию.'
+        : entry.kind === 'readonly-load-error'
+          ? 'Только чтение: не удалось загрузить главу или данные восстановления. Исправьте файлы и перечитайте главу.'
         : entry.kind === 'readonly-missing'
           ? 'Только чтение: файл главы отсутствует или недоступен.'
           : 'Только чтение: файл рецензии повреждён или имеет неподдерживаемый формат.',
@@ -585,7 +597,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
       canUndoApply: live?.canUndoApply ?? false,
       canRedoApply: live?.canRedoApply ?? false,
     };
-    if (entry.kind === 'readonly-missing') {
+    if (entry.kind === 'readonly-missing' || entry.kind === 'readonly-load-error') {
       return {
         ...head,
         text: '',
@@ -837,9 +849,16 @@ export function createBookService(deps: BookServiceDeps): BookService {
         const chapter = book.handle.manifest.chapters.find(candidate => candidate.id === chapterId);
         if (!chapter) throw new IpcError('BOOK_MISSING', 'Глава отсутствует в манифесте книги');
         let entry = book.chapters.get(chapterId);
-        if (!entry) {
-          entry = await createChapterEntry(book.handle, chapterId, chapter.path);
-          book.chapters.set(chapterId, entry);
+        if (!entry || entry.kind === 'readonly-load-error') {
+          const previous = entry;
+          try {
+            entry = await createChapterEntry(book.handle, chapterId, chapter.path);
+            if (previous) entry.revision = previous.revision + 1;
+            book.chapters.set(chapterId, entry);
+          } catch (error) {
+            if (!previous) throw error;
+            entry = previous;
+          }
         }
         return snapshotOf(bookId, chapterId, entry);
       });

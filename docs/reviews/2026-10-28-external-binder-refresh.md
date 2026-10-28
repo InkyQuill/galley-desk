@@ -119,3 +119,14 @@ renderer handshake and preserve the external manifest and local draft.
 Validation: typecheck, 503 unit tests, packaging and all 11 isolated
 book-management/external-change desktop tests passed. The full 125-test local
 suite above covers the preceding handshake commit; CI reruns the full suite.
+
+Failure-path follow-up: blocked live sessions retry `flushPending()` before
+refusing refresh, preserving drafts that previously could not reach application
+data without pausing the renderer. Replacement-load failures now install an
+explicit empty read-only error entry for each affected chapter before notifying
+the renderer; reopening retries the load and retains monotonic revisions.
+Regressions cover restored draft storage and malformed recovery journals,
+including completion-time snapshots, rejected writes, repaired-file recovery,
+and unchanged source/manifest bytes. Validation: typecheck, all 505 unit tests,
+zero audit vulnerabilities, Linux packaging, and all 11 isolated
+book-management/external-change desktop tests passed.
