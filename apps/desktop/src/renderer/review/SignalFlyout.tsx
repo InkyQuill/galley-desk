@@ -1,7 +1,7 @@
 // Flyout выбора типа сигнала у выделенного текста. Появляется без переноса
 // фокуса: копирование и клавиатурная навигация в редакторе остаются доступны;
 // в flyout можно попасть Tab-ом из редактора, пока выделение непусто.
-import { signalLabels, signalIcons } from './signal-types';
+import { signalLabels, signalIcons, signalHelp } from './signal-types';
 import { useLayoutEffect } from 'react';
 import { SIGNAL_TYPES, useMarkerTheme, signalColor } from '../editor/markers';
 import type { SignalTypeName } from '../editor/markers';
@@ -40,7 +40,7 @@ export function SignalFlyout({ x, bottom, onPick, registerFocus }: Props) {
       }}
     >
       {SIGNAL_TYPES.map((type) => (
-        <Tooltip key={type} content={signalLabels[type]} describe={false}>
+        <Tooltip key={type} content={signalHelp[type]} describe={false}>
           <button
             aria-label={signalLabels[type]}
             type="button"

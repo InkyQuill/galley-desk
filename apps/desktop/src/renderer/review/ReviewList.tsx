@@ -12,8 +12,7 @@ import type { Command, RecordView } from '../../shared/api';
 import { RecordPopup } from './RecordPopup';
 import { Tooltip } from '../ui/Tooltip';
 
-/** Единая подпись записи для списка и тестов. */
-const signalLabels = { note: 'Заметка', change_required: 'Требуется правка', warning: 'Предупреждение', review: 'На проверку' };
+import { signalLabels } from './signal-types';
 
 export function recordLabel(record: RecordView): string {
   const suffix =

@@ -29,26 +29,30 @@ import { editKind, visualRecord, recordsInReadingOrder } from './visual-range';
 import type { EditKind } from './visual-range';
 import type { RecordView } from '../../shared/api';
 
-export const SIGNAL_TYPES = ['note', 'change_required', 'warning', 'review'] as const;
+export const SIGNAL_TYPES = ['note', 'change_required', 'warning', 'review', 'good', 'brilliant'] as const;
 export type SignalTypeName = (typeof SIGNAL_TYPES)[number];
 export type ThemeName = 'light' | 'dark';
 
 /** Shared ordinary-edit icon color; follows the active application theme. */
 export const EDIT_MARKER_COLOR = 'var(--desk-accent)';
 
-/** Four signal type colors per theme, copied from Pocket Editor Color.kt. */
+/** Six signal type colors per theme, copied from Pocket Editor Color.kt. */
 export const SIGNAL_TYPE_COLORS: Record<ThemeName, Record<SignalTypeName, string>> = {
   light: {
     note: '#1E5A9B',
     change_required: '#A62B2B',
     warning: '#795900',
     review: '#7545A5',
+    good: '#286B3A',
+    brilliant: '#9B3B70',
   },
   dark: {
     note: '#86B9F2',
     change_required: '#FF9290',
     warning: '#F2CB68',
     review: '#D2A7FF',
+    good: '#8BD69C',
+    brilliant: '#F4A5CF',
   },
 };
 

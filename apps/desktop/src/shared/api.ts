@@ -4,7 +4,7 @@ import type { LayoutSettings } from './layout';
 export type Entry = {id:string; path:string; title:string; missing:boolean};
 export type RecordView = {id:string; kind:'edit'|'signal'; status:'active'|'unavailable'|'conflicting';
   reason:string; from:number|null; to:number|null; before:string; after:string;
-  comment:string; signalType:'note'|'change_required'|'warning'|'review'|null};
+  comment:string; signalType:'note'|'change_required'|'warning'|'review'|'good'|'brilliant'|null};
 export type Snapshot = {bookId:string; chapterId:string; revision:number; text:string; sourceText:string; title?:string;
   records:RecordView[]; chapterNote:string; readOnlyReason:string|null; recoveryConflict?:boolean; saveState:'saved'|'saving'|'error'|'external';
   canUndoInput:boolean; canRedoInput:boolean; canUndoApply:boolean; canRedoApply:boolean};
@@ -14,7 +14,7 @@ export type Recent = {bookId:string; path:string; title:string; missing:boolean;
 export type Command =
  | {type:'text'; changes:{from:number;to:number;insert:string}[]; selection:{anchor:number;head:number};
     group?:string}
- | {type:'signal'; id?:string; from:number;to:number; signalType:'note'|'change_required'|'warning'|'review';comment:string}
+ | {type:'signal'; id?:string; from:number;to:number; signalType:'note'|'change_required'|'warning'|'review'|'good'|'brilliant';comment:string}
  | {type:'note';text:string}
  | {type:'metadata';yaml:string;sourceText:string}
  | {type:'remove'|'apply';id:string}

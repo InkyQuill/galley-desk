@@ -107,7 +107,7 @@ function asOrderedRange(record: Record<string, unknown>): { from: number; to: nu
   return { from, to };
 }
 
-const SIGNAL_TYPES = new Set(['note', 'change_required', 'warning', 'review']);
+const SIGNAL_TYPES = new Set(['note', 'change_required', 'warning', 'review', 'good', 'brilliant']);
 const HISTORY_TYPES = new Set(['undo-input', 'redo-input', 'undo-apply', 'redo-apply']);
 
 /**

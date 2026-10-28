@@ -65,17 +65,17 @@ test('setChapterNote changes only the chapter note', () => {
   expect(noted.selection).toEqual(marked.selection);
 });
 
-test('all four signal types accept an empty optional comment', () => {
+test('all six signal types accept an empty optional comment', () => {
   const source = new TextEncoder().encode('кот');
   let model = openChapter(source, review());
-  const types: SignalType[] = ['note', 'change_required', 'warning', 'review'];
+  const types: SignalType[] = ['note', 'change_required', 'warning', 'review', 'good', 'brilliant'];
   types.forEach((type, index) => {
-    model = addSignal(model, 0, 3, type, index === 3 ? '' : `комментарий ${index + 1}`, id(index + 1));
+    model = addSignal(model, 0, 3, type, index >= 3 ? '' : `комментарий ${index + 1}`, id(index + 1));
   });
-  expect(model.review.signals.map((signal) => signal.id)).toEqual([id(1), id(2), id(3), id(4)]);
+  expect(model.review.signals.map((signal) => signal.id)).toEqual([id(1), id(2), id(3), id(4), id(5), id(6)]);
   expect(model.review.signals.map((signal) => signal.type)).toEqual(types);
   expect(model.review.signals.map((signal) => signal.comment))
-    .toEqual(['комментарий 1', 'комментарий 2', 'комментарий 3', '']);
+    .toEqual(['комментарий 1', 'комментарий 2', 'комментарий 3', '', '', '']);
   expect(model.review.signals.every((signal) => signal.selected_text === 'кот')).toBe(true);
   expect(model.text).toBe('кот');
 });
