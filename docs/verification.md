@@ -1,5 +1,13 @@
 # Протокол верификации настольного приложения
 
+## 2026-10-28 — Coordinated binder refresh follow-up
+
+Per-book serialization and a renderer preparation/completion handshake protect
+queued input and chapter opens during external removal/remapping. Discovery
+rescan follows local management. Typecheck, 502 unit tests, audit (0), Linux
+packaging and the full isolated packaged Electron suite (125 PASS, 1 opt-in
+performance skip) passed. See the [follow-up report](reviews/2026-10-28-external-binder-refresh.md).
+
 ## 2026-10-28 — External binder refresh and dependency security
 
 External binder reload and new-chapter suggestions verified. Electron 44.10.0,

@@ -8,7 +8,7 @@ import type { WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
-import type { Command, DiagnosticInfo, WindowAction, WindowState } from '../shared/api';
+import type { BookRefreshRequest, Command, DiagnosticInfo, WindowAction, WindowState } from '../shared/api';
 import {
   IPC_ERROR_CODES,
   isDiagnosticFrame,
@@ -358,12 +358,12 @@ export type DeskIpcDeps = {
  * without an explicit `render-process-gone` check this would otherwise
  * silently wait out the full 30s timeout below instead of failing fast.
  */
-export function flushRenderer(contents: WebContents): Promise<void> {
+function requestRenderer(contents: WebContents, channel: 'desk:flush-request' | 'desk:book-refresh', ackChannel: 'desk:flush-ack' | 'desk:book-refresh-ack', request?: BookRefreshRequest): Promise<void> {
   return new Promise((resolve, reject) => {
     const id = randomUUID();
     const finish = (ok: boolean): void => {
       clearTimeout(timeout);
-      ipcMain.removeListener('desk:flush-ack', ack);
+      ipcMain.removeListener(ackChannel, ack);
       contents.removeListener('destroyed', destroyed);
       contents.removeListener('render-process-gone', gone);
       if (ok) resolve();
@@ -376,11 +376,20 @@ export function flushRenderer(contents: WebContents): Promise<void> {
     const destroyed = (): void => finish(false);
     const gone = (): void => finish(false);
     const timeout = setTimeout(() => finish(false), 30_000);
-    ipcMain.on('desk:flush-ack', ack);
+    ipcMain.on(ackChannel, ack);
     contents.once('destroyed', destroyed);
     contents.once('render-process-gone', gone);
-    contents.send('desk:flush-request', id);
+    contents.send(channel, id, request);
   });
+}
+
+export function flushRenderer(contents: WebContents): Promise<void> {
+  return requestRenderer(contents, 'desk:flush-request', 'desk:flush-ack');
+}
+
+export function refreshRenderer(contents: WebContents, request: BookRefreshRequest): Promise<void> {
+  if (contents.isDestroyed() || contents.isCrashed()) return Promise.reject(new IpcError('SAVE_FAILED', 'Окно недоступно для обновления оглавления'));
+  return requestRenderer(contents, 'desk:book-refresh', 'desk:book-refresh-ack', request);
 }
 
 export function resumeRenderer(contents: WebContents): void {

@@ -7,7 +7,7 @@ import { createBookService } from './book-service';
 import { createLogger } from './diagnostics/logger';
 import type { Logger } from './diagnostics/logger';
 import { safeError } from './diagnostics/safe-error';
-import { flushRenderer, resumeRenderer, isOwnRendererUrl, registerDeskIpc } from './ipc';
+import { refreshRenderer, flushRenderer, resumeRenderer, isOwnRendererUrl, registerDeskIpc } from './ipc';
 import { BOOK_RESOURCE_SCHEME, parseBookResourceUrl, resolveBookImage } from './resources';
 import { buildMainWindowOptions, readWindowState, runWindowAction } from './window';
 
@@ -215,6 +215,23 @@ if (!app.requestSingleInstanceLock()) {
     }
     const service = createBookService({
       appData: app.getPath('userData'),
+      prepareBookRefresh: async bookId => {
+        const contents = BrowserWindow.getAllWindows().map(window => window.webContents);
+        const cancel = async () => {
+          await Promise.allSettled(contents.filter(content => !content.isDestroyed() && !content.isCrashed()).map(content => refreshRenderer(content, { phase: 'cancel', bookId })));
+        };
+        try {
+          const results = await Promise.allSettled(contents.map(content => refreshRenderer(content, { phase: 'prepare', bookId })));
+          const failure = results.find(result => result.status === 'rejected');
+          if (failure?.status === 'rejected') throw failure.reason;
+        } catch (error) { await cancel(); throw error; }
+        return {
+          cancel,
+          finish: async book => {
+            await Promise.all(contents.map(content => refreshRenderer(content, { phase: 'complete', book })));
+          },
+        };
+      },
       logger,
       trashItem: (target) => shell.trashItem(target),
       chooseDirectory: async () => {

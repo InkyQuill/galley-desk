@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom';
 import { subscribeBookUpdates } from './book-updates';
 import { ChapterSidebar } from './ChapterSidebar';
 import type { ChapterAction } from './ChapterSidebar';
@@ -414,25 +415,31 @@ export function BookWindow({
     }
   }, [applySnapshot, onBookChange]);
 
+  const [refreshPaused, setRefreshPaused] = useState(false);
+  const refreshPausedRef = useRef(false);
+  const refreshRequestRef = useRef(0);
   const bookUpdatesRef = useRef<ReturnType<typeof subscribeBookUpdates> | null>(null);
   const refreshBook = useCallback(async (next: BookView) => {
     bookUpdatesRef.current?.invalidate();
     await applyBook(next);
+    setDiscoveredFiles(files => files.filter(file => !next.entries.some(entry => entry.path === file)));
+    try { await bookUpdatesRef.current?.refresh(); }
+    catch (cause) { setError(errorText(cause)); }
   }, [applyBook]);
-  const bookUpdateRef = useRef({ book, editorApi, applyBook });
+  const bookUpdateRef = useRef({ book, editorApi, applyBook, saveError });
   useLayoutEffect(() => {
-    bookUpdateRef.current = { book, editorApi, applyBook };
-  }, [book, editorApi, applyBook]);
+    bookUpdateRef.current = { book, editorApi, applyBook, saveError };
+  }, [book, editorApi, applyBook, saveError]);
   useEffect(() => {
     const subscription = subscribeBookUpdates(window.desk, book.bookId, (update, isCurrent) => {
       setDiscoveredFiles(update.files.map(file => file.path).sort());
       setBinderError(update.error ?? null);
       const current = bookUpdateRef.current;
       // A file discovery alone must not replace the editor's pending input.
-      if (JSON.stringify(update.book) !== JSON.stringify(current.book)) {
+      if (!refreshPausedRef.current && JSON.stringify(update.book) !== JSON.stringify(current.book)) {
         void (async () => {
           await current.editorApi?.flushPending();
-          if (isCurrent()) await bookUpdateRef.current.applyBook(update.book);
+          if (isCurrent() && !refreshPausedRef.current) await bookUpdateRef.current.applyBook(update.book);
         })().catch(cause => { if (isCurrent()) setError(errorText(cause)); });
       }
     });
@@ -442,6 +449,34 @@ export function BookWindow({
       bookUpdatesRef.current = null;
     };
   }, [book.bookId]);
+
+  useEffect(() => window.desk.onBookRefresh(async request => {
+    const bookId = request.phase === 'complete' ? request.book.bookId : request.bookId;
+    if (bookId !== book.bookId) return;
+    const requestVersion = ++refreshRequestRef.current;
+    const resume = () => {
+      flushSync(() => setRefreshPaused(false));
+      refreshPausedRef.current = false;
+      const element = document.querySelector<HTMLElement>('.book');
+      if (element) element.inert = false;
+    };
+    if (request.phase === 'cancel') { resume(); return; }
+    if (request.phase === 'complete') {
+      try { await bookUpdateRef.current.applyBook(request.book); }
+      finally { resume(); }
+      return;
+    }
+    if ((await metadataRef.current?.requestDismiss()) === false) throw new Error('Обновление оглавления отложено: метаданные не завершены');
+    // A cancelled/timed-out preparation must not pause input later.
+    if (requestVersion !== refreshRequestRef.current) return;
+    refreshPausedRef.current = true;
+    setRefreshPaused(true);
+    const element = document.querySelector<HTMLElement>('.book');
+    if (element) element.inert = true;
+    bookUpdatesRef.current?.invalidate();
+    await bookUpdateRef.current.editorApi?.flushPending();
+    if (bookUpdateRef.current.saveError !== null) throw new Error('Сначала сохраните изменения главы');
+  }), [book.bookId]);
 
   // --- оформление ------------------------------------------------------------
 
@@ -1065,7 +1100,7 @@ export function BookWindow({
   };
 
   return (
-    <div className={zen ? 'book book--zen' : 'book'}>
+    <div className={zen ? 'book book--zen' : 'book'} inert={refreshPaused}>
       <TitleBar
         title={book.title}
         subtitle={book.path}

@@ -103,7 +103,7 @@ test('open-external: http(s) доходит до opener, прочие схемы
 import { vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { ipcMain } from 'electron';
-import { registerDeskIpc } from './ipc';
+import { refreshRenderer, registerDeskIpc } from './ipc';
 import type { BookService } from './book-service';
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events');
@@ -541,4 +541,32 @@ test('openBookFolderVia rejects an untrusted sender like every desk channel', as
   const handler = vi.mocked(ipcMain.handle).mock.calls.find(([c]) => c === 'desk:open-book-folder')![1];
   await expect(handler(foreign as never, 'book-1')).rejects.toThrow('IPC rejected');
   expect(openPath).not.toHaveBeenCalled();
+});
+
+
+test('binder refresh acknowledgements require the trusted requesting renderer and exact token', async () => {
+  vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', 'http://localhost:5173');
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false, isCrashed: () => false });
+  const trusted = { sender, senderFrame: { parent: null, url: 'http://localhost:5173' } };
+  let settled = false;
+  const pending = refreshRenderer(sender as unknown as Parameters<typeof refreshRenderer>[0], { phase: 'prepare', bookId: 'book' });
+  void pending.then(() => { settled = true; });
+  const token = sender.send.mock.calls[0]![1];
+  ipcMain.emit('desk:book-refresh-ack', { ...trusted, sender: {} }, token, true);
+  ipcMain.emit('desk:book-refresh-ack', trusted, 'wrong token', true);
+  ipcMain.emit('desk:book-refresh-ack', { ...trusted, senderFrame: { parent: null, url: 'https://untrusted.invalid' } }, token, true);
+  await Promise.resolve();
+  expect(settled).toBe(false);
+  ipcMain.emit('desk:book-refresh-ack', trusted, token, true);
+  await pending;
+  expect(ipcMain.listenerCount('desk:book-refresh-ack')).toBe(0);
+  expect(sender.listenerCount('destroyed')).toBe(0);
+});
+
+test('a crashed renderer rejects binder refresh instead of permitting retirement', async () => {
+  const sender = Object.assign(new EventEmitter(), { send: vi.fn(), isDestroyed: () => false, isCrashed: () => false });
+  const pending = refreshRenderer(sender as unknown as Parameters<typeof refreshRenderer>[0], { phase: 'prepare', bookId: 'book' });
+  sender.emit('render-process-gone');
+  await expect(pending).rejects.toMatchObject({ code: 'SAVE_FAILED' });
+  expect(ipcMain.listenerCount('desk:book-refresh-ack')).toBe(0);
 });

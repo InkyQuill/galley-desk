@@ -6,6 +6,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { readDrafts } from '@galley-desk/book-storage';
 import { encodeReview, makeAnchor } from '@galley-desk/pocket-format';
 import type { Edit, Review, Signal } from '@galley-desk/pocket-format';
+import type { BookServiceDeps } from './book-service';
 import { createBookService } from './book-service';
 import type { Logger } from './diagnostics/logger';
 import { IpcError } from './ipc';
@@ -43,6 +44,7 @@ async function makeService(
   bookFiles: Record<string, string> = {},
   trashItem?: (target: string) => Promise<void>,
   logger?: Logger,
+  prepareBookRefresh?: BookServiceDeps['prepareBookRefresh'],
 ): Promise<Harness> {
   const bookRoot = await tempDir('galley-book-');
   for (const [name, content] of Object.entries(bookFiles)) {
@@ -59,6 +61,7 @@ async function makeService(
   const watcherEvents = new Map<string, () => void>();
   const service = createBookService({
     appData,
+    ...(prepareBookRefresh ? { prepareBookRefresh } : {}),
     ...(trashItem ? { trashItem } : {}),
     ...(logger ? { logger } : {}),
     chooseDirectory: () => pickerHandler(),
@@ -1436,5 +1439,98 @@ test('discovery excludes hidden, ignored, nested and already registered files', 
   await mkdir(path.join(h.bookRoot, 'nested'));
   for (const name of ['new.md', '.hidden.md', 'ignored.md', 'nested/chapter.md']) await writeFile(path.join(h.bookRoot, name), 'Text');
   expect((await h.discoverChapters(book.bookId)).files).toEqual([{ path: 'new.md' }]);
+  await h.closeAll();
+});
+
+
+function barrier() {
+  let release = () => {};
+  const promise = new Promise<void>(resolve => { release = resolve; });
+  return { promise, release };
+}
+
+test('an in-flight chapter open completes before manifest remapping, and the replacement accepts edits', async () => {
+  const h = await makeService({ 'a.md': 'Alpha', 'b.md': 'Different beta' });
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const storage = await vi.importActual<typeof import('@galley-desk/book-storage')>('../../../../packages/book-storage/src/book');
+  const original = storage.readPair;
+  const entered = barrier();
+  const resume = barrier();
+  const spy = vi.spyOn(storage, 'readPair').mockImplementationOnce(async (...args) => {
+    entered.release();
+    await resume.promise;
+    return original(...args);
+  });
+  try {
+    const opening = h.openChapter(book.bookId, id);
+    await entered.promise;
+    const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.chapters = [{ ...manifest.chapters[0], path: 'b.md' }];
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    const refreshing = h.recheckExternal();
+    resume.release();
+    expect((await opening).text).toBe('Alpha');
+    await refreshing;
+    const current = await h.openChapter(book.bookId, id);
+    expect(current.text).toBe('Different beta');
+    const edited = await h.command(book.bookId, id, current.revision, { type: 'text', changes: [{ from: 0, to: 0, insert: 'New ' }], selection: { anchor: 4, head: 4 } });
+    expect(edited.text).toBe('New Different beta');
+    expect(await readFile(path.join(h.bookRoot, 'a.md'), 'utf8')).toBe('Alpha');
+  } finally { resume.release(); spy.mockRestore(); await h.closeAll(); }
+});
+
+test('refresh drains renderer commands before retirement and holds new chapter opens until adoption', async () => {
+  const entered = barrier();
+  const resume = barrier();
+  const finish = vi.fn(async () => {});
+  const cancel = vi.fn(async () => {});
+  let drain = async () => {};
+  const h = await makeService({ 'a.md': 'Alpha', 'b.md': 'Beta' }, undefined, undefined, async () => {
+    entered.release();
+    await resume.promise;
+    await drain();
+    return { finish, cancel };
+  });
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  drain = async () => {
+    await h.command(book.bookId, id, initial.revision, { type: 'text', changes: [{ from: 0, to: 0, insert: 'Queued ' }], selection: { anchor: 7, head: 7 } });
+  };
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.chapters = [{ ...manifest.chapters[0], path: 'b.md' }];
+  const bytes = JSON.stringify(manifest);
+  await writeFile(manifestPath, bytes);
+  const refreshing = h.recheckExternal();
+  await entered.promise;
+  const opening = h.openChapter(book.bookId, id);
+  resume.release();
+  await refreshing;
+  expect((await opening).text).toBe('Beta');
+  expect(await readFile(path.join(h.bookRoot, 'a.review.json'), 'utf8')).toContain('Queued ');
+  expect(await readFile(path.join(h.bookRoot, 'a.md'), 'utf8')).toBe('Alpha');
+  expect(await readFile(manifestPath, 'utf8')).toBe(bytes);
+  expect(finish).toHaveBeenCalledOnce();
+  expect(cancel).not.toHaveBeenCalled();
+  await h.closeAll();
+});
+
+test('renderer flush refusal leaves the old session and mapping available for retry', async () => {
+  const h = await makeService({ 'a.md': 'Alpha', 'b.md': 'Beta' }, undefined, undefined, async () => { throw new Error('flush refused'); });
+  const book = (await h.chooseBook())!;
+  const id = book.entries[0]!.id;
+  const initial = await h.openChapter(book.bookId, id);
+  const manifestPath = path.join(h.bookRoot, '.pocket-editor.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.chapters = [{ ...manifest.chapters[0], path: 'b.md' }];
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  const updates: import('../shared/api').ChapterDiscovery[] = [];
+  h.subscribeBook(update => updates.push(update));
+  await h.recheckExternal();
+  expect(await h.openChapter(book.bookId, id)).toMatchObject({ text: 'Alpha', revision: initial.revision });
+  expect(updates.at(-1)?.error).toBeDefined();
   await h.closeAll();
 });

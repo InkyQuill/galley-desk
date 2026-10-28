@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AppearanceSettings,
   BookView,
+  BookRefreshRequest,
   ChapterDiscovery,
   Command,
   DeskApi,
@@ -37,7 +38,21 @@ ipcRenderer.on('desk:flush-request', async (_event, requestId: string | null) =>
   }
 });
 
+const refreshListeners = new Set<(request: BookRefreshRequest) => Promise<void>>();
+ipcRenderer.on('desk:book-refresh', async (_event, requestId: string, request: BookRefreshRequest) => {
+  try {
+    await Promise.all([...refreshListeners].map(listener => listener(request)));
+    ipcRenderer.send('desk:book-refresh-ack', requestId, true);
+  } catch {
+    ipcRenderer.send('desk:book-refresh-ack', requestId, false);
+  }
+});
+
 const desk: DeskApi = {
+  onBookRefresh: listener => {
+    refreshListeners.add(listener);
+    return () => { refreshListeners.delete(listener); };
+  },
   manageBook: (bookId, change) => call<BookView>('desk:manage-book', bookId, change),
   discoverChapters: (bookId) => call<ChapterDiscovery>('desk:discover-chapters', bookId),
   onCloseRequest: (listener) => {

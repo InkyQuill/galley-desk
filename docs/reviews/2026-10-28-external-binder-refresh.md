@@ -76,3 +76,37 @@ initial result and any pushed update waiting for an editor flush. External
 updates use the separate apply path. A focused regression verifies that local
 changes reject old results while later external pushes still work. Typecheck,
 496 unit tests, packaging and the same eight isolated desktop tests passed.
+
+## Coordinated session retirement
+
+The remaining review findings are addressed together:
+
+- Local book changes immediately remove registered paths from suggestions and
+  explicitly rescan discovery. This does not depend on a watcher notification.
+- Chapter opens and manifest adoption/session replacement share a per-book
+  queue. An open already in flight completes before affected sessions are
+  selected; opens arriving during replacement read the adopted mapping.
+- Before retiring an open chapter, main requests a renderer preparation
+  acknowledgement. The renderer pauses input and drains queued/in-transit
+  commands while main still accepts commands against the old session. Only
+  after that acknowledgement does main drain and retire affected sessions.
+  A completion acknowledgement loads the adopted book before input resumes.
+  A failed preparation leaves the old mapping and sessions in place.
+- The new handshake uses a closed prepare/complete/cancel contract, trusted
+  sender checks and a unique request token. Crash/refusal handling prevents
+  retirement without successful preparation.
+
+Regression tests cover an open straddling a remap, opens arriving during
+refresh, renderer commands drained before retirement, flush refusal, forged
+acknowledgements, renderer crash, and discovery without watcher pushes.
+Packaged regressions hold a command in transit during both chapter removal
+and remapping, then verify its saved sidecar, unchanged Markdown bytes and
+successful typing in the replacement chapter.
+
+Final local validation for this follow-up: typecheck PASS; 502 unit tests in
+38 files PASS; dependency audit zero vulnerabilities; Linux x64 package PASS;
+full packaged Electron suite under the isolated wrapper PASS (125 tests,
+1 opt-in performance skip). The final build includes cancellation generation
+checks and waits for all preparation acknowledgements before cancelling a
+failed multi-window preparation. macOS native validation was not run locally.
+Pocket schemas/fixtures are unchanged; hosted CI reruns the contract gate.

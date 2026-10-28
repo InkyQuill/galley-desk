@@ -5,7 +5,7 @@ export function subscribeBookUpdates(
   api: Pick<DeskApi, 'onBookUpdate' | 'discoverChapters'>,
   bookId: string,
   receive: (update: ChapterDiscovery, isCurrent: () => boolean) => void,
-): { dispose: () => void; invalidate: () => void } {
+): { dispose: () => void; invalidate: () => void; refresh: () => Promise<void> } {
   let active = true;
   let revision = 0;
   const accept = (update: ChapterDiscovery) => {
@@ -14,11 +14,14 @@ export function subscribeBookUpdates(
     receive(update, () => active && revision === accepted);
   };
   const unsubscribe = api.onBookUpdate(accept);
-  const initialRevision = revision;
-  void api.discoverChapters(bookId).then(update => {
-    if (revision === initialRevision) accept(update);
-  }).catch(() => undefined);
+  const refresh = async () => {
+    const requested = ++revision;
+    const update = await api.discoverChapters(bookId);
+    if (revision === requested) accept(update);
+  };
+  void refresh().catch(() => undefined);
   return {
+    refresh,
     dispose: () => { active = false; unsubscribe(); },
     invalidate: () => { ++revision; },
   };

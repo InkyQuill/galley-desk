@@ -59,6 +59,11 @@ export type SnapshotListener = (snapshot: Snapshot) => void;
 
 export type BookServiceDeps = {
   appData: string;
+  /** Pause and drain renderer input before replacing open chapter sessions. */
+  prepareBookRefresh?: (bookId: string) => Promise<{
+    finish: (book: BookView) => Promise<void>;
+    cancel: () => Promise<void>;
+  }>;
   trashItem?: (absolutePath: string) => Promise<void>;
   /** Directory picker; null means the user cancelled. */
   chooseDirectory: () => Promise<string | null>;
@@ -306,6 +311,13 @@ function buildRecordViews(model: ChapterModel): RecordView[] {
 
 export function createBookService(deps: BookServiceDeps): BookService {
   const managing = new Set<string>();
+  const preparing = new Set<string>();
+  const chapterLifecycles = new WeakMap<BookEntry, SaveQueue>();
+  function chapterLifecycle(book: BookEntry): SaveQueue {
+    let queue = chapterLifecycles.get(book);
+    if (!queue) { queue = new SaveQueue(); chapterLifecycles.set(book, queue); }
+    return queue;
+  }
   const { appData } = deps;
   const watchRoot = deps.watchRoot ?? defaultWatchRoot;
   const books = new Map<string, BookEntry>();
@@ -374,40 +386,60 @@ export function createBookService(deps: BookServiceDeps): BookService {
     let refreshError: string | undefined;
     const replaced = new Map<string, number>();
     let refreshing = false;
+    let lease: Awaited<ReturnType<NonNullable<BookServiceDeps['prepareBookRefresh']>>> | undefined;
+    let adopted = false;
     try {
-      await refreshManifest(book.handle, async next => {
-        if (managing.has(bookId)) throw new BookManagementError('Изменение книги ещё выполняется.');
-        managing.add(bookId);
-        refreshing = true;
-        const affected = [...book.chapters].filter(([id]) => {
-          const old = book.handle.manifest.chapters.find(chapter => chapter.id === id);
-          return !next.chapters.some(chapter => chapter.id === id && chapter.path === old?.path);
-        });
-        for (const [, entry] of affected) {
-          if (activeCommands.has(entry)) throw new BookManagementError('Дождитесь сохранения главы, чтобы обновить оглавление.');
-          if (entry.kind === 'recovery') throw new BookManagementError('Сначала разрешите восстановление главы, чтобы обновить оглавление.');
-          if (entry.kind === 'live') {
-            await entry.session.flushPending();
-            if (entry.session.state !== 'saved') throw new BookManagementError('Сначала разрешите внешнее изменение главы или ошибку сохранения, чтобы обновить оглавление.');
+      await chapterLifecycle(book).enqueue(async () => {
+        await refreshManifest(book.handle, async next => {
+          if (books.get(bookId) !== book) throw new BookManagementError('Книга уже закрыта.');
+          if (managing.has(bookId)) throw new BookManagementError('Изменение книги ещё выполняется.');
+          const affected = [...book.chapters].filter(([id]) => {
+            const old = book.handle.manifest.chapters.find(chapter => chapter.id === id);
+            return !next.chapters.some(chapter => chapter.id === id && chapter.path === old?.path);
+          });
+          if (affected.length > 0) {
+            preparing.add(bookId);
+            lease = await deps.prepareBookRefresh?.(bookId);
           }
-        }
-        for (const [id, entry] of affected) {
-          if (entry.kind === 'live') await entry.session.close();
-          replaced.set(id, entry.revision);
-          book.chapters.delete(id);
+          if (managing.has(bookId)) throw new BookManagementError('Изменение книги ещё выполняется.');
+          managing.add(bookId);
+          refreshing = true;
+          for (const [, entry] of affected) {
+            if (activeCommands.has(entry)) throw new BookManagementError('Дождитесь сохранения главы, чтобы обновить оглавление.');
+            if (entry.kind === 'recovery') throw new BookManagementError('Сначала разрешите восстановление главы, чтобы обновить оглавление.');
+            if (entry.kind === 'live') {
+              await entry.session.flushPending();
+              if (entry.session.state !== 'saved') throw new BookManagementError('Сначала разрешите внешнее изменение главы или ошибку сохранения, чтобы обновить оглавление.');
+            }
+          }
+          for (const [id, entry] of affected) {
+            if (entry.kind === 'live') await entry.session.close();
+            replaced.set(id, entry.revision);
+            book.chapters.delete(id);
+          }
+        });
+        adopted = true;
+        for (const [id, revision] of replaced) {
+          const chapter = book.handle.manifest.chapters.find(chapter => chapter.id === id);
+          if (!chapter) continue;
+          const entry = await createChapterEntry(book.handle, id, chapter.path);
+          entry.revision = revision + 1;
+          book.chapters.set(id, entry);
+          notify(snapshotOf(bookId, id, entry));
         }
       });
-      for (const [id, revision] of replaced) {
-        const chapter = book.handle.manifest.chapters.find(chapter => chapter.id === id);
-        if (!chapter) continue;
-        const entry = await createChapterEntry(book.handle, id, chapter.path);
-        entry.revision = revision + 1;
-        book.chapters.set(id, entry);
-        notify(snapshotOf(bookId, id, entry));
-      }
     } catch (error) {
       refreshError = error instanceof BookManagementError ? error.message : 'Не удалось обновить оглавление. Локальная работа сохранена.';
-    } finally { if (refreshing) managing.delete(bookId); }
+    } finally {
+      if (refreshing) managing.delete(bookId);
+      preparing.delete(bookId);
+      if (lease) {
+        try {
+          if (adopted) await lease.finish(await bookView(book.handle));
+          else await lease.cancel();
+        } catch { refreshError = 'Не удалось завершить обновление оглавления. Локальная работа сохранена.'; }
+      }
+    }
     for (const [chapterId, entry] of book.chapters) {
       if (entry.kind !== 'live') continue;
       try {
@@ -440,7 +472,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
 
   /** Drains every session of the book and drops it from the registry. */
   async function closeBookById(bookId: string): Promise<void> {
-    if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
+    if (managing.has(bookId) || preparing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
     const book = books.get(bookId);
     if (book === undefined) return;
     await Promise.all([...book.chapters.values()].map(async (entry) => {
@@ -664,7 +696,7 @@ export function createBookService(deps: BookServiceDeps): BookService {
     },
     async manageBook(bookId: string, change: BookChange): Promise<BookView> {
       const book = requireBook(bookId);
-      if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
+      if (managing.has(bookId) || preparing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
       managing.add(bookId);
       try {
         if ((await readJournalsForRoot(appData, book.handle.root)).some(record => !record.complete)) throw new IpcError('SAVE_FAILED', 'Сначала разрешите восстановление книги');
@@ -793,18 +825,19 @@ export function createBookService(deps: BookServiceDeps): BookService {
     },
 
     async openChapter(bookId: string, chapterId: string): Promise<Snapshot> {
-      if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
       const book = requireBook(bookId);
-      const chapter = book.handle.manifest.chapters.find((candidate) => candidate.id === chapterId);
-      if (chapter === undefined) {
-        throw new IpcError('BOOK_MISSING', 'Глава отсутствует в манифесте книги');
-      }
-      let entry = book.chapters.get(chapterId);
-      if (entry === undefined) {
-        entry = await createChapterEntry(book.handle, chapterId, chapter.path);
-        book.chapters.set(chapterId, entry);
-      }
-      return snapshotOf(bookId, chapterId, entry);
+      return chapterLifecycle(book).enqueue(async () => {
+        if (books.get(bookId) !== book) throw new IpcError('BOOK_MISSING', 'Книга уже закрыта');
+        if (managing.has(bookId)) throw new IpcError('SAVE_FAILED', 'Изменение книги ещё выполняется');
+        const chapter = book.handle.manifest.chapters.find(candidate => candidate.id === chapterId);
+        if (!chapter) throw new IpcError('BOOK_MISSING', 'Глава отсутствует в манифесте книги');
+        let entry = book.chapters.get(chapterId);
+        if (!entry) {
+          entry = await createChapterEntry(book.handle, chapterId, chapter.path);
+          book.chapters.set(chapterId, entry);
+        }
+        return snapshotOf(bookId, chapterId, entry);
+      });
     },
 
     async command(

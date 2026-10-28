@@ -86,3 +86,19 @@ test('a local book change invalidates initial discovery and pending pushed work'
   expect(receive).toHaveBeenCalledTimes(2);
   subscription.dispose();
 });
+
+
+test('explicit discovery after local management updates the suggestions without a watcher push', async () => {
+  const receive = vi.fn<(value: ChapterDiscovery, isCurrent: () => boolean) => void>();
+  const api = {
+    onBookUpdate: () => () => {},
+    discoverChapters: vi.fn().mockResolvedValueOnce(update('new')).mockResolvedValueOnce({ ...update('added'), files: [] }),
+  };
+  const subscription = subscribeBookUpdates(api, 'book', receive);
+  await Promise.resolve();
+  expect(receive.mock.calls[0]?.[0].files).toEqual([{ path: 'new.md' }]);
+  subscription.invalidate();
+  await subscription.refresh();
+  expect(receive.mock.calls[1]?.[0].files).toEqual([]);
+  subscription.dispose();
+});

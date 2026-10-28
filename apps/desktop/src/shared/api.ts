@@ -27,6 +27,9 @@ export type BookChange =
  | {type:'reorder';chapterIds:string[]}
  | {type:'remove'|'trash';chapterId:string};
 export type ChapterDiscovery = {book:BookView;files:{path:string}[]; error?:string};
+export type BookRefreshRequest =
+ | { phase: 'prepare' | 'cancel'; bookId: string }
+ | { phase: 'complete'; book: BookView };
 export type WindowAction = 'minimize'|'toggle-maximize'|'close';
 export type WindowState = {maximized:boolean;platform:NodeJS.Platform};
 /** Read-only, non-sensitive build/runtime facts shown in the Diagnostics
@@ -40,6 +43,7 @@ export type DiagnosticInfo = {
 export interface DeskApi {
   manageBook(bookId:string,change:BookChange):Promise<BookView>;
   discoverChapters(bookId:string):Promise<ChapterDiscovery>;
+  onBookRefresh(listener:(request:BookRefreshRequest)=>Promise<void>):()=>void;
   onCloseRequest(listener:(closing:boolean)=>Promise<void>):()=>void;
   appearance():Promise<AppearanceSettings>;
   setAppearance(value:AppearanceSettings):Promise<void>;
