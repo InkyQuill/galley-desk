@@ -6,7 +6,7 @@ import { RenameBookDialog } from './RenameBookDialog';
 import { MetadataPopover } from './MetadataPopover';
 import type { MetadataPopoverHandle } from './MetadataPopover';
 import { IconSearch, IconFileText, IconColumns2, IconCode, IconTarget, IconTargetOff, IconDots, IconAdjustments, IconBookOff, IconPencil, IconInfoCircle, IconX, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand } from '@tabler/icons-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { AppearanceSettings, BookView, Command, RecordView, Snapshot } from '../../shared/api';
 import type { ThemeDefinition } from '@inkyquill/galley-themes';
@@ -406,7 +406,9 @@ export function BookWindow({
   }, [applySnapshot, onBookChange]);
 
   const bookUpdateRef = useRef({ book, editorApi, refreshBook });
-  bookUpdateRef.current = { book, editorApi, refreshBook };
+  useLayoutEffect(() => {
+    bookUpdateRef.current = { book, editorApi, refreshBook };
+  }, [book, editorApi, refreshBook]);
   useEffect(() => subscribeBookUpdates(window.desk, book.bookId, (update, isCurrent) => {
     setDiscoveredFiles(update.files.map(file => file.path).sort());
     setBinderError(update.error ?? null);
