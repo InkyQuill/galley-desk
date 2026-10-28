@@ -1,3 +1,4 @@
+import { subscribeBookUpdates } from './book-updates';
 import { ChapterSidebar } from './ChapterSidebar';
 import type { ChapterAction } from './ChapterSidebar';
 import { ChapterDialogs } from './ChapterDialogs';
@@ -404,24 +405,20 @@ export function BookWindow({
     }
   }, [applySnapshot, onBookChange]);
 
-  useEffect(() => {
-    let active = true;
-    const receive = (update: import('../../shared/api').ChapterDiscovery) => {
-      if (!active || update.book.bookId !== book.bookId) return;
-      setDiscoveredFiles(update.files.map(file => file.path).sort());
-      setBinderError(update.error ?? null);
-      // A file discovery alone must not replace the editor's pending input.
-      if (JSON.stringify(update.book) !== JSON.stringify(book)) {
-        void (async () => {
-          await editorApi?.flushPending();
-          if (active) await refreshBook(update.book);
-        })().catch(cause => { if (active) setError(errorText(cause)); });
-      }
-    };
-    const unsubscribe = window.desk.onBookUpdate(receive);
-    void window.desk.discoverChapters(book.bookId).then(receive).catch(() => undefined);
-    return () => { active = false; unsubscribe(); };
-  }, [book, refreshBook, editorApi]);
+  const bookUpdateRef = useRef({ book, editorApi, refreshBook });
+  bookUpdateRef.current = { book, editorApi, refreshBook };
+  useEffect(() => subscribeBookUpdates(window.desk, book.bookId, (update, isCurrent) => {
+    setDiscoveredFiles(update.files.map(file => file.path).sort());
+    setBinderError(update.error ?? null);
+    const current = bookUpdateRef.current;
+    // A file discovery alone must not replace the editor's pending input.
+    if (JSON.stringify(update.book) !== JSON.stringify(current.book)) {
+      void (async () => {
+        await current.editorApi?.flushPending();
+        if (isCurrent()) await bookUpdateRef.current.refreshBook(update.book);
+      })().catch(cause => { if (isCurrent()) setError(errorText(cause)); });
+    }
+  }), [book.bookId]);
 
   // --- оформление ------------------------------------------------------------
 

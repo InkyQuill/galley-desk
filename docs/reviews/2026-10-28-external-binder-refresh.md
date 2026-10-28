@@ -31,4 +31,25 @@ Verified after installing the synced lockfile with `npm ci`:
 
 The first full desktop run exposed default-profile collisions in the two shell tests; both now use temporary profiles. It also had one long-chapter undo/redo viewport assertion failure. That test passed standalone on Electron 44.7.0 and 44.10.0 and in the final full run; its root cause remains unconfirmed. No retry, timeout or assertion changes were made.
 
-The PR branch starts from remote `main`. A subsequent documentation review retained and refreshed useful local design records and the current agent guide; see [documentation review](2026-10-28-retained-documentation.md). No release or installation was performed.
+The PR branch starts from remote `main`. A subsequent documentation review retained and refreshed useful local design records and the current agent guide; see [documentation review](2026-10-28-retained-documentation.md). No release or end-user application installation was performed.
+
+## CodeRabbit follow-up
+
+The book-update subscription now lasts for the open book rather than restarting
+on editor remounts or book-view updates. A pushed update supersedes a delayed
+initial discovery response; newer updates and unsubscription also invalidate
+book refreshes still awaiting an editor flush. Three focused regressions cover
+response ordering, pending-work invalidation and book/close isolation.
+
+Follow-up validation: typecheck passed; all 495 unit tests in 38 files passed;
+Linux x64 packaging passed; all five book-management Electron tests passed
+against the rebuilt package under `scripts/gui-test.sh` with one worker.
+`git diff --check` passed. The full desktop and contract results above refer
+to the earlier runtime revision; those suites were not repeated for this
+renderer-only follow-up. macOS remains NOT RUN.
+
+Documentation follow-ups make GUI examples isolated by default, distinguish
+end-user application installation from dependency installation, annotate the
+historical 900px capture as anomalous without altering its data, and specify
+missing-locale migration and round-trip tests in the proposed localization
+plan. Localization itself remains unimplemented.

@@ -45,13 +45,13 @@ Run commands from the repository root.
 
 ```bash
 npm ci                  # install exactly from package-lock.json
-npm start               # Electron Forge development mode; GUI isolation still applies
+scripts/gui-test.sh npm start  # Electron Forge development mode
 npm run typecheck       # TypeScript project-reference build
 npm test                # Vitest unit tests in packages/ and apps/
 npm run test:contracts  # Kotlin <-> TypeScript exchange tests; requires JDK 17
 npm audit               # dependency audit, including build tools
 npm run package         # package current platform into apps/desktop/out/
-npm run test:desktop    # Playwright Electron suite; package first and use Xvfb on Linux
+scripts/gui-test.sh npm run test:desktop -- --workers=1 # Package first
 ```
 
 Focused unit tests can be run by path:
@@ -102,7 +102,7 @@ Set `GALLEY_PACKAGED_EXECUTABLE` inside or before this isolated command when tes
 - Start with the smallest relevant unit or Electron test, then run the affected suite. Run the full validation gate in proportion to the change.
 - A normal final gate is: `npm run typecheck`, `npm test`, `npm run test:contracts` when formats/contracts are touched, `npm audit` and IPC/window/resource tests when Electron boundaries change, `npm run package`, and the affected desktop tests under Xvfb.
 - Desktop tests execute packaged Forge output; run `npm run package` before them when build output may be stale.
-- Performance is opt-in and must run alone: `GALLEY_PERF=1 npx playwright test tests/desktop/performance.spec.ts --workers=1`, under the isolated display wrapper.
+- Performance is opt-in and must run alone: `GALLEY_PERF=1 scripts/gui-test.sh npx playwright test tests/desktop/performance.spec.ts --workers=1`, under the isolated display wrapper.
 - Do not increase timeouts, add retries, or weaken assertions merely to turn a flaky/failing test green. Diagnose the failure and record unavailable platform checks as `NOT RUN`.
 - Use temporary books and isolated `GALLEY_DESK_USER_DATA` profiles. Never run destructive or write-capable tests against a user's real book directory.
 - Preserve exact Markdown and sidecar bytes in regression tests unless the scenario explicitly applies a change. For safety-sensitive changes, compare files before and after.

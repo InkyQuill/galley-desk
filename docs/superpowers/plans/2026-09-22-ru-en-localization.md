@@ -32,8 +32,13 @@ not placement. Validate that both dictionaries have identical keys at compile
 time and in tests.
 
 Extend appearance/settings persistence with `locale: 'ru' | 'en' | null`,
-where `null` migrates existing profiles and means that no manual choice has
-yet been saved. Main validates the persisted value. Native application menus
+where `null` means that no manual choice has yet been saved. During migration,
+an absent `locale` must become `null`. Update `validateAppearance` to include
+the validated locale in its returned settings object (it currently drops
+unlisted fields), accepting only `null`, `ru`, or `en` and rejecting other
+values. Add migration coverage for profiles without the field and persistence
+round-trip tests for all three accepted values. These are planned changes,
+not implemented localization behavior. Native application menus
 and main-process errors must use the same resolved locale passed through a
 narrow settings boundary; they must not guess independently after the user
 has selected a language.
